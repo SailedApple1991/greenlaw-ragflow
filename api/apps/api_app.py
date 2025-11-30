@@ -24,6 +24,7 @@ from common.time_utils import current_timestamp, datetime_format
 from api.apps import login_required, current_user
 
 
+
 @manager.route('/new_token', methods=['POST'])  # noqa: F821
 @login_required
 async def new_token():
