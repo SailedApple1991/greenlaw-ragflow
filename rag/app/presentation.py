@@ -52,8 +52,8 @@ class Ppt(PptParser):
         return [(txts[i], imgs[i]) for i in range(len(txts))]
 
 class Pdf(PdfParser):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, ocr_provider: str | None = None):
+        super().__init__(ocr_provider=ocr_provider)
 
     def __garbage(self, txt):
         txt = txt.lower().strip()

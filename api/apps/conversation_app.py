@@ -219,6 +219,17 @@ async def completion():
         def stream():
             nonlocal dia, msg, req, conv
             try:
+                logging.info(
+                    "conversation_app.stream start dialog_id=%s tenant_id=%s req=%s prompt_config=%s last_user_message=%s",
+                    getattr(dia, "id", None),
+                    getattr(dia, "tenant_id", None),
+                    req,
+                    dia.prompt_config,
+                    msg[-1].get("content") if msg else None,
+                )
+            except Exception:
+                logging.exception("Failed to log conversation_app stream context")
+            try:
                 for ans in chat(dia, msg, True, **req):
                     ans = structure_answer(conv, ans, message_id, conv.id)
                     yield "data:" + json.dumps({"code": 0, "message": "", "data": ans}, ensure_ascii=False) + "\n\n"

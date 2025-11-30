@@ -99,9 +99,9 @@ class Docx(DocxParser):
 
 
 class Pdf(PdfParser):
-    def __init__(self):
+    def __init__(self, ocr_provider: str | None = None):
         self.model_speciess = ParserType.LAWS.value
-        super().__init__()
+        super().__init__(ocr_provider=ocr_provider)
 
     def __call__(self, filename, binary=None, from_page=0,
                  to_page=100000, zoomin=3, callback=None):

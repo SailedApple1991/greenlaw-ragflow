@@ -1548,9 +1548,31 @@
         {
             "name": "OpenRouter",
             "logo": "",
-            "tags": "LLM,IMAGE2TEXT",
+            "tags": "LLM,IMAGE2TEXT,EMBEDDING",
             "status": "1",
-            "llm": [],
+            "llm": [
+                {
+                    "llm_name": "text-embedding-3-small",
+                    "tags": "TEXT EMBEDDING,8K",
+                    "max_tokens": 8191,
+                    "model_type": "embedding",
+                    "is_tools": false
+                },
+                {
+                    "llm_name": "text-embedding-3-large",
+                    "tags": "TEXT EMBEDDING,8K",
+                    "max_tokens": 8191,
+                    "model_type": "embedding",
+                    "is_tools": false
+                },
+                {
+                    "llm_name": "Qwen/Qwen2.5-7B-Instruct",
+                    "tags": "TEXT EMBEDDING,32K",
+                    "max_tokens": 32768,
+                    "model_type": "embedding",
+                    "is_tools": false
+                }
+            ],
             "rank": "840"
         },
         {

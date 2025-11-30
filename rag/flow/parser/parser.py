@@ -516,9 +516,11 @@ class Parser(ProcessBase):
 
         if conf["parse_method"] == "ocr":
             # use ocr, recognize chars only
-            ocr = OCR()
-            bxs = ocr(np.array(img))  # return boxes and recognize result
-            txt = "\n".join([t[0] for _, t in bxs if t[0]])
+            from deepdoc.vision.providers import get_provider
+
+            provider = get_provider()
+            ocr_result = provider.run(np.array(img))
+            txt = "\n".join([t[0] for _, t in ocr_result.boxes if t[0]])
         else:
             lang = conf["lang"]
             # use VLM to describe the picture

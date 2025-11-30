@@ -26,6 +26,9 @@ from deepdoc.parser.figure_parser import vision_figure_parser_docx_wrapper
 from rag.app.naive import by_plaintext, PARSERS
 
 class Pdf(PdfParser):
+    def __init__(self, ocr_provider: str | None = None):
+        super().__init__(ocr_provider=ocr_provider)
+
     def __call__(self, filename, binary=None, from_page=0,
                  to_page=100000, zoomin=3, callback=None):
         from timeit import default_timer as timer

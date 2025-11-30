@@ -535,17 +535,7 @@ class TextDetector:
 
 class OCR:
     def __init__(self, model_dir=None):
-        """
-        If you have trouble downloading HuggingFace models, -_^ this might help!!
-
-        For Linux:
-        export HF_ENDPOINT=https://hf-mirror.com
-
-        For Windows:
-        Good luck
-        ^_-
-
-        """
+        """Legacy DeepDoc OCR implementation retained for backward compatibility."""
         if not model_dir:
             try:
                 model_dir = os.path.join(

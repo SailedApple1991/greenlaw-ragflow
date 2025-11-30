@@ -22,11 +22,9 @@ from PIL import Image
 
 from common.constants import LLMType
 from api.db.services.llm_service import LLMBundle
-from deepdoc.vision import OCR
+from deepdoc.vision.providers import run_ocr
 from rag.nlp import rag_tokenizer, tokenize
 from common.string_utils import clean_markdown_block
-
-ocr = OCR()
 
 # Gemini supported MIME types
 VIDEO_EXTS = [".mp4", ".mov", ".avi", ".flv", ".mpeg", ".mpg", ".webm", ".wmv", ".3gp", ".3gpp", ".mkv"]
@@ -58,8 +56,8 @@ def chunk(filename, binary, tenant_id, lang, callback=None, **kwargs):
                 "doc_type_kwd": "image",
             }
         )
-        bxs = ocr(np.array(img))
-        txt = "\n".join([t[0] for _, t in bxs if t[0]])
+        ocr_result = run_ocr(np.array(img))
+        txt = "\n".join([t[0] for _, t in ocr_result.boxes if t[0]])
         callback(0.4, "Finish OCR: (%s ...)" % txt[:12])
         if (eng and len(txt.split()) > 32) or len(txt) > 32:
             tokenize(doc, txt, eng)

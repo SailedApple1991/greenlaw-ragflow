@@ -382,6 +382,16 @@ def chat(dialog, messages, stream=True, **kwargs):
         attachments = messages[-1]["doc_ids"]
 
     prompt_config = dialog.prompt_config
+    try:
+        logging.info(
+            "chat start dialog_id=%s tenant_id=%s prompt_config=%s kwargs=%s",
+            getattr(dialog, "id", None),
+            getattr(dialog, "tenant_id", None),
+            prompt_config,
+            kwargs,
+        )
+    except Exception:
+        logging.exception("Failed to log chat context")
     field_map = KnowledgebaseService.get_field_map(dialog.kb_ids)
     # try to use sql if field mapping is good to go
     if field_map:
@@ -500,7 +510,24 @@ def chat(dialog, messages, stream=True, **kwargs):
 
     kwargs["knowledge"] = "\n------\n" + "\n\n------\n\n".join(knowledges)
     gen_conf = dialog.llm_setting
-
+    logging.debug(f"gen_conf: {gen_conf}")
+    logging.debug(f"prompt_config: {prompt_config}")
+    logging.debug(f"kwargs: {kwargs}")
+    logging.debug(f"knowledges: {knowledges}")
+    logging.debug(f"prompt_config.get('quote', True): {prompt_config.get('quote', True)}")
+    logging.debug(f"kwargs.get('quote', True): {kwargs.get('quote', True)}")
+    logging.debug(f"knowledges and (prompt_config.get('quote', True) and kwargs.get('quote', True)): {knowledges and (prompt_config.get('quote', True) and kwargs.get('quote', True))}")
+    logging.debug(f"citation_prompt(): {citation_prompt()}")
+    try:
+        system_template = prompt_config.get("system", "")
+        logging.info(
+            "chat formatting system prompt dialog_id=%s template_preview=%s kwargs=%s",
+            getattr(dialog, "id", None),
+            system_template[:200],
+            kwargs,
+        )
+    except Exception:
+        logging.exception("Failed to log system prompt before formatting")
     msg = [{"role": "system", "content": prompt_config["system"].format(**kwargs)}]
     prompt4citation = ""
     if knowledges and (prompt_config.get("quote", True) and kwargs.get("quote", True)):

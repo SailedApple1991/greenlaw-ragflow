@@ -39,6 +39,7 @@ from sklearn.metrics import silhouette_score
 from common.file_utils import get_project_base_directory
 from common.misc_utils import pip_install_torch
 from deepdoc.vision import OCR, AscendLayoutRecognizer, LayoutRecognizer, Recognizer, TableStructureRecognizer
+from deepdoc.vision.providers import get_provider
 from rag.app.picture import vision_llm_chunk as picture_vision_llm_chunk
 from rag.nlp import rag_tokenizer
 from rag.prompts.generator import vision_llm_describe_prompt
@@ -50,7 +51,7 @@ if LOCK_KEY_pdfplumber not in sys.modules:
 
 
 class RAGFlowPdfParser:
-    def __init__(self, **kwargs):
+    def __init__(self, ocr_provider: str | None = None, **kwargs):
         """
         If you have trouble downloading HuggingFace models, -_^ this might help!!
 
@@ -61,9 +62,13 @@ class RAGFlowPdfParser:
         Good luck
         ^_-
 
+        Args:
+            ocr_provider: OCR provider name ('deepdoc', 'paddleocr', or None for default).
+                          If None, uses the default provider from environment or 'deepdoc'.
         """
 
-        self.ocr = OCR()
+        # Use provider system for OCR - allows switching between DeepDoc and PaddleOCR
+        self.ocr = get_provider(ocr_provider)
         self.parallel_limiter = None
         if settings.PARALLEL_DEVICES > 1:
             self.parallel_limiter = [trio.CapacityLimiter(1) for _ in range(settings.PARALLEL_DEVICES)]

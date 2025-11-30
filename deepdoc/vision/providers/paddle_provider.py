@@ -1,0 +1,113 @@
+from __future__ import annotations
+
+import os
+from typing import List
+
+import cv2
+import numpy as np
+
+from .base import BaseOCRProvider, BoxWithText, OCRResult
+
+try:  # pragma: no cover - optional dependency
+    from paddleocr import PaddleOCR as _PaddleEngine
+except Exception:  # pragma: no cover - keep import failure silent
+    _PaddleEngine = None  # type: ignore
+
+
+class PaddleOCRProvider(BaseOCRProvider):
+    name = "paddleocr"
+
+    def __init__(self) -> None:
+        if _PaddleEngine is None:
+            raise RuntimeError("PaddleOCR is not installed. Please install paddleocr[all].")
+
+        use_gpu = os.environ.get("PADDLE_OCR_USE_GPU", "false").lower() == "true"
+        lang = os.environ.get("PADDLE_OCR_LANG", "en")
+        rec_model_dir = os.environ.get("PADDLE_OCR_REC_MODEL_DIR")
+        det_model_dir = os.environ.get("PADDLE_OCR_DET_MODEL_DIR")
+        cls_model_dir = os.environ.get("PADDLE_OCR_CLS_MODEL_DIR")
+        precision = os.environ.get("PADDLE_OCR_PRECISION")
+
+        engine_kwargs = {
+            "use_gpu": use_gpu,
+            "lang": lang,
+            "use_angle_cls": True,
+            "show_log": False,
+        }
+        if rec_model_dir:
+            engine_kwargs["rec_model_dir"] = rec_model_dir
+        if det_model_dir:
+            engine_kwargs["det_model_dir"] = det_model_dir
+        if cls_model_dir:
+            engine_kwargs["cls_model_dir"] = cls_model_dir
+        if precision:
+            engine_kwargs["precision"] = precision
+
+        self._engine = _PaddleEngine(**engine_kwargs)
+
+    @staticmethod
+    def is_available() -> bool:
+        return _PaddleEngine is not None
+
+    def detect(self, image: np.ndarray, device_id: int | None = None):  # type: ignore[override]
+        result = self._engine.ocr(image, cls=True)
+        boxes = []
+        if result and result[0]:
+            for line in result[0]:
+                box, _ = line
+                boxes.append(box)
+        return boxes
+
+    def recognize(self, image: np.ndarray, box, device_id: int | None = None):  # type: ignore[override]
+        """Recognize text in a cropped image region."""
+        # Run OCR on the cropped region
+        result = self._engine.ocr(image, det=False, cls=True)
+        if result and result[0]:
+            text, score = result[0][0]
+            return text, float(score)
+        return "", 0.0
+
+    def run(self, image: np.ndarray, device_id: int | None = None) -> OCRResult:
+        result = self._engine.ocr(image, cls=True)
+        boxes: List[BoxWithText] = []
+        if result and result[0]:
+            for line in result[0]:
+                box, (text, score) = line
+                boxes.append((box, (text, float(score))))
+        return OCRResult(boxes=boxes, elapsed_det=0.0, elapsed_rec=0.0)
+
+    # Additional methods required by pdf_parser.py for full compatibility
+    def get_rotate_crop_image(self, img, points):
+        """Crop and rotate image region defined by quadrilateral points."""
+        assert len(points) == 4, "shape of points must be 4*2"
+        points = np.array(points, dtype=np.float32)
+        img_crop_width = int(
+            max(
+                np.linalg.norm(points[0] - points[1]),
+                np.linalg.norm(points[2] - points[3])))
+        img_crop_height = int(
+            max(
+                np.linalg.norm(points[0] - points[3]),
+                np.linalg.norm(points[1] - points[2])))
+        pts_std = np.float32([[0, 0], [img_crop_width, 0],
+                              [img_crop_width, img_crop_height],
+                              [0, img_crop_height]])
+        M = cv2.getPerspectiveTransform(points, pts_std)
+        dst_img = cv2.warpPerspective(
+            img,
+            M, (img_crop_width, img_crop_height),
+            borderMode=cv2.BORDER_REPLICATE,
+            flags=cv2.INTER_CUBIC)
+        return dst_img
+
+    def recognize_batch(self, img_list, device_id: int | None = None):
+        """Batch recognize text from a list of cropped images."""
+        results = []
+        for img in img_list:
+            result = self._engine.ocr(img, det=False, cls=True)
+            if result and result[0]:
+                text, score = result[0][0]
+                results.append((text, float(score)))
+            else:
+                results.append(("", 0.0))
+        return results

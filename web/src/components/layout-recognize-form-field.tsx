@@ -16,6 +16,7 @@ import {
 
 export const enum ParseDocumentType {
   DeepDOC = 'DeepDOC',
+  DeepDOC_PaddleOCR = 'DeepDOC (PaddleOCR)',
   PlainText = 'Plain Text',
   MinerU = 'MinerU',
   Docling = 'Docling',
@@ -43,6 +44,7 @@ export function LayoutRecognizeFormField({
       ? optionsWithoutLLM
       : [
           ParseDocumentType.DeepDOC,
+          ParseDocumentType.DeepDOC_PaddleOCR,
           ParseDocumentType.PlainText,
           ParseDocumentType.MinerU,
           ParseDocumentType.Docling,

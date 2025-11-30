@@ -41,7 +41,8 @@ from rag.nlp import concat_img, find_codec, naive_merge, naive_merge_with_images
 def by_deepdoc(filename, binary=None, from_page=0, to_page=100000, lang="Chinese", callback=None, pdf_cls = None ,**kwargs):
     callback = callback
     binary = binary
-    pdf_parser = pdf_cls() if pdf_cls else Pdf()
+    ocr_provider = kwargs.get("ocr_provider")
+    pdf_parser = pdf_cls(ocr_provider=ocr_provider) if pdf_cls else Pdf(ocr_provider=ocr_provider)
     sections, tables = pdf_parser(
         filename if not binary else binary,
         from_page=from_page,
@@ -404,8 +405,8 @@ class Docx(DocxParser):
 
 
 class Pdf(PdfParser):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, ocr_provider: str | None = None):
+        super().__init__(ocr_provider=ocr_provider)
 
     def __call__(self, filename, binary=None, from_page=0,
                  to_page=100000, zoomin=3, callback=None, separate_tables_figures=False):
@@ -637,6 +638,13 @@ def chunk(filename, binary=None, from_page=0, to_page=100000,
         if isinstance(layout_recognizer, bool):
             layout_recognizer = "DeepDOC" if layout_recognizer else "Plain Text"
 
+        # Handle special "DeepDOC (PaddleOCR)" selection from frontend
+        # This sets both layout_recognize to DeepDOC and ocr_provider to paddleocr
+        ocr_provider = parser_config.get("ocr_provider")
+        if layout_recognizer.lower() == "deepdoc (paddleocr)":
+            layout_recognizer = "DeepDOC"
+            ocr_provider = "paddleocr"
+
         name = layout_recognizer.strip().lower()
         parser = PARSERS.get(name, by_plaintext)
         callback(0.1, "Start to parse.")
@@ -649,6 +657,7 @@ def chunk(filename, binary=None, from_page=0, to_page=100000,
             lang = lang,
             callback = callback,
             layout_recognizer = layout_recognizer,
+            ocr_provider = ocr_provider,
             **kwargs
         )
 
