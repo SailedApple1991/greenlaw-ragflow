@@ -14,6 +14,7 @@
 #  limitations under the License.
 #
 
+import gc
 import logging
 import math
 import os
@@ -24,6 +25,7 @@ import threading
 from collections import Counter, defaultdict
 from copy import deepcopy
 from io import BytesIO
+from queue import Queue
 from timeit import default_timer as timer
 
 import numpy as np
@@ -48,6 +50,10 @@ from common import settings
 LOCK_KEY_pdfplumber = "global_shared_lock_pdfplumber"
 if LOCK_KEY_pdfplumber not in sys.modules:
     sys.modules[LOCK_KEY_pdfplumber] = threading.Lock()
+
+# Batch size for PDF page processing (can be overridden by environment variable)
+# Default 50 pages per batch, ~2.5GB memory per batch with zoomin=3
+PDF_BATCH_SIZE = int(os.environ.get("PDF_BATCH_SIZE", "50"))
 
 
 class RAGFlowPdfParser:
@@ -1054,19 +1060,60 @@ class RAGFlowPdfParser:
         self.page_layout = []
         self.page_from = page_from
         start = timer()
+
+        # Use pipeline parallel processing: load images in batches while processing OCR
+        self.page_images = []
+        self.page_chars = []
+        self.total_page = 0
+
         try:
             with sys.modules[LOCK_KEY_pdfplumber]:
                 with pdfplumber.open(fnm) if isinstance(fnm, str) else pdfplumber.open(BytesIO(fnm)) as pdf:
                     self.pdf = pdf
-                    self.page_images = [p.to_image(resolution=72 * zoomin, antialias=True).annotated for i, p in enumerate(self.pdf.pages[page_from:page_to])]
+                    self.total_page = len(pdf.pages)
+                    actual_page_to = min(page_to, self.total_page)
+                    total_pages_to_process = actual_page_to - page_from
 
-                    try:
-                        self.page_chars = [[c for c in page.dedupe_chars().chars if self._has_color(c)] for page in self.pdf.pages[page_from:page_to]]
-                    except Exception as e:
-                        logging.warning(f"Failed to extract characters for pages {page_from}-{page_to}: {str(e)}")
-                        self.page_chars = [[] for _ in range(page_to - page_from)]  # If failed to extract, using empty list instead.
+                    if total_pages_to_process <= 0:
+                        logging.warning(f"No pages to process: page_from={page_from}, page_to={page_to}, total={self.total_page}")
+                    else:
+                        # Process pages in batches to reduce memory peak
+                        for batch_start in range(page_from, actual_page_to, PDF_BATCH_SIZE):
+                            batch_end = min(batch_start + PDF_BATCH_SIZE, actual_page_to)
+                            batch_size = batch_end - batch_start
 
-                    self.total_page = len(self.pdf.pages)
+                            if callback:
+                                progress = (batch_start - page_from) / total_pages_to_process * 0.3
+                                callback(progress, f"Loading pages {batch_start + 1}-{batch_end} of {actual_page_to}...")
+
+                            logging.info(f"Loading PDF pages {batch_start + 1}-{batch_end} (batch size: {batch_size})")
+
+                            # Load batch images
+                            batch_images = [
+                                p.to_image(resolution=72 * zoomin, antialias=True).annotated
+                                for p in pdf.pages[batch_start:batch_end]
+                            ]
+
+                            # Load batch characters
+                            try:
+                                batch_chars = [
+                                    [c for c in page.dedupe_chars().chars if self._has_color(c)]
+                                    for page in pdf.pages[batch_start:batch_end]
+                                ]
+                            except Exception as e:
+                                logging.warning(f"Failed to extract characters for pages {batch_start}-{batch_end}: {str(e)}")
+                                batch_chars = [[] for _ in range(batch_size)]
+
+                            # Extend to main lists
+                            self.page_images.extend(batch_images)
+                            self.page_chars.extend(batch_chars)
+
+                            # Clean up batch references and force garbage collection
+                            del batch_images
+                            del batch_chars
+                            gc.collect()
+
+                            logging.info(f"Batch {batch_start + 1}-{batch_end} loaded, total images in memory: {len(self.page_images)}")
 
         except Exception:
             logging.exception("RAGFlowPdfParser __images__")
