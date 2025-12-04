@@ -9,6 +9,8 @@ services:
   ragflow:
     image: ${RAGFLOW_IMAGE:-infiniflow/ragflow:dev}
     container_name: ragflow-server
+    mem_limit: 13g
+    cpus: 3.5
     ports:
       - ${SVR_WEB_HTTP_PORT:-80}:80
       - ${SVR_WEB_HTTPS_PORT:-443}:443
