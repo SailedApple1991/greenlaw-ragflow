@@ -78,6 +78,10 @@ class PaddleOCRProvider(BaseOCRProvider):
                     if not isinstance(rec_scores, (list, tuple)):
                         rec_scores = [rec_scores] if rec_scores else []
 
+                    # Ensure dt_polys is a list
+                    if not isinstance(dt_polys, (list, tuple)):
+                        dt_polys = []
+
                     for i, (text, score) in enumerate(zip(rec_texts, rec_scores)):
                         # Handle different dt_polys formats
                         if i < len(dt_polys):
@@ -87,6 +91,17 @@ class PaddleOCRProvider(BaseOCRProvider):
                             elif isinstance(poly, (list, tuple)):
                                 box = list(poly)
                             else:
+                                box = [[0,0],[0,0],[0,0],[0,0]]
+
+                            # Ensure box is in [[x1,y1], [x2,y2], [x3,y3], [x4,y4]] format
+                            # PaddleOCR 3.x may return flat array [x1,y1,x2,y2,x3,y3,x4,y4]
+                            if box and len(box) == 8 and all(isinstance(x, (int, float)) for x in box):
+                                box = [[box[0], box[1]], [box[2], box[3]], [box[4], box[5]], [box[6], box[7]]]
+                            elif box and len(box) == 4 and all(isinstance(x, (int, float)) for x in box):
+                                # Format [x1, y1, x2, y2] - convert to 4 points
+                                box = [[box[0], box[1]], [box[2], box[1]], [box[2], box[3]], [box[0], box[3]]]
+                            elif not (box and len(box) == 4 and all(isinstance(p, (list, tuple)) and len(p) == 2 for p in box)):
+                                # Invalid format, use default
                                 box = [[0,0],[0,0],[0,0],[0,0]]
                         else:
                             box = [[0,0],[0,0],[0,0],[0,0]]
@@ -104,6 +119,17 @@ class PaddleOCRProvider(BaseOCRProvider):
                                 box, (text, score) = item
                                 if hasattr(box, 'tolist'):
                                     box = box.tolist()
+                                elif isinstance(box, (list, tuple)):
+                                    box = list(box)
+
+                                # Ensure box is in [[x1,y1], [x2,y2], [x3,y3], [x4,y4]] format
+                                if box and len(box) == 8 and all(isinstance(x, (int, float)) for x in box):
+                                    box = [[box[0], box[1]], [box[2], box[3]], [box[4], box[5]], [box[6], box[7]]]
+                                elif box and len(box) == 4 and all(isinstance(x, (int, float)) for x in box):
+                                    box = [[box[0], box[1]], [box[2], box[1]], [box[2], box[3]], [box[0], box[3]]]
+                                elif not (box and len(box) == 4 and all(isinstance(p, (list, tuple)) and len(p) == 2 for p in box)):
+                                    box = [[0,0],[0,0],[0,0],[0,0]]
+
                                 parsed.append((box, (str(text), float(score))))
                             return parsed
         except Exception as e:
