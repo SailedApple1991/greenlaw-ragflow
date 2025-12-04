@@ -139,9 +139,10 @@ class PaddleOCRProvider(BaseOCRProvider):
 
     def detect(self, image: np.ndarray, device_id: int | None = None):  # type: ignore[override]
         # PaddleOCR 3.x: use predict() instead of ocr(), cls is set via use_angle_cls in __init__
+        # Returns list of (box, (text, score)) tuples as expected by pdf_parser.py
         result = self._engine.predict(image)
         parsed = self._parse_result(result)
-        return [box for box, _ in parsed]
+        return parsed
 
     def recognize(self, image: np.ndarray, box, device_id: int | None = None):  # type: ignore[override]
         """Recognize text in a cropped image region."""
