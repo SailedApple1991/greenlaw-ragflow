@@ -203,6 +203,19 @@ COPY docker/service_conf.yaml.template ./conf/service_conf.yaml.template
 COPY docker/entrypoint.sh ./
 RUN chmod +x ./entrypoint*.sh
 
+# Install PaddleOCR into the virtual environment
+# This is needed because the base stage installs to system Python,
+# but the app runs in a virtual environment
+ARG NEED_MIRROR=0
+ARG ENABLE_PADDLEOCR="1"
+RUN if [ "$ENABLE_PADDLEOCR" = "1" ]; then \
+        pip install --no-cache-dir \
+            "paddlepaddle==3.2.2" \
+            -i https://www.paddlepaddle.org.cn/packages/stable/cpu/ && \
+        pip install --no-cache-dir \
+            "paddleocr>=2.7.0"; \
+    fi
+
 # Copy compiled web pages
 COPY --from=builder /ragflow/web/dist /ragflow/web/dist
 
