@@ -28,11 +28,13 @@ class PaddleOCRProvider(BaseOCRProvider):
         cls_model_dir = os.environ.get("PADDLE_OCR_CLS_MODEL_DIR")
         precision = os.environ.get("PADDLE_OCR_PRECISION")
 
+        # PaddleOCR 3.x uses "device" instead of "use_gpu"
+        device = "gpu:0" if use_gpu else "cpu"
         engine_kwargs = {
-            "use_gpu": use_gpu,
+            "device": device,
             "lang": lang,
             "use_angle_cls": True,
-            "show_log": False,
+            # Note: show_log parameter was removed in PaddleOCR 3.x
         }
         if rec_model_dir:
             engine_kwargs["rec_model_dir"] = rec_model_dir
