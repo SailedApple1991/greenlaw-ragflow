@@ -150,16 +150,22 @@ def chunk(filename, binary=None, from_page=0, to_page=100000,
             "chunk_token_num": 512, "delimiter": "\n!?。；！？", "layout_recognize": "DeepDOC"})
     if re.search(r"\.pdf$", filename, re.IGNORECASE):
         layout_recognizer = parser_config.get("layout_recognize", "DeepDOC")
-        
+
         if isinstance(layout_recognizer, bool):
             layout_recognizer = "DeepDOC" if layout_recognizer else "Plain Text"
+
+        # Handle special "DeepDOC (PaddleOCR)" selection from frontend
+        ocr_provider = parser_config.get("ocr_provider")
+        if layout_recognizer.lower() == "deepdoc (paddleocr)":
+            layout_recognizer = "DeepDOC"
+            ocr_provider = "paddleocr"
 
         name = layout_recognizer.strip().lower()
         pdf_parser = PARSERS.get(name, by_plaintext)
         callback(0.1, "Start to parse.")
 
         if name == "deepdoc":
-            pdf_parser = Pdf()
+            pdf_parser = Pdf(ocr_provider=ocr_provider)
             paper = pdf_parser(filename if not binary else binary,
                                from_page=from_page, to_page=to_page, callback=callback)
         else:
@@ -172,6 +178,7 @@ def chunk(filename, binary=None, from_page=0, to_page=100000,
                 callback=callback,
                 pdf_cls=Pdf,
                 parse_method="paper",
+                ocr_provider=ocr_provider,
                 **kwargs
             )
 
