@@ -53,15 +53,14 @@ user_default_llm:
 #   port: 5432
 #   max_connections: 100
 #   stale_timeout: 30
-# s3:
-#   access_key: 'access_key'
-#   secret_key: 'secret_key'
-#   region: 'region'
-#   endpoint_url: 'endpoint_url'
-#   bucket: 'bucket'
-#   prefix_path: 'prefix_path'
-#   signature_version: 'v4'
-#   addressing_style: 'path'
+s3:
+  access_key: '${ACCESS_KEY}'
+  secret_key: '${SECRET_KEY}'
+  region: '${REGION}'
+  endpoint_url: '${ENDPOINT}'
+  bucket: '${BUCKET}'
+  signature_version: 'v4'
+  addressing_style: 'virtual'
 # oss:
 #   access_key: '${ACCESS_KEY}'
 #   secret_key: '${SECRET_KEY}'
