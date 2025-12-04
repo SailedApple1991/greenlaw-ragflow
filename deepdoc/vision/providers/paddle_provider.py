@@ -57,31 +57,58 @@ class PaddleOCRProvider(BaseOCRProvider):
         PaddleOCR 3.x returns a list of dicts with 'rec_texts', 'rec_scores', 'dt_polys' keys,
         or the old format list of [box, (text, score)] tuples.
         """
+        import logging
         if not result:
             return []
 
-        # Handle PaddleOCR 3.x dict format
-        if isinstance(result, list) and len(result) > 0:
-            first = result[0]
-            if isinstance(first, dict):
-                # New format: [{'rec_texts': [...], 'rec_scores': [...], 'dt_polys': [...]}]
-                parsed = []
-                rec_texts = first.get('rec_texts', [])
-                rec_scores = first.get('rec_scores', [])
-                dt_polys = first.get('dt_polys', [])
-                for i, (text, score) in enumerate(zip(rec_texts, rec_scores)):
-                    box = dt_polys[i].tolist() if i < len(dt_polys) else [[0,0],[0,0],[0,0],[0,0]]
-                    parsed.append((box, (text, float(score))))
-                return parsed
-            elif isinstance(first, list) and len(first) > 0:
-                # Could be nested list [[box, (text, score)], ...] or old format
-                if isinstance(first[0], (list, tuple)) and len(first[0]) == 2:
-                    # Old format: [[box, (text, score)], ...]
+        try:
+            # Handle PaddleOCR 3.x dict format
+            if isinstance(result, list) and len(result) > 0:
+                first = result[0]
+                if isinstance(first, dict):
+                    # New format: [{'rec_texts': [...], 'rec_scores': [...], 'dt_polys': [...]}]
                     parsed = []
-                    for item in first:
-                        box, (text, score) = item
-                        parsed.append((box, (text, float(score))))
+                    rec_texts = first.get('rec_texts', [])
+                    rec_scores = first.get('rec_scores', [])
+                    dt_polys = first.get('dt_polys', [])
+
+                    # Ensure rec_texts and rec_scores are lists
+                    if not isinstance(rec_texts, (list, tuple)):
+                        rec_texts = [rec_texts] if rec_texts else []
+                    if not isinstance(rec_scores, (list, tuple)):
+                        rec_scores = [rec_scores] if rec_scores else []
+
+                    for i, (text, score) in enumerate(zip(rec_texts, rec_scores)):
+                        # Handle different dt_polys formats
+                        if i < len(dt_polys):
+                            poly = dt_polys[i]
+                            if hasattr(poly, 'tolist'):
+                                box = poly.tolist()
+                            elif isinstance(poly, (list, tuple)):
+                                box = list(poly)
+                            else:
+                                box = [[0,0],[0,0],[0,0],[0,0]]
+                        else:
+                            box = [[0,0],[0,0],[0,0],[0,0]]
+                        parsed.append((box, (str(text), float(score))))
                     return parsed
+                elif isinstance(first, list) and len(first) > 0:
+                    # Could be nested list [[box, (text, score)], ...] or old format
+                    first_item = first[0]
+                    if isinstance(first_item, (list, tuple)) and len(first_item) == 2:
+                        second_elem = first_item[1]
+                        # Check if it's [box, (text, score)] format
+                        if isinstance(second_elem, (list, tuple)) and len(second_elem) == 2:
+                            parsed = []
+                            for item in first:
+                                box, (text, score) = item
+                                if hasattr(box, 'tolist'):
+                                    box = box.tolist()
+                                parsed.append((box, (str(text), float(score))))
+                            return parsed
+        except Exception as e:
+            logging.warning(f"PaddleOCR result parsing error: {e}, result type: {type(result)}, result: {result[:1] if isinstance(result, list) else result}")
+
         return []
 
     def detect(self, image: np.ndarray, device_id: int | None = None):  # type: ignore[override]
