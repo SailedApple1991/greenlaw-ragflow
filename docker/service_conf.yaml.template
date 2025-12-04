@@ -38,7 +38,7 @@ oceanbase:
     port: ${OCEANBASE_PORT:-2881}
 redis:
   db: 1
-  password: '${REDIS_PASSWORD:-infini_rag_flow}'
+  password: '${REDIS_PASSWORD:-}'
   host: '${REDIS_HOST:-redis}:${REDIS_PORT:-6379}'
   ssl: ${REDIS_SSL:-false}
 user_default_llm:
