@@ -52,7 +52,8 @@ class PaddleOCRProvider(BaseOCRProvider):
         return _PaddleEngine is not None
 
     def detect(self, image: np.ndarray, device_id: int | None = None):  # type: ignore[override]
-        result = self._engine.ocr(image, cls=True)
+        # PaddleOCR 3.x: use predict() instead of ocr(), cls is set via use_angle_cls in __init__
+        result = self._engine.predict(image)
         boxes = []
         if result and result[0]:
             for line in result[0]:
@@ -62,15 +63,18 @@ class PaddleOCRProvider(BaseOCRProvider):
 
     def recognize(self, image: np.ndarray, box, device_id: int | None = None):  # type: ignore[override]
         """Recognize text in a cropped image region."""
-        # Run OCR on the cropped region
-        result = self._engine.ocr(image, det=False, cls=True)
+        # PaddleOCR 3.x: use predict() method, detection/classification configured at init
+        result = self._engine.predict(image)
         if result and result[0]:
-            text, score = result[0][0]
+            # Extract text from first detection result
+            line = result[0][0]
+            _, (text, score) = line
             return text, float(score)
         return "", 0.0
 
     def run(self, image: np.ndarray, device_id: int | None = None) -> OCRResult:
-        result = self._engine.ocr(image, cls=True)
+        # PaddleOCR 3.x: use predict() instead of ocr()
+        result = self._engine.predict(image)
         boxes: List[BoxWithText] = []
         if result and result[0]:
             for line in result[0]:
@@ -106,9 +110,11 @@ class PaddleOCRProvider(BaseOCRProvider):
         """Batch recognize text from a list of cropped images."""
         results = []
         for img in img_list:
-            result = self._engine.ocr(img, det=False, cls=True)
+            # PaddleOCR 3.x: use predict() method
+            result = self._engine.predict(img)
             if result and result[0]:
-                text, score = result[0][0]
+                line = result[0][0]
+                _, (text, score) = line
                 results.append((text, float(score)))
             else:
                 results.append(("", 0.0))
