@@ -1,0 +1,120 @@
+# ===================================================================
+# RAGFlow AWS 自动部署工作流
+# ===================================================================
+# 触发条件：推送到 main 或 dev 分支
+# 功能：构建 Docker 镜像并部署到 AWS EC2
+# ===================================================================
+
+name: Deploy to AWS EC2
+
+on:
+  push:
+    branches:
+      - aliyun-deploy
+  workflow_dispatch:  # 允许手动触发
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}/ragflow
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. 检出代码
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. 设置 Docker Buildx
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 3. 登录 Docker Hub
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      # 4. 生成镜像标签
+      - name: Generate image tags
+        id: meta
+        run: |
+          BRANCH=${GITHUB_REF##*/}
+          SHORT_SHA=${GITHUB_SHA::7}
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          echo "branch=${BRANCH}" >> $GITHUB_OUTPUT
+          echo "tag=${BRANCH}-${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "latest_tag=${BRANCH}-latest" >> $GITHUB_OUTPUT
+
+      # 5. 构建并推送 Docker 镜像
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}
+            ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.latest_tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # 6. 部署到 EC2
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+
+            echo "=== 开始部署 RAGFlow ==="
+
+            # 进入项目目录
+            cd /opt/ragflow/docker
+
+            # 更新镜像版本
+            export RAGFLOW_IMAGE="${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}"
+            echo "使用镜像: $RAGFLOW_IMAGE"
+
+            # 更新 .env 文件中的镜像版本
+            sed -i "s|^RAGFLOW_IMAGE=.*|RAGFLOW_IMAGE=${RAGFLOW_IMAGE}|" .env
+
+            # 拉取新镜像
+            docker pull $RAGFLOW_IMAGE
+
+            # 使用 AWS 专用 compose 文件（只启动 ragflow + infinity）
+            docker compose -f docker-compose-aws.yml down
+            docker compose -f docker-compose-aws.yml up -d
+
+            # 等待服务启动
+            echo "等待服务启动..."
+            sleep 30
+
+            # 健康检查
+            for i in {1..10}; do
+              if curl -s http://localhost:9380/api/v1/health > /dev/null; then
+                echo "=== 部署成功！ ==="
+                docker ps --format 'table {{.Names}}\t{{.Status}}'
+                exit 0
+              fi
+              echo "等待服务就绪... ($i/10)"
+              sleep 10
+            done
+
+            echo "警告：健康检查超时，但服务可能仍在启动中"
+            docker ps --format 'table {{.Names}}\t{{.Status}}'
+
+      # 7. 部署通知（可选）
+      - name: Deployment notification
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ 部署成功: ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}"
+          else
+            echo "❌ 部署失败"
+          fi
