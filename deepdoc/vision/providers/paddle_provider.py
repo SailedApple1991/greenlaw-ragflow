@@ -51,35 +51,60 @@ class PaddleOCRProvider(BaseOCRProvider):
     def is_available() -> bool:
         return _PaddleEngine is not None
 
+    def _parse_result(self, result):
+        """Parse PaddleOCR 3.x result format.
+
+        PaddleOCR 3.x returns a list of dicts with 'rec_texts', 'rec_scores', 'dt_polys' keys,
+        or the old format list of [box, (text, score)] tuples.
+        """
+        if not result:
+            return []
+
+        # Handle PaddleOCR 3.x dict format
+        if isinstance(result, list) and len(result) > 0:
+            first = result[0]
+            if isinstance(first, dict):
+                # New format: [{'rec_texts': [...], 'rec_scores': [...], 'dt_polys': [...]}]
+                parsed = []
+                rec_texts = first.get('rec_texts', [])
+                rec_scores = first.get('rec_scores', [])
+                dt_polys = first.get('dt_polys', [])
+                for i, (text, score) in enumerate(zip(rec_texts, rec_scores)):
+                    box = dt_polys[i].tolist() if i < len(dt_polys) else [[0,0],[0,0],[0,0],[0,0]]
+                    parsed.append((box, (text, float(score))))
+                return parsed
+            elif isinstance(first, list) and len(first) > 0:
+                # Could be nested list [[box, (text, score)], ...] or old format
+                if isinstance(first[0], (list, tuple)) and len(first[0]) == 2:
+                    # Old format: [[box, (text, score)], ...]
+                    parsed = []
+                    for item in first:
+                        box, (text, score) = item
+                        parsed.append((box, (text, float(score))))
+                    return parsed
+        return []
+
     def detect(self, image: np.ndarray, device_id: int | None = None):  # type: ignore[override]
         # PaddleOCR 3.x: use predict() instead of ocr(), cls is set via use_angle_cls in __init__
         result = self._engine.predict(image)
-        boxes = []
-        if result and result[0]:
-            for line in result[0]:
-                box, _ = line
-                boxes.append(box)
-        return boxes
+        parsed = self._parse_result(result)
+        return [box for box, _ in parsed]
 
     def recognize(self, image: np.ndarray, box, device_id: int | None = None):  # type: ignore[override]
         """Recognize text in a cropped image region."""
         # PaddleOCR 3.x: use predict() method, detection/classification configured at init
         result = self._engine.predict(image)
-        if result and result[0]:
-            # Extract text from first detection result
-            line = result[0][0]
-            _, (text, score) = line
-            return text, float(score)
+        parsed = self._parse_result(result)
+        if parsed:
+            _, (text, score) = parsed[0]
+            return text, score
         return "", 0.0
 
     def run(self, image: np.ndarray, device_id: int | None = None) -> OCRResult:
         # PaddleOCR 3.x: use predict() instead of ocr()
         result = self._engine.predict(image)
-        boxes: List[BoxWithText] = []
-        if result and result[0]:
-            for line in result[0]:
-                box, (text, score) = line
-                boxes.append((box, (text, float(score))))
+        parsed = self._parse_result(result)
+        boxes: List[BoxWithText] = parsed
         return OCRResult(boxes=boxes, elapsed_det=0.0, elapsed_rec=0.0)
 
     # Additional methods required by pdf_parser.py for full compatibility
@@ -112,10 +137,10 @@ class PaddleOCRProvider(BaseOCRProvider):
         for img in img_list:
             # PaddleOCR 3.x: use predict() method
             result = self._engine.predict(img)
-            if result and result[0]:
-                line = result[0][0]
-                _, (text, score) = line
-                results.append((text, float(score)))
+            parsed = self._parse_result(result)
+            if parsed:
+                _, (text, score) = parsed[0]
+                results.append((text, score))
             else:
                 results.append(("", 0.0))
         return results
