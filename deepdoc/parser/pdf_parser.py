@@ -291,8 +291,15 @@ class RAGFlowPdfParser:
                 b["SP"] = ii
 
     def __ocr(self, pagenum, img, chars, ZM=3, device_id: int | None = None):
+        logging.info(f"[DEBUG] __ocr called for page {pagenum}, img type: {type(img)}, img size: {img.size if hasattr(img, 'size') else 'unknown'}")
+        logging.info(f"[DEBUG] __ocr self.ocr type: {type(self.ocr)}, self.ocr class: {self.ocr.__class__.__name__}")
         start = timer()
-        bxs = self.ocr.detect(np.array(img), device_id)
+        try:
+            bxs = self.ocr.detect(np.array(img), device_id)
+            logging.info(f"[DEBUG] __ocr detect() returned, bxs type: {type(bxs)}, len: {len(bxs) if bxs else 0}")
+        except Exception as e:
+            logging.error(f"[DEBUG] __ocr detect() EXCEPTION: {e}", exc_info=True)
+            raise
         logging.info(f"__ocr detecting boxes of a image cost ({timer() - start}s)")
 
         start = timer()
@@ -1152,6 +1159,7 @@ class RAGFlowPdfParser:
             self.is_english = False
 
         async def __img_ocr(i, id, img, chars, limiter):
+            logging.info(f"[DEBUG] __img_ocr called for page index {i}, device {id}, limiter: {limiter is not None}")
             j = 0
             while j + 1 < len(chars):
                 if (
@@ -1194,7 +1202,10 @@ class RAGFlowPdfParser:
 
         start = timer()
 
+        logging.info(f"[DEBUG] About to call trio.run(__img_ocr_launcher) for {len(self.page_images)} pages")
+        logging.info(f"[DEBUG] parallel_limiter: {self.parallel_limiter}, PARALLEL_DEVICES: {settings.PARALLEL_DEVICES}")
         trio.run(__img_ocr_launcher)
+        logging.info(f"[DEBUG] trio.run(__img_ocr_launcher) completed")
 
         logging.info(f"__images__ {len(self.page_images)} pages cost {timer() - start}s")
 

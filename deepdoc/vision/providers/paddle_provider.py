@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from typing import List
 
@@ -7,6 +8,10 @@ import cv2
 import numpy as np
 
 from .base import BaseOCRProvider, BoxWithText, OCRResult
+
+# Debug logger for PaddleOCR provider
+_logger = logging.getLogger("paddle_provider")
+_logger.setLevel(logging.DEBUG)
 
 try:  # pragma: no cover - optional dependency
     from paddleocr import PaddleOCR as _PaddleEngine
@@ -140,8 +145,17 @@ class PaddleOCRProvider(BaseOCRProvider):
     def detect(self, image: np.ndarray, device_id: int | None = None):  # type: ignore[override]
         # PaddleOCR 3.x: use predict() instead of ocr(), cls is set via use_angle_cls in __init__
         # Returns list of (box, (text, score)) tuples as expected by pdf_parser.py
-        result = self._engine.predict(image)
+        _logger.info(f"[DEBUG] PaddleOCR detect() called, image shape: {image.shape if hasattr(image, 'shape') else 'unknown'}")
+        try:
+            result = self._engine.predict(image)
+            _logger.info(f"[DEBUG] PaddleOCR predict() returned, result type: {type(result)}, len: {len(result) if isinstance(result, (list, tuple)) else 'N/A'}")
+            if result and isinstance(result, list) and len(result) > 0:
+                _logger.info(f"[DEBUG] First result item type: {type(result[0])}, content preview: {str(result[0])[:200]}")
+        except Exception as e:
+            _logger.error(f"[DEBUG] PaddleOCR predict() EXCEPTION: {e}", exc_info=True)
+            raise
         parsed = self._parse_result(result)
+        _logger.info(f"[DEBUG] PaddleOCR _parse_result() returned {len(parsed)} items")
         return parsed
 
     def recognize(self, image: np.ndarray, box, device_id: int | None = None):  # type: ignore[override]
