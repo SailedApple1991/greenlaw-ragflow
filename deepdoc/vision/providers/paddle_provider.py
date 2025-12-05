@@ -59,7 +59,7 @@ class PaddleOCRProvider(BaseOCRProvider):
     def _parse_result(self, result):
         """Parse PaddleOCR 3.x result format.
 
-        PaddleOCR 3.x returns a list of dicts with 'rec_texts', 'rec_scores', 'dt_polys' keys,
+        PaddleOCR 3.x returns a list of OCRResult objects (or dicts) with 'rec_texts', 'rec_scores', 'dt_polys' keys,
         or the old format list of [box, (text, score)] tuples.
         """
         import logging
@@ -67,10 +67,13 @@ class PaddleOCRProvider(BaseOCRProvider):
             return []
 
         try:
-            # Handle PaddleOCR 3.x dict format
+            # Handle PaddleOCR 3.x format
             if isinstance(result, list) and len(result) > 0:
                 first = result[0]
-                if isinstance(first, dict):
+                # PaddleOCR 3.x returns OCRResult objects that support dict-like access
+                # Check for dict or dict-like object (has 'rec_texts' attribute or key)
+                is_dict_like = isinstance(first, dict) or hasattr(first, 'rec_texts') or (hasattr(first, '__getitem__') and hasattr(first, 'get'))
+                if is_dict_like:
                     # New format: [{'rec_texts': [...], 'rec_scores': [...], 'dt_polys': [...]}]
                     parsed = []
                     rec_texts = first.get('rec_texts', [])
