@@ -250,10 +250,14 @@ async def build_chunks(task, progress_callback):
         raise
 
     try:
+        # Merge kb_parser_config into parser_config so that layout_recognize and other KB-level settings
+        # are available to the chunker. kb_parser_config contains settings like layout_recognize that
+        # are set at the knowledge base level, while parser_config contains document-specific settings.
+        merged_parser_config = {**task.get("kb_parser_config", {}), **task.get("parser_config", {})}
         async with chunk_limiter:
             cks = await trio.to_thread.run_sync(lambda: chunker.chunk(task["name"], binary=binary, from_page=task["from_page"],
                                 to_page=task["to_page"], lang=task["language"], callback=progress_callback,
-                                kb_id=task["kb_id"], parser_config=task["parser_config"], tenant_id=task["tenant_id"]))
+                                kb_id=task["kb_id"], parser_config=merged_parser_config, tenant_id=task["tenant_id"]))
         logging.info("Chunking({}) {}/{} done".format(timer() - st, task["location"], task["name"]))
     except TaskCanceledException:
         raise
