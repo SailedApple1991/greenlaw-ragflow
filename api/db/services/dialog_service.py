@@ -17,6 +17,7 @@ import binascii
 import logging
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from copy import deepcopy
 from datetime import datetime
 from functools import partial
@@ -492,10 +493,20 @@ def chat(dialog, messages, stream=True, **kwargs):
                 kbinfos["chunks"].extend(tav_res["chunks"])
                 kbinfos["doc_aggs"].extend(tav_res["doc_aggs"])
             if prompt_config.get("use_kg"):
-                ck = settings.kg_retriever.retrieval(" ".join(questions), tenant_ids, dialog.kb_ids, embd_mdl,
-                                                       LLMBundle(dialog.tenant_id, LLMType.CHAT))
-                if ck["content_with_weight"]:
-                    kbinfos["chunks"].insert(0, ck)
+                try:
+                    with ThreadPoolExecutor(max_workers=1) as executor:
+                        future = executor.submit(
+                            settings.kg_retriever.retrieval,
+                            " ".join(questions), tenant_ids, dialog.kb_ids, embd_mdl,
+                            LLMBundle(dialog.tenant_id, LLMType.CHAT)
+                        )
+                        ck = future.result(timeout=60)  # 60 seconds timeout for KG retrieval
+                    if ck and ck.get("content_with_weight"):
+                        kbinfos["chunks"].insert(0, ck)
+                except FuturesTimeoutError:
+                    logging.warning("Knowledge graph retrieval timed out after 60s, skipping KG results")
+                except Exception as e:
+                    logging.exception(f"Knowledge graph retrieval failed: {e}")
 
             knowledges = kb_prompt(kbinfos, max_tokens)
 

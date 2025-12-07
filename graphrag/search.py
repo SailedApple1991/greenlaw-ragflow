@@ -44,27 +44,31 @@ class KGSearch(Dealer):
         return response
 
     def query_rewrite(self, llm, question, idxnms, kb_ids):
-        ty2ents = trio.run(lambda: get_entity_type2samples(idxnms, kb_ids))
-        hint_prompt = PROMPTS["minirag_query2kwd"].format(query=question,
-                                                          TYPE_POOL=json.dumps(ty2ents, ensure_ascii=False, indent=2))
-        result = self._chat(llm, hint_prompt, [{"role": "user", "content": "Output:"}], {})
         try:
-            keywords_data = json_repair.loads(result)
-            type_keywords = keywords_data.get("answer_type_keywords", [])
-            entities_from_query = keywords_data.get("entities_from_query", [])[:5]
-            return type_keywords, entities_from_query
-        except json_repair.JSONDecodeError:
+            ty2ents = trio.run(lambda: get_entity_type2samples(idxnms, kb_ids))
+            hint_prompt = PROMPTS["minirag_query2kwd"].format(query=question,
+                                                              TYPE_POOL=json.dumps(ty2ents, ensure_ascii=False, indent=2))
+            result = self._chat(llm, hint_prompt, [{"role": "user", "content": "Output:"}], {"timeout": 30})
             try:
-                result = result.replace(hint_prompt[:-1], '').replace('user', '').replace('model', '').strip()
-                result = '{' + result.split('{')[1].split('}')[0] + '}'
                 keywords_data = json_repair.loads(result)
                 type_keywords = keywords_data.get("answer_type_keywords", [])
                 entities_from_query = keywords_data.get("entities_from_query", [])[:5]
                 return type_keywords, entities_from_query
-            # Handle parsing error
-            except Exception as e:
-                logging.exception(f"JSON parsing error: {result} -> {e}")
-                raise e
+            except json_repair.JSONDecodeError:
+                try:
+                    result = result.replace(hint_prompt[:-1], '').replace('user', '').replace('model', '').strip()
+                    result = '{' + result.split('{')[1].split('}')[0] + '}'
+                    keywords_data = json_repair.loads(result)
+                    type_keywords = keywords_data.get("answer_type_keywords", [])
+                    entities_from_query = keywords_data.get("entities_from_query", [])[:5]
+                    return type_keywords, entities_from_query
+                # Handle parsing error
+                except Exception as e:
+                    logging.exception(f"JSON parsing error: {result} -> {e}")
+                    return [], [question]  # Fallback to original question
+        except Exception as e:
+            logging.warning(f"Query rewrite failed: {e}, using original question as fallback")
+            return [], [question]  # Fallback: return original question as entity
 
     def _ent_info_from_(self, es_res, sim_thr=0.3):
         res = {}
