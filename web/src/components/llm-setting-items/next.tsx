@@ -50,6 +50,7 @@ export const LlmSettingEnabledSchema = {
 };
 
 export const LlmSettingFieldSchema = {
+  llm_id: z.string().optional(),
   temperature: z.coerce.number().optional(),
   top_p: z.number().optional(),
   presence_penalty: z.coerce.number().optional(),
