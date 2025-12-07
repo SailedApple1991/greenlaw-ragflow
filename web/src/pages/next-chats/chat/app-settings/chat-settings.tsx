@@ -86,6 +86,9 @@ export function ChatSettings({ switchSettingVisible }: ChatSettingsProps) {
   }
 
   useEffect(() => {
+    // Skip reset if data is empty (during loading)
+    if (!data.id) return;
+
     const llmSettingEnabledValues = setLLMSettingEnabledValues(
       data.llm_setting,
     );
