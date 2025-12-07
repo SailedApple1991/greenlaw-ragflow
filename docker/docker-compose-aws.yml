@@ -12,10 +12,10 @@ services:
     mem_limit: 13g
     cpus: 3.5
     ports:
-      - ${SVR_WEB_HTTP_PORT:-80}:80
-      - ${SVR_WEB_HTTPS_PORT:-443}:443
-      - ${SVR_HTTP_PORT:-9380}:9380
-      - ${ADMIN_SVR_HTTP_PORT:-9381}:9381
+      - "127.0.0.1:${SVR_WEB_HTTP_PORT:-80}:80"
+      - "127.0.0.1:${SVR_WEB_HTTPS_PORT:-443}:443"
+      - "127.0.0.1:${SVR_HTTP_PORT:-9380}:9380"
+      - "127.0.0.1:${ADMIN_SVR_HTTP_PORT:-9381}:9381"
     volumes:
       - ./ragflow-logs:/ragflow/logs
       - ./nginx/ragflow.conf:/etc/nginx/conf.d/ragflow.conf
@@ -42,9 +42,9 @@ services:
       - ./infinity_conf.toml:/infinity_conf.toml
     command: ["-f", "/infinity_conf.toml"]
     ports:
-      - ${INFINITY_THRIFT_PORT:-23817}:23817
-      - ${INFINITY_HTTP_PORT:-23820}:23820
-      - ${INFINITY_PSQL_PORT:-5432}:5432
+      - "127.0.0.1:${INFINITY_THRIFT_PORT:-23817}:23817"
+      - "127.0.0.1:${INFINITY_HTTP_PORT:-23820}:23820"
+      - "127.0.0.1:${INFINITY_PSQL_PORT:-5432}:5432"
     env_file: .env
     mem_limit: ${MEM_LIMIT:-8589934592}
     ulimits:
