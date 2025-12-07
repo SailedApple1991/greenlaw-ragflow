@@ -68,6 +68,12 @@ export function ChatSettings({ switchSettingVisible }: ChatSettingsProps) {
       'llm_setting.',
     );
 
+    // Extract llm_id from llm_setting to top level (backend expects llm_id at root)
+    if (nextValues.llm_setting?.llm_id) {
+      nextValues.llm_id = nextValues.llm_setting.llm_id;
+      delete nextValues.llm_setting.llm_id;
+    }
+
     setDialog({
       ...omit(data, 'operator_permission'),
       ...nextValues,
@@ -84,8 +90,15 @@ export function ChatSettings({ switchSettingVisible }: ChatSettingsProps) {
       data.llm_setting,
     );
 
+    // Move llm_id into llm_setting for form (form expects llm_setting.llm_id)
+    const llmSettingWithId = {
+      ...data.llm_setting,
+      llm_id: data.llm_id,
+    };
+
     const nextData = {
       ...data,
+      llm_setting: llmSettingWithId,
       ...llmSettingEnabledValues,
     };
     form.reset(nextData as FormSchemaType);
