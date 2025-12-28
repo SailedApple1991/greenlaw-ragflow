@@ -7,12 +7,14 @@ from functools import lru_cache
 from .base import BaseOCRProvider, OCRResult
 from .deepdoc_provider import DeepDocProvider
 from .paddle_provider import PaddleOCRProvider
+from .runpod_provider import RunPodOCRProvider
 
 _DEFAULT_PROVIDER = os.environ.get("OCR_PROVIDER", "deepdoc")
 # Use plain dict without type annotation to avoid beartype runtime checks
 _AVAILABLE_PROVIDERS = {
     "deepdoc": DeepDocProvider,
     "paddleocr": PaddleOCRProvider,
+    "runpod": RunPodOCRProvider,
 }
 
 
