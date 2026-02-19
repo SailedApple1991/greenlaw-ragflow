@@ -124,18 +124,6 @@ RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
     fi || \
     { echo "Failed to install ODBC driver"; exit 1; }
 
-ARG ENABLE_PADDLEOCR="1"
-
-RUN if [ "$ENABLE_PADDLEOCR" = "1" ]; then \
-        python3 -m pip install --no-cache-dir \
-            "paddlepaddle==3.2.2" \
-            -i https://www.paddlepaddle.org.cn/packages/stable/cpu/ && \
-        python3 -m pip install --no-cache-dir \
-            "paddleocr>=2.7.0"; \
-    else \
-        echo "Skipping PaddleOCR installation"; \
-    fi
-
 # Add dependencies of selenium
 RUN --mount=type=bind,from=infiniflow/ragflow_deps:latest,source=/chrome-linux64-121-0-6167-85,target=/chrome-linux64.zip \
     unzip /chrome-linux64.zip && \

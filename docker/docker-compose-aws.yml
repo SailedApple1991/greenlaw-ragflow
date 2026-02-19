@@ -1,8 +1,8 @@
 # ===================================================================
 # RAGFlow AWS 部署专用 Docker Compose
 # ===================================================================
-# 只启动 ragflow 和 infinity，不启动 mysql/redis/minio
-# 这些服务由 AWS RDS/ElastiCache/S3 提供
+# 只启动 ragflow，不启动 mysql/redis/minio/opensearch
+# 这些服务由 AWS RDS/ElastiCache/S3/OpenSearch 提供
 # ===================================================================
 
 services:
@@ -25,44 +25,12 @@ services:
     env_file: .env
     environment:
       - TZ=${TZ:-Asia/Singapore}
+      - DOC_ENGINE=opensearch
     networks:
       - ragflow
     restart: on-failure
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    depends_on:
-      infinity:
-        condition: service_healthy
-
-  infinity:
-    image: infiniflow/infinity:v0.6.6
-    container_name: ragflow-infinity
-    volumes:
-      - infinity_data:/var/infinity
-      - ./infinity_conf.toml:/infinity_conf.toml
-    command: ["-f", "/infinity_conf.toml"]
-    ports:
-      - "127.0.0.1:${INFINITY_THRIFT_PORT:-23817}:23817"
-      - "127.0.0.1:${INFINITY_HTTP_PORT:-23820}:23820"
-      - "127.0.0.1:${INFINITY_PSQL_PORT:-5432}:5432"
-    env_file: .env
-    mem_limit: ${MEM_LIMIT:-8589934592}
-    ulimits:
-      nofile:
-        soft: 500000
-        hard: 500000
-    networks:
-      - ragflow
-    healthcheck:
-      test: ["CMD", "curl", "http://localhost:23820/admin/node/current"]
-      interval: 10s
-      timeout: 10s
-      retries: 120
-    restart: on-failure
-
-volumes:
-  infinity_data:
-    driver: local
 
 networks:
   ragflow:
