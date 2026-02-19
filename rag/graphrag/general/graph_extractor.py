@@ -6,6 +6,7 @@ Reference:
  - [graphrag](https://github.com/microsoft/graphrag)
 """
 
+import logging
 import re
 from typing import Any
 from dataclasses import dataclass
