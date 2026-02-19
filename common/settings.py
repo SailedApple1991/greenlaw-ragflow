@@ -111,6 +111,7 @@ OS = {}
 DOC_MAXIMUM_SIZE: int = 128 * 1024 * 1024
 DOC_BULK_SIZE: int = 4
 EMBEDDING_BATCH_SIZE: int = 16
+DOC_FIELD_MAX_SIZE: int = 45 * 1024 * 1024
 
 PARALLEL_DEVICES: int = 0
 
@@ -286,10 +287,11 @@ def init_settings():
         MAIL_DEFAULT_SENDER = (mail_default_sender[0], mail_default_sender[1])
     MAIL_FRONTEND_URL = SMTP_CONF.get("mail_frontend_url", "")
 
-    global DOC_MAXIMUM_SIZE, DOC_BULK_SIZE, EMBEDDING_BATCH_SIZE
+    global DOC_MAXIMUM_SIZE, DOC_BULK_SIZE, EMBEDDING_BATCH_SIZE, DOC_FIELD_MAX_SIZE
     DOC_MAXIMUM_SIZE = int(os.environ.get("MAX_CONTENT_LENGTH", 128 * 1024 * 1024))
     DOC_BULK_SIZE = int(os.environ.get("DOC_BULK_SIZE", 4))
     EMBEDDING_BATCH_SIZE = int(os.environ.get("EMBEDDING_BATCH_SIZE", 16))
+    DOC_FIELD_MAX_SIZE = int(os.environ.get("DOC_FIELD_MAX_SIZE", 45 * 1024 * 1024))
 
 def check_and_install_torch():
     global PARALLEL_DEVICES
@@ -333,5 +335,6 @@ def _resolve_per_model_config(entry_dict, backup_factory, backup_api_key, backup
 
 def print_rag_settings():
     logging.info(f"MAX_CONTENT_LENGTH: {DOC_MAXIMUM_SIZE}")
+    logging.info(f"DOC_FIELD_MAX_SIZE: {DOC_FIELD_MAX_SIZE}")
     logging.info(f"MAX_FILE_COUNT_PER_USER: {int(os.environ.get('MAX_FILE_NUM_PER_USER', 0))}")
 

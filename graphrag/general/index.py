@@ -42,6 +42,7 @@ from graphrag.utils import (
 from rag.nlp import rag_tokenizer, search
 from rag.utils.redis_conn import RedisDistributedLock
 from common import settings
+from common.token_utils import truncate_field_by_bytes
 
 
 async def run_graphrag(
@@ -421,8 +422,16 @@ async def generate_subgraph(
     tidy_graph(subgraph, callback, check_attribute=False)
 
     subgraph.graph["source_id"] = [doc_id]
+    from graphrag.utils import _truncate_graph_to_fit
+    subgraph_json = _truncate_graph_to_fit(subgraph, settings.DOC_FIELD_MAX_SIZE, callback)
+    if subgraph_json is None:
+        logging.warning(f"Subgraph for doc {doc_id} exceeds {settings.DOC_FIELD_MAX_SIZE} bytes after truncation, using raw serialization with byte truncation.")
+        subgraph_json = truncate_field_by_bytes(
+            json.dumps(nx.node_link_data(subgraph, edges="edges"), ensure_ascii=False),
+            settings.DOC_FIELD_MAX_SIZE,
+        )
     chunk = {
-        "content_with_weight": json.dumps(nx.node_link_data(subgraph, edges="edges"), ensure_ascii=False),
+        "content_with_weight": subgraph_json,
         "knowledge_graph_kwd": "subgraph",
         "kb_id": kb_id,
         "source_id": [doc_id],
@@ -540,16 +549,27 @@ async def extract_community(
         raise TaskCanceledException(f"Task {task_id} was cancelled")
 
     chunks = []
+    max_field_bytes = settings.DOC_FIELD_MAX_SIZE
     for stru, rep in zip(community_structure, community_reports):
         obj = {
             "report": rep,
             "evidences": "\n".join([f.get("explanation", "") for f in stru["findings"]]),
         }
+        content_json = json.dumps(obj, ensure_ascii=False)
+        if len(content_json.encode("utf-8")) > max_field_bytes:
+            # Truncate evidences to fit within the limit
+            overhead = len(json.dumps({"report": obj["report"], "evidences": ""}, ensure_ascii=False).encode("utf-8")) + 1024
+            obj["evidences"] = truncate_field_by_bytes(obj["evidences"], max(max_field_bytes - overhead, 1024))
+            content_json = json.dumps(obj, ensure_ascii=False)
+            # If still over, truncate the report too
+            if len(content_json.encode("utf-8")) > max_field_bytes:
+                content_json = truncate_field_by_bytes(content_json, max_field_bytes)
+            logging.warning(f"Community report '{stru['title']}' truncated to fit {max_field_bytes} byte limit.")
         chunk = {
             "id": get_uuid(),
             "docnm_kwd": stru["title"],
             "title_tks": rag_tokenizer.tokenize(stru["title"]),
-            "content_with_weight": json.dumps(obj, ensure_ascii=False),
+            "content_with_weight": content_json,
             "content_ltks": rag_tokenizer.tokenize(obj["report"] + " " + obj["evidences"]),
             "knowledge_graph_kwd": "community_report",
             "weight_flt": stru["weight"],
@@ -570,11 +590,23 @@ async def extract_community(
         )
     )
     es_bulk_size = 4
+    skipped_chunks = 0
     for b in range(0, len(chunks), es_bulk_size):
-        doc_store_result = await trio.to_thread.run_sync(lambda: settings.docStoreConn.insert(chunks[b : b + es_bulk_size], search.index_name(tenant_id), kb_id))
-        if doc_store_result:
-            error_message = f"Insert chunk error: {doc_store_result}, please check log file and Elasticsearch/Infinity status!"
-            raise Exception(error_message)
+        batch = chunks[b : b + es_bulk_size]
+        try:
+            doc_store_result = await trio.to_thread.run_sync(lambda: settings.docStoreConn.insert(batch, search.index_name(tenant_id), kb_id))
+            if doc_store_result:
+                skipped_chunks += len(batch)
+                logging.warning(f"Insert community report error: {doc_store_result}, skipping {len(batch)} chunk(s).")
+                if callback:
+                    callback(msg=f"Skipped {len(batch)} community report chunk(s) due to insert error.")
+        except Exception as e:
+            skipped_chunks += len(batch)
+            logging.warning(f"Exception inserting community report batch at offset {b}: {e}, skipping.")
+            if callback:
+                callback(msg=f"Skipped {len(batch)} community report chunk(s) due to exception: {e}")
+    if skipped_chunks == len(chunks) and len(chunks) > 0:
+        raise Exception(f"All {len(chunks)} community report chunks failed to insert for kb {kb_id}.")
 
     if task_id and has_canceled(task_id):
         callback(msg=f"Task {task_id} cancelled after community indexing.")

@@ -61,7 +61,7 @@ from rag.app import laws, paper, presentation, manual, qa, table, book, resume, 
     email, tag
 from rag.nlp import search, rag_tokenizer, add_positions
 from rag.raptor import RecursiveAbstractiveProcessing4TreeOrganizedRetrieval as Raptor
-from common.token_utils import num_tokens_from_string, truncate
+from common.token_utils import num_tokens_from_string, truncate, truncate_field_by_bytes
 from rag.utils.redis_conn import REDIS_CONN, RedisDistributedLock
 from graphrag.utils import chat_limiter
 from common.signal_utils import start_tracemalloc_and_snapshot, stop_tracemalloc
@@ -724,6 +724,14 @@ async def delete_image(kb_id, chunk_id):
 
 
 async def insert_es(task_id, task_tenant_id, task_dataset_id, chunks, progress_callback):
+    # Safety net: truncate any oversized content_with_weight fields before insertion
+    max_field_bytes = settings.DOC_FIELD_MAX_SIZE
+    for chunk in chunks:
+        cww = chunk.get("content_with_weight", "")
+        if cww and len(cww.encode("utf-8")) > max_field_bytes:
+            logging.warning(f"Chunk {chunk.get('id', '?')} content_with_weight is {len(cww.encode('utf-8'))} bytes, truncating to {max_field_bytes}.")
+            chunk["content_with_weight"] = truncate_field_by_bytes(cww, max_field_bytes)
+
     for b in range(0, len(chunks), settings.DOC_BULK_SIZE):
         doc_store_result = await trio.to_thread.run_sync(lambda: settings.docStoreConn.insert(chunks[b:b + settings.DOC_BULK_SIZE], search.index_name(task_tenant_id), task_dataset_id))
         task_canceled = has_canceled(task_id)

@@ -29,6 +29,7 @@ from rag.nlp import rag_tokenizer, search
 from rag.utils.doc_store_conn import OrderByExpr
 from rag.utils.redis_conn import REDIS_CONN
 from common import settings
+from common.token_utils import truncate_field_by_bytes
 
 GRAPH_FIELD_SEP = "<SEP>"
 
@@ -419,6 +420,42 @@ async def get_graph(tenant_id, kb_id, exclude_rebuild=None):
     return result
 
 
+def _truncate_graph_to_fit(graph: nx.Graph, max_bytes: int, callback=None) -> str | None:
+    """Iteratively truncate node/edge descriptions so that the serialized graph fits within max_bytes.
+
+    Returns the serialized JSON string if successful, or None if still over limit after max iterations.
+    """
+    for attempt in range(4):
+        json_str = json.dumps(nx.node_link_data(graph, edges="edges"), ensure_ascii=False)
+        size = len(json_str.encode("utf-8"))
+        if size <= max_bytes:
+            return json_str
+        if callback:
+            callback(msg=f"Graph JSON is {size} bytes (limit {max_bytes}), truncating descriptions (attempt {attempt + 1})...")
+        # Collect all descriptions with their sizes and truncate the longest ones
+        items: list[tuple[str, dict]] = []
+        for node, attrs in graph.nodes(data=True):
+            desc = attrs.get("description", "")
+            if len(desc.encode("utf-8")) > 256:
+                items.append((node, attrs))
+        for src, tgt, attrs in graph.edges(data=True):
+            desc = attrs.get("description", "")
+            if len(desc.encode("utf-8")) > 256:
+                items.append((f"{src}->{tgt}", attrs))
+        items.sort(key=lambda x: len(x[1].get("description", "").encode("utf-8")), reverse=True)
+        # Truncate the top half of longest descriptions by half
+        count = max(len(items) // 2, 1)
+        for _, attrs in items[:count]:
+            desc = attrs.get("description", "")
+            half = len(desc.encode("utf-8")) // 2
+            attrs["description"] = truncate_field_by_bytes(desc, half)
+    # Final attempt after max iterations
+    json_str = json.dumps(nx.node_link_data(graph, edges="edges"), ensure_ascii=False)
+    if len(json_str.encode("utf-8")) <= max_bytes:
+        return json_str
+    return None
+
+
 async def set_graph(tenant_id: str, kb_id: str, embd_mdl, graph: nx.Graph, change: GraphChange, callback):
     global chat_limiter
     start = trio.current_time()
@@ -445,17 +482,23 @@ async def set_graph(tenant_id: str, kb_id: str, embd_mdl, graph: nx.Graph, chang
         callback(msg=f"set_graph removed {len(change.removed_nodes)} nodes and {len(change.removed_edges)} edges from index in {now - start:.2f}s.")
     start = now
 
-    chunks = [
-        {
+    max_field_bytes = settings.DOC_FIELD_MAX_SIZE
+
+    # Serialize the main graph with byte-size guard
+    graph_json = _truncate_graph_to_fit(graph, max_field_bytes, callback)
+    chunks = []
+    if graph_json is not None:
+        chunks.append({
             "id": get_uuid(),
-            "content_with_weight": json.dumps(nx.node_link_data(graph, edges="edges"), ensure_ascii=False),
+            "content_with_weight": graph_json,
             "knowledge_graph_kwd": "graph",
             "kb_id": kb_id,
             "source_id": graph.graph.get("source_id", []),
             "available_int": 0,
             "removed_kwd": "N",
-        }
-    ]
+        })
+    else:
+        logging.warning(f"Graph for kb {kb_id} exceeds {max_field_bytes} bytes even after truncation, skipping graph chunk.")
 
     # generate updated subgraphs
     for source in graph.graph["source_id"]:
@@ -463,17 +506,19 @@ async def set_graph(tenant_id: str, kb_id: str, embd_mdl, graph: nx.Graph, chang
         subgraph.graph["source_id"] = [source]
         for n in subgraph.nodes:
             subgraph.nodes[n]["source_id"] = [source]
-        chunks.append(
-            {
+        subgraph_json = _truncate_graph_to_fit(subgraph, max_field_bytes, callback)
+        if subgraph_json is not None:
+            chunks.append({
                 "id": get_uuid(),
-                "content_with_weight": json.dumps(nx.node_link_data(subgraph, edges="edges"), ensure_ascii=False),
+                "content_with_weight": subgraph_json,
                 "knowledge_graph_kwd": "subgraph",
                 "kb_id": kb_id,
                 "source_id": [source],
                 "available_int": 0,
                 "removed_kwd": "N",
-            }
-        )
+            })
+        else:
+            logging.warning(f"Subgraph for source {source} in kb {kb_id} exceeds {max_field_bytes} bytes after truncation, skipping.")
 
     async with trio.open_nursery() as nursery:
         for ii, node in enumerate(change.added_updated_nodes):
@@ -499,17 +544,33 @@ async def set_graph(tenant_id: str, kb_id: str, embd_mdl, graph: nx.Graph, chang
 
     enable_timeout_assertion = os.environ.get("ENABLE_TIMEOUT_ASSERTION")
     es_bulk_size = 4
+    skipped_chunks = 0
     for b in range(0, len(chunks), es_bulk_size):
-        with trio.fail_after(3 if enable_timeout_assertion else 30000000):
-            doc_store_result = await trio.to_thread.run_sync(lambda: settings.docStoreConn.insert(chunks[b : b + es_bulk_size], search.index_name(tenant_id), kb_id))
-        if b % 100 == es_bulk_size and callback:
-            callback(msg=f"Insert chunks: {b}/{len(chunks)}")
-        if doc_store_result:
-            error_message = f"Insert chunk error: {doc_store_result}, please check log file and Elasticsearch/Infinity status!"
-            raise Exception(error_message)
+        batch = chunks[b : b + es_bulk_size]
+        try:
+            with trio.fail_after(3 if enable_timeout_assertion else 30000000):
+                doc_store_result = await trio.to_thread.run_sync(lambda: settings.docStoreConn.insert(batch, search.index_name(tenant_id), kb_id))
+            if b % 100 == es_bulk_size and callback:
+                callback(msg=f"Insert chunks: {b}/{len(chunks)}")
+            if doc_store_result:
+                skipped_chunks += len(batch)
+                chunk_types = [c.get("knowledge_graph_kwd", "unknown") for c in batch]
+                logging.warning(f"Insert chunk error in set_graph (types={chunk_types}): {doc_store_result}, skipping batch.")
+                if callback:
+                    callback(msg=f"Skipped {len(batch)} chunk(s) due to insert error: {doc_store_result}")
+        except Exception as e:
+            skipped_chunks += len(batch)
+            logging.warning(f"Exception inserting batch at offset {b} in set_graph: {e}, skipping.")
+            if callback:
+                callback(msg=f"Skipped {len(batch)} chunk(s) due to exception: {e}")
+    if skipped_chunks == len(chunks) and len(chunks) > 0:
+        raise Exception(f"All {len(chunks)} chunks failed to insert in set_graph for kb {kb_id}.")
     now = trio.current_time()
     if callback:
-        callback(msg=f"set_graph added/updated {len(change.added_updated_nodes)} nodes and {len(change.added_updated_edges)} edges from index in {now - start:.2f}s.")
+        msg = f"set_graph added/updated {len(change.added_updated_nodes)} nodes and {len(change.added_updated_edges)} edges from index in {now - start:.2f}s."
+        if skipped_chunks:
+            msg += f" ({skipped_chunks} chunk(s) skipped due to errors.)"
+        callback(msg=msg)
 
 
 def is_continuous_subsequence(subseq, seq):
