@@ -100,7 +100,7 @@ class TestChatAssistantUpdate:
     @pytest.mark.parametrize(
         "llm, expected_code, expected_message",
         [
-            ({}, 100, "ValueError"),
+            ({}, 0, ""),
             ({"model_name": "glm-4"}, 0, ""),
             ({"model_name": "unknown"}, 102, "`model_name` unknown doesn't exist"),
             ({"temperature": 0}, 0, ""),
@@ -131,9 +131,11 @@ class TestChatAssistantUpdate:
             pytest.param({"unknown": "unknown"}, 0, "", marks=pytest.mark.skip),
         ],
     )
-    def test_llm(self, HttpApiAuth, add_chat_assistants_func, llm, expected_code, expected_message):
+    def test_llm(self, HttpApiAuth, add_chat_assistants_func, chat_assistant_llm_model_type, llm, expected_code, expected_message):
         dataset_id, _, chat_assistant_ids = add_chat_assistants_func
-        payload = {"name": "llm_test", "dataset_ids": [dataset_id], "llm": llm}
+        llm_payload = dict(llm)
+        llm_payload.setdefault("model_type", chat_assistant_llm_model_type)
+        payload = {"name": "llm_test", "dataset_ids": [dataset_id], "llm": llm_payload}
         res = update_chat_assistant(HttpApiAuth, chat_assistant_ids[0], payload)
         assert res["code"] == expected_code
         if expected_code == 0:
@@ -223,7 +225,7 @@ class TestChatAssistantUpdate:
                 assert res["data"]["prompt"][0]["show_quote"] is True
                 assert (
                     res["data"]["prompt"][0]["prompt"]
-                    == 'You are an intelligent assistant. Please summarize the content of the knowledge base to answer the question. Please list the data in the knowledge base and answer in detail. When all knowledge base content is irrelevant to the question, your answer must include the sentence "The answer you are looking for is not found in the knowledge base!" Answers need to consider chat history.\n      Here is the knowledge base:\n      {knowledge}\n      The above is the knowledge base.'
+                    == 'You are an intelligent assistant. Please summarize the content of the dataset to answer the question. Please list the data in the dataset and answer in detail. When all dataset content is irrelevant to the question, your answer must include the sentence "The answer you are looking for is not found in the dataset!" Answers need to consider chat history.\n      Here is the knowledge base:\n      {knowledge}\n      The above is the knowledge base.'
                 )
         else:
             assert expected_message in res["message"]

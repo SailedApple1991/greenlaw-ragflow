@@ -47,6 +47,7 @@ export type SelectWithSearchFlagProps = {
   allowClear?: boolean;
   disabled?: boolean;
   placeholder?: string;
+  emptyData?: string;
 };
 
 function findLabelWithoutOptions(
@@ -78,6 +79,7 @@ export const SelectWithSearch = forwardRef<
       allowClear = false,
       disabled = false,
       placeholder = t('common.selectPlaceholder'),
+      emptyData = t('common.noDataFound'),
     },
     ref,
   ) => {
@@ -106,6 +108,19 @@ export const SelectWithSearch = forwardRef<
         return findLabelWithoutOptions(optionsWithoutOptions, value);
       }
     }, [options, value]);
+
+    const showSearch = useMemo(() => {
+      if (Array.isArray(options) && options.length > 5) {
+        return true;
+      }
+      if (Array.isArray(options)) {
+        const optionsNum = options.reduce((acc, option) => {
+          return acc + (option?.options?.length || 0);
+        }, 0);
+        return optionsNum > 5;
+      }
+      return false;
+    }, [options]);
 
     const handleSelect = useCallback(
       (val: string) => {
@@ -144,9 +159,9 @@ export const SelectWithSearch = forwardRef<
               triggerClassName,
             )}
           >
-            {value ? (
+            {selectLabel || value ? (
               <span className="flex min-w-0 options-center gap-2">
-                <span className="leading-none truncate">{selectLabel}</span>
+                <span className="leading-none truncate">{selectLabel || value}</span>
               </span>
             ) : (
               <span className="text-text-disabled">{placeholder}</span>
@@ -177,25 +192,30 @@ export const SelectWithSearch = forwardRef<
           align="start"
         >
           <Command className="p-5">
-            {options && options.length > 0 && (
+            {showSearch && (
               <CommandInput
                 placeholder={t('common.search') + '...'}
                 className=" placeholder:text-text-disabled"
               />
             )}
-            <CommandList className="mt-2">
-              <CommandEmpty>{t('common.noDataFound')}</CommandEmpty>
+            <CommandList className="mt-2 outline-none">
+              <CommandEmpty>
+                <div dangerouslySetInnerHTML={{ __html: emptyData }}></div>
+              </CommandEmpty>
               {options.map((group, idx) => {
                 if (group.options) {
                   return (
                     <Fragment key={idx}>
-                      <CommandGroup heading={group.label}>
+                      <CommandGroup heading={group.label} className="mb-1">
                         {group.options.map((option) => (
                           <CommandItem
                             key={option.value}
                             value={option.value}
                             disabled={option.disabled}
                             onSelect={handleSelect}
+                            className={
+                              value === option.value ? 'bg-bg-card' : ''
+                            }
                           >
                             <span className="leading-none">{option.label}</span>
 
@@ -214,7 +234,9 @@ export const SelectWithSearch = forwardRef<
                       value={group.value}
                       disabled={group.disabled}
                       onSelect={handleSelect}
-                      className="min-h-10"
+                      className={cn('mb-1 min-h-10 ', {
+                        'bg-bg-card ': value === group.value,
+                      })}
                     >
                       <span className="leading-none">{group.label}</span>
 

@@ -66,7 +66,7 @@ declare module AdminService {
     title: string;
   };
 
-  export type TaskExectorHeartbeatItem = {
+  export type TaskExecutorHeartbeatItem = {
     name: string;
     boot_at: string;
     now: string;
@@ -79,7 +79,7 @@ declare module AdminService {
     pid: number;
   };
 
-  export type TaskExecutorInfo = Record<string, TaskExectorHeartbeatItem[]>;
+  export type TaskExecutorInfo = Record<string, TaskExecutorHeartbeatItem[]>;
 
   export type ListServicesItem = {
     extra: Record<string, unknown>;
@@ -134,7 +134,7 @@ declare module AdminService {
   export type RoleDetail = {
     id: string;
     name: string;
-    descrtiption: string;
+    description: string;
     create_date: string;
     update_date: string;
   };
@@ -162,8 +162,33 @@ declare module AdminService {
     id: number;
     email: string;
     create_date: string;
-    createt_time: number;
+    create_time: number;
     update_date: string;
     update_time: number;
+  };
+
+  // Sandbox settings types
+  export type SandboxProvider = {
+    id: string;
+    name: string;
+    description: string;
+    tags: string[];
+  };
+
+  export type SandboxConfigField = {
+    type: 'string' | 'integer' | 'boolean' | 'json';
+    required?: boolean;
+    label?: string;
+    placeholder?: string;
+    default?: string | number | boolean;
+    min?: number;
+    max?: number;
+    description?: string;
+    secret?: boolean;
+  };
+
+  export type SandboxConfig = {
+    provider_type: string;
+    config: Record<string, unknown>;
   };
 }

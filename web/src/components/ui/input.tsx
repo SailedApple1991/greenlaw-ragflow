@@ -3,16 +3,32 @@ import * as React from 'react';
 import { cn } from '@/lib/utils';
 import { Eye, EyeOff, Search } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
-export interface InputProps
-  extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'prefix'> {
+export interface InputProps extends Omit<
+  React.InputHTMLAttributes<HTMLInputElement>,
+  'prefix'
+> {
   value?: string | number | readonly string[] | undefined;
   prefix?: React.ReactNode;
   suffix?: React.ReactNode;
+  rootClassName?: string;
 }
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className, type, value, onChange, prefix, suffix, ...props }, ref) => {
+  (
+    {
+      className,
+      rootClassName,
+      type,
+      value,
+      onChange,
+      prefix,
+      suffix,
+      ...props
+    },
+    ref,
+  ) => {
     const isControlled = value !== undefined;
     const { defaultValue, ...restProps } = props;
     const inputValue = isControlled ? value : defaultValue;
@@ -64,7 +80,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
             className,
           )}
           style={{
-            paddingLeft: !!prefix ? `${prefixWidth}px` : '',
+            paddingLeft: !!prefix && prefixWidth ? `${prefixWidth}px` : '',
             paddingRight: isPasswordInput
               ? '40px'
               : !!suffix
@@ -89,7 +105,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
 
     if (prefix || suffix || isPasswordInput) {
       return (
-        <div className="relative">
+        <div className={cn('relative', rootClassName)}>
           {prefix && (
             <span
               ref={prefixRef}
@@ -144,7 +160,14 @@ export interface ExpandedInputProps extends InputProps {}
 const ExpandedInput = Input;
 
 const SearchInput = (props: InputProps) => {
-  return <Input {...props} prefix={<Search className="ml-3 size-[1em]" />} />;
+  const { t } = useTranslation();
+  return (
+    <Input
+      placeholder={t('common.search')}
+      {...props}
+      prefix={<Search className="ml-2 mr-1 size-[1em]" />}
+    />
+  );
 };
 
 type Value = string | readonly string[] | number | undefined;
@@ -182,6 +205,8 @@ export const InnerBlurInput = React.forwardRef<
     ></Input>
   );
 });
+
+InnerBlurInput.displayName = 'BlurInput';
 
 if (process.env.NODE_ENV !== 'production') {
   InnerBlurInput.whyDidYouRender = true;

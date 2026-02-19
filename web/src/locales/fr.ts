@@ -19,6 +19,7 @@ export default {
       portugueseBr: 'Portugais (Brésil)',
       chinese: 'Chinois simplifié',
       traditionalChinese: 'Chinois traditionnel',
+      bulgarian: 'Bulgare',
       language: 'Langue',
       languageMessage: 'Veuillez saisir votre langue !',
       languagePlaceholder: 'Sélectionnez votre langue',
@@ -196,9 +197,12 @@ export default {
     knowledgeConfiguration: {
       titleDescription:
         'Modifiez ici la configuration de votre base de connaissances, notamment la méthode de découpage.',
+      imageTableContextWindow: 'Fenêtre de contexte image & tableau',
+      imageTableContextWindowTip:
+        "Capture N jetons de texte au-dessus et au-dessous de l'image et du tableau pour fournir un contexte plus riche.",
       name: 'Nom de la base de connaissances',
       photo: 'Photo de la base de connaissances',
-      photoTip: 'Vous pouvez téléverser un fichier de 4 Mo',
+      photoTip: 'Vous pouvez télécharger une image jusqu’à 4 Mo.',
       description: 'Description',
       language: 'Langue du document',
       languageMessage: 'Veuillez saisir votre langue !',
@@ -208,7 +212,7 @@ export default {
       chunkTokenNumber: 'Taille de segment recommandée',
       chunkTokenNumberMessage: 'Le nombre de tokens par segment est requis',
       embeddingModelTip:
-        'Modèle d’embedding par défaut. Ne peut pas être modifié si la base contient déjà des segments. Pour le changer, vous devez supprimer tous les segments existants.',
+        'Modèle d’embedding par défaut de la base de connaissances. Une fois que la base de connaissances contient des segments, lors du changement de modèle d’embedding, le système prélève aléatoirement quelques segments pour un contrôle de compatibilité, les ré-encode avec le nouveau modèle d’embedding et calcule la similarité cosinus entre les nouveaux et anciens vecteurs. Le basculement est autorisé uniquement si la similarité moyenne de l’échantillon est ≥ 0.9. Sinon, vous devez supprimer tous les segments de la base de connaissances avant de pouvoir le modifier.',
       permissionsTip:
         "Si défini sur 'Équipe', tous les membres de votre équipe pourront gérer cette base.",
       chunkTokenNumberTip:
@@ -290,6 +294,19 @@ export default {
       communityTip: `Un "community" est un groupe d’entités liées. Le LLM peut générer un résumé pour chaque groupe. Voir plus ici : https: //www.microsoft.com/en-us/research/blog/graphrag-improving-global-search-via-dynamic-community-selection/`,
       theDocumentBeingParsedCannotBeDeleted:
         'Le document en cours d’analyse ne peut pas être supprimé',
+      paddleocrOptions: 'Options PaddleOCR',
+      paddleocrApiUrl: 'URL de l’API PaddleOCR',
+      paddleocrApiUrlTip:
+        'URL du point de terminaison de l’API du service PaddleOCR',
+      paddleocrApiUrlPlaceholder:
+        'Par exemple : https://paddleocr-server.com/layout-parsing',
+      paddleocrAccessToken: 'Jeton d’accès AI Studio',
+      paddleocrAccessTokenTip: 'Jeton d’accès à l’API PaddleOCR (optionnel)',
+      paddleocrAccessTokenPlaceholder: 'Votre jeton AI Studio (optionnel)',
+      paddleocrAlgorithm: 'Algorithme PaddleOCR',
+      paddleocrAlgorithmTip: 'Algorithme utilisé pour l’analyse PaddleOCR',
+      paddleocrSelectAlgorithm: 'Sélectionner un algorithme',
+      paddleocrModelNamePlaceholder: 'Par exemple : paddleocr-environnement-1',
     },
     chunk: {
       chunk: 'Segment',
@@ -386,7 +403,7 @@ export default {
       frequencyPenaltyTip: `Similaire à la pénalité de présence, cela réduit la tendance du modèle à répéter fréquemment les mêmes mots.`,
       maxTokens: 'Nombre max de tokens',
       maxTokensMessage: 'Le nombre max de tokens est requis',
-      maxTokensTip: `Définit la longueur maximale de la sortie du modèle, mesurée en nombre de tokens (mots ou morceaux de mots). Par défaut 512. Si désactivé, aucune limite maximale n’est imposée, le modèle décide alors du nombre de tokens dans ses réponses.`,
+      maxTokensTip: `La taille maximale de contexte de l’modèle ; une valeur invalide ou incorrecte provoquera une erreur. Valeur par défaut : 512.`,
       maxTokensInvalidMessage:
         'Veuillez saisir un nombre valide pour le nombre max de tokens.',
       maxTokensMinMessage:
@@ -467,7 +484,7 @@ export default {
         'Mettez à jour votre photo et vos informations personnelles ici.',
       maxTokens: 'Nombre maximum de tokens',
       maxTokensMessage: 'Le nombre maximum de tokens est requis',
-      maxTokensTip: `Cela définit la longueur maximale de la sortie du modèle, mesurée en nombre de tokens (mots ou morceaux de mots). Par défaut à 512. Si désactivé, la limite maximale de tokens est levée, permettant au modèle de déterminer le nombre de tokens dans ses réponses.`,
+      maxTokensTip: `La taille maximale de contexte de l’modèle ; une valeur invalide ou incorrecte provoquera une erreur. Valeur par défaut : 512.`,
       maxTokensInvalidMessage:
         'Veuillez saisir un nombre valide pour le nombre maximum de tokens.',
       maxTokensMinMessage:
@@ -526,6 +543,10 @@ export default {
         'Pour les utilisateurs chinois, pas besoin de remplir ou utiliser https://dashscope.aliyuncs.com/compatible-mode/v1. Pour les utilisateurs internationaux, utilisez https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
       tongyiBaseUrlPlaceholder:
         "(Utilisateurs internationaux uniquement, veuillez consulter l'astuce)",
+      minimaxBaseUrlTip:
+        'Utilisateurs internationaux uniquement : utilisez https://api.minimax.io/v1.',
+      minimaxBaseUrlPlaceholder:
+        '(Utilisateurs internationaux uniquement, renseignez https://api.minimax.io/v1)',
       modify: 'Modifier',
       systemModelSettings: 'Définir les modèles par défaut',
       chatModel: 'Modèle de chat',
@@ -559,6 +580,18 @@ export default {
       modelTypeMessage: 'Veuillez saisir le type de votre modèle !',
       addLlmBaseUrl: 'URL de base',
       baseUrlNameMessage: 'Veuillez saisir votre URL de base !',
+      paddleocr: {
+        apiUrl: 'URL de l’API PaddleOCR',
+        apiUrlPlaceholder:
+          'Par exemple : https://paddleocr-server.com/layout-parsing',
+        accessToken: 'Jeton d’accès AI Studio',
+        accessTokenPlaceholder: 'Votre jeton AI Studio (optionnel)',
+        algorithm: 'Algorithme PaddleOCR',
+        selectAlgorithm: 'Sélectionner un algorithme',
+        modelNamePlaceholder: 'Par exemple : paddleocr-from-env-1',
+        modelNameRequired: 'Le nom du modèle est obligatoire',
+        apiUrlRequired: 'L’URL de l’API PaddleOCR est obligatoire',
+      },
       vision: 'Supporte-t-il la vision ?',
       ollamaLink: 'Comment intégrer {{name}}',
       FishAudioLink: 'Comment utiliser FishAudio',
@@ -582,10 +615,6 @@ export default {
       'eu-central-1': 'Europe (Francfort)',
       'us-gov-west-1': 'AWS GovCloud (US-Ouest)',
       'ap-southeast-2': 'Asie Pacifique (Sydney)',
-      addHunyuanSID: 'ID secret Hunyuan',
-      HunyuanSIDMessage: 'Veuillez saisir votre ID secret',
-      addHunyuanSK: 'Clé secrète Hunyuan',
-      HunyuanSKMessage: 'Veuillez saisir votre clé secrète',
       addTencentCloudSID: 'ID secret TencentCloud',
       TencentCloudSIDMessage: 'Veuillez saisir votre ID secret',
       addTencentCloudSK: 'Clé secrète TencentCloud',
@@ -784,15 +813,31 @@ export default {
         'Un composant qui recherche sur baidu.com, utilisant TopN pour spécifier le nombre de résultats. Il complète les bases de connaissances existantes.',
       duckDuckGo: 'DuckDuckGo',
       duckDuckGoDescription:
-        'Un composant qui recherche sur duckduckgo.com, vous permettant de spécifier le nombre de résultats avec TopN. Il complète les bases de connaissances existantes.',
+        'Un composant qui recherche sur duckduckgo.com, vous permettant de spécifier le nombre de résultats de recherche avec TopN. Il complète les bases de connaissances existantes.',
       searXNG: 'SearXNG',
       searXNGDescription:
         "Un composant qui effectue des recherches via la URL de l'instance de SearXNG que vous fournissez. Spécifiez TopN et l'URL de l'instance.",
-      channel: 'Canal',
-      channelTip:
-        "Effectuer une recherche de texte ou d'actualités sur l'entrée du composant",
-      text: 'Texte',
-      news: 'Actualités',
+      pdfGenerator: 'Générateur de Documents',
+      pDFGenerator: 'Générateur de Documents',
+      pdfGeneratorDescription: `Un composant qui génère des documents (PDF, DOCX, TXT) à partir de contenu formaté en markdown avec un style personnalisable, des images et des tableaux. Prend en charge : **gras**, *italique*, # titres, - listes, tableaux avec syntaxe |.`,
+      pDFGeneratorDescription: `Un composant qui génère des documents (PDF, DOCX, TXT) à partir de contenu formaté en markdown avec un style personnalisable, des images et des tableaux. Prend en charge : **gras**, *italique*, # titres, - listes, tableaux avec syntaxe |.`,
+      subtitle: 'Sous-titre',
+      logoImage: 'Image Logo',
+      logoPosition: 'Position Logo',
+      logoWidth: 'Largeur Logo',
+      logoHeight: 'Hauteur Logo',
+      fontFamily: 'Famille Police',
+      fontSize: 'Taille Police',
+      titleFontSize: 'Taille Police Titre',
+      pageSize: 'Taille Page',
+      orientation: 'Orientation',
+      marginTop: 'Marge Supérieure',
+      marginBottom: 'Marge Inférieure',
+      filename: 'Nom Fichier',
+      outputDirectory: 'Répertoire Sortie',
+      addPageNumbers: 'Ajouter Numéros Page',
+      addTimestamp: 'Ajouter Timestamp',
+      watermarkText: 'Texte Filigrane',
       messageHistoryWindowSize:
         "Taille de la fenêtre d'historique des messages",
       messageHistoryWindowSizeTip:
@@ -1168,8 +1213,7 @@ export default {
       }`,
       datatype: 'Type MIME de la requête HTTP',
       insertVariableTip: `Entrer / Insérer des variables`,
-      historyversion: 'Historique des versions',
-      filename: 'Nom du fichier',
+      historyVersion: 'Historique des versions',
       version: {
         created: 'Créé',
         details: 'Détails de la version',
@@ -1220,7 +1264,7 @@ export default {
         'Vos utilisateurs verront ce message d’accueil au début.',
       modeTip: 'Le mode définit comment le workflow est initié.',
       beginInputTip:
-        'En définissant des paramètres d’entrée, ce contenu peut être utilisé par d’autres composants dans les processus suivants.',
+        'Les paramètres d’entrée définis ici peuvent être accessibles par les composants du workflow en aval.',
       query: 'Variables de requête',
       agent: 'Agent',
       agentDescription:

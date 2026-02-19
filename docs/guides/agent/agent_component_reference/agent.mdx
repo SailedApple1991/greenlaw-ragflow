@@ -1,8 +1,10 @@
 ---
 sidebar_position: 2
 slug: /agent_component
+sidebar_custom_props: {
+  categoryIcon: RagAiAgent
+}
 ---
-
 # Agent component
 
 The component equipped with reasoning, tool usage, and multi-agent collaboration capabilities.
@@ -22,7 +24,7 @@ An **Agent** component is essential when you need the LLM to assist with summari
 
 1. Ensure you have a chat model properly configured:
 
-![Set default models](https://raw.githubusercontent.com/infiniflow/ragflow-docs/main/images/set_default_models.jpg)
+  ![Set default models](https://raw.githubusercontent.com/infiniflow/ragflow-docs/main/images/set_default_models.jpg)
 
 2. If your Agent involves dataset retrieval, ensure you [have properly configured your target dataset(s)](../../dataset/configure_knowledge_base.md).
 
@@ -91,7 +93,7 @@ Update your MCP server's name, URL (including the API key), server type, and oth
 
    *The target MCP server appears below your Agent component, and your Agent will autonomously decide when to invoke the available tools it offers.*
 
-![](https://raw.githubusercontent.com/infiniflow/ragflow-docs/main/images/choose_tavily_mcp_server.jpg)
+  ![](https://raw.githubusercontent.com/infiniflow/ragflow-docs/main/images/choose_tavily_mcp_server.jpg)
 
 ### 5. Update system prompt to specify trigger conditions (Optional)
 
@@ -133,7 +135,7 @@ Click the dropdown menu of **Model** to show the model configuration window.
   - A higher **frequency penalty** value results in the model being more conservative in its use of repeated tokens.
   - Defaults to 0.7.
 - **Max tokens**:  
-  This sets the maximum length of the model's output, measured in the number of tokens (words or pieces of words). It is disabled by default, allowing the model to determine the number of tokens in its responses.
+  - The maximum context size of the model.
 
 :::tip NOTE
 - It is not necessary to stick with the same model for all components. If a specific model is not performing well for a particular task, consider using a different one.

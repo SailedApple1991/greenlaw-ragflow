@@ -13,7 +13,8 @@ const storage = {
     return localStorage.getItem(UserInfo);
   },
   getUserInfoObject: () => {
-    return JSON.parse(localStorage.getItem('userInfo') || '');
+    const userInfoStr = localStorage.getItem(UserInfo);
+    return userInfoStr ? JSON.parse(userInfoStr) : null;
   },
   setAuthorization: (value: string) => {
     localStorage.setItem(Authorization, value);
@@ -22,7 +23,7 @@ const storage = {
     localStorage.setItem(Token, value);
   },
   setUserInfo: (value: string | Record<string, unknown>) => {
-    let valueStr = typeof value !== 'string' ? JSON.stringify(value) : value;
+    const valueStr = typeof value !== 'string' ? JSON.stringify(value) : value;
     localStorage.setItem(UserInfo, valueStr);
   },
   setItems: (pairs: Record<string, string>) => {
@@ -48,9 +49,7 @@ const storage = {
 
 export const getAuthorization = () => {
   const auth = getSearchValue('auth');
-  const authorization = auth
-    ? 'Bearer ' + auth
-    : storage.getAuthorization() || '';
+  const authorization = auth ? auth : storage.getAuthorization() || '';
 
   return authorization;
 };
@@ -59,5 +58,6 @@ export default storage;
 
 // Will not jump to the login page
 export function redirectToLogin() {
+  // const env = import.meta.env;
   window.location.href = location.origin + `/login`;
 }

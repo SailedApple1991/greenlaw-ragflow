@@ -62,6 +62,7 @@ export enum LlmModelType {
   Speech2text = 'speech2text',
   Rerank = 'rerank',
   TTS = 'tts',
+  Ocr = 'ocr',
 }
 
 export enum KnowledgeSearchParams {
@@ -92,3 +93,5 @@ export enum DocumentParserType {
   Tag = 'tag',
   KnowledgeGraph = 'knowledge_graph',
 }
+
+export const TagRenameId = 'tagRename';

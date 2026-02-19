@@ -29,17 +29,17 @@ import { RAGFlowSelect } from '@/components/ui/select';
 import { Spin } from '@/components/ui/spin';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import { useFetchKnowledgeList } from '@/hooks/knowledge-hooks';
+import { useFetchKnowledgeList } from '@/hooks/use-knowledge-request';
 import {
   useComposeLlmOptionsByModelTypes,
   useSelectLlmOptionsByModelType,
-} from '@/hooks/llm-hooks';
-import { useFetchTenantInfo } from '@/hooks/user-setting-hooks';
+} from '@/hooks/use-llm-request';
+import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
 import { IKnowledge } from '@/interfaces/database/knowledge';
 import { cn } from '@/lib/utils';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { X } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
@@ -226,10 +226,20 @@ const SearchSetting: React.FC<SearchSettingProps> = ({
     control: formMethods.control,
     name: 'search_config.use_rerank',
   });
+
   const aiSummaryDisabled = useWatch({
     control: formMethods.control,
     name: 'search_config.summary',
   });
+
+  // Reset top_k to 1024 only when user actively disables rerank (from true to false)
+  const prevRerankEnabled = useRef<boolean | undefined>(undefined);
+  useEffect(() => {
+    if (prevRerankEnabled.current === true && rerankModelDisabled === false) {
+      formMethods.setValue('search_config.top_k', 1024);
+    }
+    prevRerankEnabled.current = rerankModelDisabled;
+  }, [rerankModelDisabled, formMethods]);
 
   const { updateSearch } = useUpdateSearch();
   const [formSubmitLoading, setFormSubmitLoading] = useState(false);

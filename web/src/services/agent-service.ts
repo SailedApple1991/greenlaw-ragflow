@@ -2,6 +2,7 @@ import {
   IAgentLogsRequest,
   IPipeLineListRequest,
 } from '@/interfaces/database/agent';
+import { IAgentWebhookTraceRequest } from '@/interfaces/request/agent';
 import api from '@/utils/api';
 import { registerNextServer } from '@/utils/register-server';
 import request from '@/utils/request';
@@ -125,6 +126,10 @@ const methods = {
     url: cancelCanvas,
     method: 'put',
   },
+  createAgentSession: {
+    url: fetchAgentLogs,
+    method: 'put',
+  },
 } as const;
 
 const agentService = registerNextServer<keyof typeof methods>(methods);
@@ -139,8 +144,27 @@ export const fetchAgentLogsByCanvasId = (
   return request.get(methods.fetchAgentLogs.url(canvasId), { params: params });
 };
 
+export const fetchAgentLogsById = (canvasId: string, sessionId: string) => {
+  return request.get(api.fetchAgentLogsById(canvasId, sessionId));
+};
+
 export const fetchPipeLineList = (params: IPipeLineListRequest) => {
   return request.get(api.listCanvas, { params: params });
+};
+
+export const fetchWebhookTrace = (
+  id: string,
+  params: IAgentWebhookTraceRequest,
+) => {
+  return request.get(api.fetchWebhookTrace(id), { params: params });
+};
+
+export function createAgentSession({ id, name }: { id: string; name: string }) {
+  return request.put(api.fetchAgentLogs(id), { data: { name } });
+}
+
+export const deleteAgentSession = (canvasId: string, sessionId: string) => {
+  return request.delete(api.fetchAgentLogsById(canvasId, sessionId));
 };
 
 export default agentService;

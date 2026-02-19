@@ -1,16 +1,19 @@
 import { EmbedContainer } from '@/components/embed-container';
 import { NextMessageInput } from '@/components/message-input/next';
 import MessageItem from '@/components/message-item';
-import PdfDrawer from '@/components/pdf-drawer';
+import PdfSheet from '@/components/pdf-drawer';
 import { useClickDrawer } from '@/components/pdf-drawer/hooks';
+import { useSyncThemeFromParams } from '@/components/theme-provider';
 import { MessageType, SharedFrom } from '@/constants/chat';
-import { useFetchNextConversationSSE } from '@/hooks/chat-hooks';
-import { useFetchFlowSSE } from '@/hooks/flow-hooks';
-import { useFetchExternalChatInfo } from '@/hooks/use-chat-request';
-import i18n from '@/locales/config';
-import { useSendButtonDisabled } from '@/pages/chat/hooks';
+import { useFetchFlowSSE } from '@/hooks/use-agent-request';
+import {
+  useFetchExternalChatInfo,
+  useFetchNextConversationSSE,
+} from '@/hooks/use-chat-request';
+import i18n, { changeLanguageAsync } from '@/locales/config';
 import { buildMessageUuidWithRole } from '@/utils/chat';
 import React, { forwardRef, useMemo } from 'react';
+import { useSendButtonDisabled } from '../hooks/use-button-disabled';
 import {
   useGetSharedChatSearchParams,
   useSendSharedMessage,
@@ -22,8 +25,10 @@ const ChatContainer = () => {
     sharedId: conversationId,
     from,
     locale,
+    theme,
     visibleAvatar,
   } = useGetSharedChatSearchParams();
+  useSyncThemeFromParams(theme);
   const { visible, hideModal, documentId, selectedChunk, clickDocumentButton } =
     useClickDrawer();
 
@@ -49,9 +54,10 @@ const ChatContainer = () => {
   }, [from]);
   React.useEffect(() => {
     if (locale && i18n.language !== locale) {
-      i18n.changeLanguage(locale);
+      changeLanguageAsync(locale);
     }
   }, [locale, visibleAvatar]);
+
   const { data: avatarData } = useFetchAvatar();
 
   if (!conversationId) {
@@ -110,6 +116,7 @@ const ChatContainer = () => {
                 value={value}
                 disabled={hasError}
                 sendDisabled={sendDisabled}
+                resize="vertical"
                 conversationId={conversationId}
                 onInputChange={handleInputChange}
                 onPressEnter={handlePressEnter}
@@ -117,18 +124,20 @@ const ChatContainer = () => {
                 uploadMethod="external_upload_and_parse"
                 showUploadIcon={false}
                 stopOutputMessage={stopOutputMessage}
+                showReasoning
+                showInternet={chatInfo?.has_tavily_key}
               ></NextMessageInput>
             </div>
           </div>
         </div>
       </EmbedContainer>
       {visible && (
-        <PdfDrawer
+        <PdfSheet
           visible={visible}
           hideModal={hideModal}
           documentId={documentId}
           chunk={selectedChunk}
-        ></PdfDrawer>
+        ></PdfSheet>
       )}
     </>
   );

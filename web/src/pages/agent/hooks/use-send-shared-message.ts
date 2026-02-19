@@ -9,7 +9,7 @@ import {
 import { isEmpty } from 'lodash';
 import trim from 'lodash/trim';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'umi';
+import { useSearchParams } from 'react-router';
 import { AgentDialogueMode } from '../constant';
 
 export const useSendButtonDisabled = (value: string) => {
@@ -29,6 +29,7 @@ export const useGetSharedChatSearchParams = () => {
     from: searchParams.get('from') as SharedFrom,
     sharedId: searchParams.get('shared_id'),
     locale: searchParams.get('locale'),
+    theme: searchParams.get('theme'),
     data: data,
     visibleAvatar: searchParams.get('visible_avatar')
       ? searchParams.get('visible_avatar') !== '1'

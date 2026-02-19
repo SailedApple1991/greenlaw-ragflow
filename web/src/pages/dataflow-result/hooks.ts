@@ -1,9 +1,9 @@
 import { TimelineNode } from '@/components/originui/timeline';
 import message from '@/components/ui/message';
-import { useCreateChunk, useDeleteChunk } from '@/hooks/chunk-hooks';
 import { useSetModalState, useShowDeleteConfirm } from '@/hooks/common-hooks';
 import { useGetKnowledgeSearchParams } from '@/hooks/route-hook';
 import { useFetchMessageTrace } from '@/hooks/use-agent-request';
+import { useCreateChunk, useDeleteChunk } from '@/hooks/use-chunk-request';
 import kbService from '@/services/knowledge-service';
 import { formatSecondsToHumanReadable } from '@/utils/date';
 import { buildChunkHighlights } from '@/utils/document-util';
@@ -12,7 +12,7 @@ import { t } from 'i18next';
 import { camelCase, upperFirst } from 'lodash';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { IHighlight } from 'react-pdf-highlighter';
-import { useParams, useSearchParams } from 'umi';
+import { useParams, useSearchParams } from 'react-router';
 import { ITimelineNodeObj, TimelineNodeObj } from './components/time-line';
 import {
   ChunkTextMode,

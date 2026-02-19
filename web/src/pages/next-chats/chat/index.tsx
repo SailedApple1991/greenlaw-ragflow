@@ -12,18 +12,21 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SharedFrom } from '@/constants/chat';
-import { useSetModalState } from '@/hooks/common-hooks';
 import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import {
-  useFetchConversation,
+  useFetchConversationList,
+  useFetchConversationManually,
   useFetchDialog,
   useGetChatSearchParams,
 } from '@/hooks/use-chat-request';
+import { IClientConversation } from '@/interfaces/database/chat';
 import { cn } from '@/lib/utils';
+import { useMount } from 'ahooks';
 import { isEmpty } from 'lodash';
 import { ArrowUpRight, LogOut, Send } from 'lucide-react';
+import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useParams } from 'umi';
+import { useParams } from 'react-router';
 import { useHandleClickConversationCard } from '../hooks/use-click-card';
 import { ChatSettings } from './app-settings/chat-settings';
 import { MultipleChatBox } from './chat-box/multiple-chat-box';
@@ -37,26 +40,52 @@ export default function Chat() {
   const { navigateToChatList } = useNavigatePage();
   const { data } = useFetchDialog();
   const { t } = useTranslation();
-  const { data: conversation } = useFetchConversation();
+  const [currentConversation, setCurrentConversation] =
+    useState<IClientConversation>({} as IClientConversation);
+
+  const { fetchConversationManually } = useFetchConversationManually();
 
   const { handleConversationCardClick, controller, stopOutputMessage } =
     useHandleClickConversationCard();
-  const { visible: settingVisible, switchVisible: switchSettingVisible } =
-    useSetModalState(true);
-  const {
-    removeChatBox,
-    addChatBox,
-    chatBoxIds,
-    hasSingleChatBox,
-    hasThreeChatBox,
-  } = useAddChatBox();
+
+  const { isDebugMode, switchDebugMode } = useSwitchDebugMode();
+  const { removeChatBox, addChatBox, chatBoxIds, hasSingleChatBox } =
+    useAddChatBox(isDebugMode);
 
   const { showEmbedModal, hideEmbedModal, embedVisible, beta } =
     useShowEmbedModal();
 
   const { conversationId, isNew } = useGetChatSearchParams();
 
-  const { isDebugMode, switchDebugMode } = useSwitchDebugMode();
+  const { data: dialogList } = useFetchConversationList();
+
+  const currentConversationName = useMemo(() => {
+    return dialogList.find((x) => x.id === conversationId)?.name;
+  }, [conversationId, dialogList]);
+
+  const fetchConversation: typeof handleConversationCardClick = useCallback(
+    async (conversationId, isNew) => {
+      if (conversationId && !isNew) {
+        const conversation = await fetchConversationManually(conversationId);
+        if (!isEmpty(conversation)) {
+          setCurrentConversation(conversation);
+        }
+      }
+    },
+    [fetchConversationManually],
+  );
+
+  const handleSessionClick: typeof handleConversationCardClick = useCallback(
+    (conversationId, isNew) => {
+      handleConversationCardClick(conversationId, isNew);
+      fetchConversation(conversationId, isNew);
+    },
+    [fetchConversation, handleConversationCardClick],
+  );
+
+  useMount(() => {
+    fetchConversation(conversationId, isNew === 'true');
+  });
 
   if (isDebugMode) {
     return (
@@ -75,13 +104,14 @@ export default function Chat() {
           removeChatBox={removeChatBox}
           addChatBox={addChatBox}
           stopOutputMessage={stopOutputMessage}
+          conversation={currentConversation}
         ></MultipleChatBox>
       </section>
     );
   }
 
   return (
-    <section className="h-full flex flex-col pr-5">
+    <section className="h-full flex flex-col">
       <PageHeader>
         <Breadcrumb>
           <BreadcrumbList>
@@ -102,29 +132,17 @@ export default function Chat() {
         </Button>
       </PageHeader>
       <div className="flex flex-1 min-h-0 pb-9">
-        <Sessions
-          hasSingleChatBox={hasSingleChatBox}
-          handleConversationCardClick={handleConversationCardClick}
-          switchSettingVisible={switchSettingVisible}
-        ></Sessions>
+        <Sessions handleConversationCardClick={handleSessionClick}></Sessions>
 
-        <Card className="flex-1 min-w-0 bg-transparent border h-full">
+        <Card className="flex-1 min-w-0 bg-transparent border-none shadow-none h-full">
           <CardContent className="flex p-0 h-full">
             <Card className="flex flex-col flex-1 bg-transparent min-w-0">
               <CardHeader
                 className={cn('p-5', { 'border-b': hasSingleChatBox })}
               >
                 <CardTitle className="flex justify-between items-center text-base">
-                  <div className="truncate">{conversation.name}</div>
-                  <Button
-                    variant={'ghost'}
-                    onClick={switchDebugMode}
-                    disabled={
-                      hasThreeChatBox ||
-                      isEmpty(conversationId) ||
-                      isNew === 'true'
-                    }
-                  >
+                  <div className="truncate">{currentConversationName}</div>
+                  <Button variant={'ghost'} onClick={switchDebugMode}>
                     <ArrowUpRight /> {t('chat.multipleModels')}
                   </Button>
                 </CardTitle>
@@ -133,14 +151,11 @@ export default function Chat() {
                 <SingleChatBox
                   controller={controller}
                   stopOutputMessage={stopOutputMessage}
+                  conversation={currentConversation}
                 ></SingleChatBox>
               </CardContent>
             </Card>
-            {settingVisible && (
-              <ChatSettings
-                switchSettingVisible={switchSettingVisible}
-              ></ChatSettings>
-            )}
+            <ChatSettings hasSingleChatBox={hasSingleChatBox}></ChatSettings>
           </CardContent>
         </Card>
       </div>

@@ -1,15 +1,16 @@
 import { NextMessageInput } from '@/components/message-input/next';
 import MessageItem from '@/components/message-item';
-import PdfDrawer from '@/components/pdf-drawer';
+import PdfSheet from '@/components/pdf-drawer';
 import { useClickDrawer } from '@/components/pdf-drawer/hooks';
 import { MessageType } from '@/constants/chat';
 import {
-  useFetchConversation,
   useFetchDialog,
   useGetChatSearchParams,
 } from '@/hooks/use-chat-request';
-import { useFetchUserInfo } from '@/hooks/user-setting-hooks';
+import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
+import { IClientConversation } from '@/interfaces/database/chat';
 import { buildMessageUuidWithRole } from '@/utils/chat';
+import { useEffect } from 'react';
 import {
   useGetSendButtonDisabled,
   useSendButtonDisabled,
@@ -17,13 +18,19 @@ import {
 import { useCreateConversationBeforeUploadDocument } from '../../hooks/use-create-conversation';
 import { useSendMessage } from '../../hooks/use-send-chat-message';
 import { buildMessageItemReference } from '../../utils';
+import { useShowInternet } from '../use-show-internet';
 
 interface IProps {
   controller: AbortController;
   stopOutputMessage(): void;
+  conversation: IClientConversation;
 }
 
-export function SingleChatBox({ controller, stopOutputMessage }: IProps) {
+export function SingleChatBox({
+  controller,
+  stopOutputMessage,
+  conversation,
+}: IProps) {
   const {
     value,
     scrollRef,
@@ -37,17 +44,33 @@ export function SingleChatBox({ controller, stopOutputMessage }: IProps) {
     removeMessageById,
     handleUploadFile,
     removeFile,
+    setDerivedMessages,
   } = useSendMessage(controller);
   const { data: userInfo } = useFetchUserInfo();
   const { data: currentDialog } = useFetchDialog();
   const { createConversationBeforeUploadDocument } =
     useCreateConversationBeforeUploadDocument();
   const { conversationId } = useGetChatSearchParams();
-  const { data: conversation } = useFetchConversation();
   const disabled = useGetSendButtonDisabled();
   const sendDisabled = useSendButtonDisabled(value);
   const { visible, hideModal, documentId, selectedChunk, clickDocumentButton } =
     useClickDrawer();
+
+  const showInternet = useShowInternet();
+
+  useEffect(() => {
+    const messages = conversation?.message;
+    if (Array.isArray(messages)) {
+      setDerivedMessages(messages);
+    }
+  }, [conversation?.message, setDerivedMessages]);
+
+  useEffect(() => {
+    // Clear the message list after deleting the conversation.
+    if (conversationId === '') {
+      setDerivedMessages([]);
+    }
+  }, [conversationId, setDerivedMessages]);
 
   return (
     <section className="flex flex-col p-5 h-full">
@@ -89,6 +112,7 @@ export function SingleChatBox({ controller, stopOutputMessage }: IProps) {
         sendDisabled={sendDisabled}
         sendLoading={sendLoading}
         value={value}
+        resize="vertical"
         onInputChange={handleInputChange}
         onPressEnter={handlePressEnter}
         conversationId={conversationId}
@@ -99,14 +123,16 @@ export function SingleChatBox({ controller, stopOutputMessage }: IProps) {
         onUpload={handleUploadFile}
         isUploading={isUploading}
         removeFile={removeFile}
+        showReasoning
+        showInternet={showInternet}
       />
       {visible && (
-        <PdfDrawer
+        <PdfSheet
           visible={visible}
           hideModal={hideModal}
           documentId={documentId}
           chunk={selectedChunk}
-        ></PdfDrawer>
+        ></PdfSheet>
       )}
     </section>
   );

@@ -8,20 +8,26 @@ import {
 import { ReactNode } from 'react';
 import { useFormContext } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
-import { JsonSchemaDataType } from '../../constant';
-import { useFilterQueryVariableOptionsByTypes } from '../../hooks/use-get-begin-query';
+import { JsonSchemaDataType, VariableType } from '../../constant';
+import {
+  BuildQueryVariableOptions,
+  useFilterQueryVariableOptionsByTypes,
+} from '../../hooks/use-get-begin-query';
 import { GroupedSelectWithSecondaryMenu } from './select-with-secondary-menu';
+
+// Union type to support both JsonSchemaDataType and VariableType for filtering
+type QueryVariableType = JsonSchemaDataType | VariableType;
 
 type QueryVariableProps = {
   name?: string;
-  types?: JsonSchemaDataType[];
+  types?: QueryVariableType[];
   label?: ReactNode;
   hideLabel?: boolean;
   className?: string;
   onChange?: (value: string) => void;
   pureQuery?: boolean;
   value?: string;
-};
+} & BuildQueryVariableOptions;
 
 export function QueryVariable({
   name = 'query',
@@ -32,11 +38,17 @@ export function QueryVariable({
   onChange,
   pureQuery = false,
   value,
+  nodeIds = [],
+  variablesExceptOperatorOutputs,
 }: QueryVariableProps) {
   const { t } = useTranslation();
   const form = useFormContext();
 
-  const finalOptions = useFilterQueryVariableOptionsByTypes(types);
+  const finalOptions = useFilterQueryVariableOptionsByTypes({
+    types,
+    nodeIds,
+    variablesExceptOperatorOutputs,
+  });
 
   const renderWidget = (
     value?: string,

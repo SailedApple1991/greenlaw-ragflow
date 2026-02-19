@@ -22,7 +22,7 @@ from libs.auth import RAGFlowWebApiAuth
 
 
 class TestAuthorization:
-    @pytest.mark.p1
+    @pytest.mark.p2
     @pytest.mark.parametrize(
         "invalid_auth, expected_code, expected_message",
         [
@@ -50,4 +50,4 @@ class TestDatasetsDetail:
         payload = {"kb_id": "d94a8dc02c9711f0930f7fbc369eab6d"}
         res = detail_kb(WebApiAuth, payload)
         assert res["code"] == 103, res
-        assert "Only owner of knowledgebase authorized for this operation." in res["message"], res
+        assert "Only owner of dataset authorized for this operation." in res["message"], res

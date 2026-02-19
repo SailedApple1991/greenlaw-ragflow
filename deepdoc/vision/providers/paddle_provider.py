@@ -39,6 +39,7 @@ class PaddleOCRProvider(BaseOCRProvider):
             "device": device,
             "lang": lang,
             "use_angle_cls": True,
+            "enable_hpi": True,  # Enable high-performance inference (ONNX/OpenVINO/TensorRT)
             # Note: show_log parameter was removed in PaddleOCR 3.x
         }
         if rec_model_dir:
@@ -203,15 +204,30 @@ class PaddleOCRProvider(BaseOCRProvider):
         return dst_img
 
     def recognize_batch(self, img_list, device_id: int | None = None):
-        """Batch recognize text from a list of cropped images."""
+        """Batch recognize text from a list of cropped images.
+
+        Returns a list of text strings to match the interface expected by pdf_parser.py.
+        """
+        if not img_list:
+            return []
+
         results = []
+        drop_score = 0.5  # Minimum confidence score to accept text
+
+        # Process images one by one using full OCR pipeline
         for img in img_list:
-            # PaddleOCR 3.x: use predict() method
-            result = self._engine.predict(img)
-            parsed = self._parse_result(result)
-            if parsed:
-                _, (text, score) = parsed[0]
-                results.append((text, score))
-            else:
-                results.append(("", 0.0))
+            try:
+                result = self._engine.predict(img)
+                parsed = self._parse_result(result)
+                if parsed:
+                    _, (text, score) = parsed[0]
+                    if float(score) < drop_score:
+                        text = ''
+                    results.append(str(text))
+                else:
+                    results.append("")
+            except Exception as e:
+                _logger.warning(f"recognize_batch predict failed: {e}")
+                results.append("")
+
         return results

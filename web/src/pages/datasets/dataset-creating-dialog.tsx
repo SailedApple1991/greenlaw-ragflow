@@ -3,6 +3,7 @@ import { ButtonLoading } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -17,6 +18,7 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { FormLayout } from '@/constants/form';
+import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
 import { IModalProps } from '@/interfaces/common';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect } from 'react';
@@ -33,6 +35,7 @@ const FormId = 'dataset-creating-form';
 
 export function InputForm({ onOk }: IModalProps<any>) {
   const { t } = useTranslation();
+  const { data: tenantInfo } = useFetchTenantInfo();
 
   const FormSchema = z
     .object({
@@ -64,8 +67,6 @@ export function InputForm({ onOk }: IModalProps<any>) {
           path: ['parser_id'],
         });
       }
-
-      console.log('form-data', data);
       // When parseType === 1, pipline_id required
       if (data.parseType === 2 && !data.pipeline_id) {
         ctx.addIssue({
@@ -82,7 +83,7 @@ export function InputForm({ onOk }: IModalProps<any>) {
       name: '',
       parseType: 1,
       parser_id: '',
-      embd_id: '',
+      embd_id: tenantInfo?.embd_id,
     },
   });
 
@@ -155,10 +156,20 @@ export function DatasetCreatingDialog({
 
   return (
     <Dialog open onOpenChange={hideModal}>
-      <DialogContent className="sm:max-w-[425px] focus-visible:!outline-none flex flex-col">
+      <DialogContent
+        className="sm:max-w-[425px] focus-visible:!outline-none flex flex-col"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            const form = document.getElementById(FormId) as HTMLFormElement;
+            form?.requestSubmit();
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle>{t('knowledgeList.createKnowledgeBase')}</DialogTitle>
         </DialogHeader>
+        <DialogDescription></DialogDescription>
         <InputForm onOk={onOk}></InputForm>
         <DialogFooter>
           <ButtonLoading type="submit" form={FormId} loading={loading}>

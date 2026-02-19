@@ -27,7 +27,7 @@ from utils.hypothesis_utils import valid_names
 
 
 class TestAuthorization:
-    @pytest.mark.p1
+    @pytest.mark.p2
     @pytest.mark.parametrize(
         "invalid_auth, expected_code, expected_message",
         [
@@ -77,7 +77,8 @@ class TestDatasetUpdate:
     @pytest.mark.p1
     @given(name=valid_names())
     @example("a" * 128)
-    @settings(max_examples=20, suppress_health_check=[HealthCheck.function_scoped_fixture])
+    # Network-bound API call; disable Hypothesis deadline to avoid flaky timeouts.
+    @settings(max_examples=20, suppress_health_check=[HealthCheck.function_scoped_fixture], deadline=None)
     def test_name(self, WebApiAuth, add_dataset_func, name):
         dataset_id = add_dataset_func
         payload = {"name": name, "description": "", "parser_id": "naive", "kb_id": dataset_id}
@@ -111,7 +112,7 @@ class TestDatasetUpdate:
         payload = {"name": name, "description": "", "parser_id": "naive", "kb_id": kb_id}
         res = update_kb(WebApiAuth, payload)
         assert res["code"] == 102, res
-        assert res["message"] == "Duplicated knowledgebase name.", res
+        assert res["message"] == "Duplicated dataset name.", res
 
     @pytest.mark.p3
     def test_name_case_insensitive(self, WebApiAuth, add_datasets_func):
@@ -120,7 +121,7 @@ class TestDatasetUpdate:
         payload = {"name": name, "description": "", "parser_id": "naive", "kb_id": kb_id}
         res = update_kb(WebApiAuth, payload)
         assert res["code"] == 102, res
-        assert res["message"] == "Duplicated knowledgebase name.", res
+        assert res["message"] == "Duplicated dataset name.", res
 
     @pytest.mark.p2
     def test_avatar(self, WebApiAuth, add_dataset_func, tmp_path):
@@ -161,7 +162,7 @@ class TestDatasetUpdate:
         assert res["code"] == 0, res
         assert res["data"]["embd_id"] == embedding_model, res
 
-    @pytest.mark.p1
+    @pytest.mark.p2
     @pytest.mark.parametrize(
         "permission",
         [

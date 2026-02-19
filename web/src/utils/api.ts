@@ -1,7 +1,7 @@
 let api_host = `/v1`;
 const ExternalApi = `/api`;
 
-export { api_host };
+export { ExternalApi, api_host };
 
 export default {
   // user
@@ -42,11 +42,17 @@ export default {
   dataSourceRebuild: (id: string) => `${api_host}/connector/${id}/rebuild`,
   dataSourceLogs: (id: string) => `${api_host}/connector/${id}/logs`,
   dataSourceDetail: (id: string) => `${api_host}/connector/${id}`,
-  googleDriveWebAuthStart: `${api_host}/connector/google-drive/oauth/web/start`,
-  googleDriveWebAuthResult: `${api_host}/connector/google-drive/oauth/web/result`,
+  googleWebAuthStart: (type: 'google-drive' | 'gmail') =>
+    `${api_host}/connector/google/oauth/web/start?type=${type}`,
+  googleWebAuthResult: (type: 'google-drive' | 'gmail') =>
+    `${api_host}/connector/google/oauth/web/result?type=${type}`,
+  boxWebAuthStart: () => `${api_host}/connector/box/oauth/web/start`,
+  boxWebAuthResult: () => `${api_host}/connector/box/oauth/web/result`,
 
   // plugin
   llm_tools: `${api_host}/plugin/llm_tools`,
+
+  sequence2txt: `${api_host}/conversation/sequence2txt`,
 
   // knowledge base
 
@@ -71,6 +77,10 @@ export default {
   unbindPipelineTask: ({ kb_id, type }: { kb_id: string; type: string }) =>
     `${api_host}/kb/unbind_task?kb_id=${kb_id}&pipeline_task_type=${type}`,
   pipelineRerun: `${api_host}/canvas/rerun`,
+  getMetaData: `${api_host}/document/metadata/summary`,
+  updateMetaData: `${api_host}/document/metadata/update`,
+  kbUpdateMetaData: `${api_host}/kb/update_metadata_setting`,
+  documentUpdateMetaData: `${api_host}/document/update_metadata_setting`,
 
   // tags
   listTag: (knowledgeId: string) => `${api_host}/kb/${knowledgeId}/tags`,
@@ -105,7 +115,7 @@ export default {
   document_upload: `${api_host}/document/upload`,
   web_crawl: `${api_host}/document/web_crawl`,
   document_infos: `${api_host}/document/infos`,
-  upload_and_parse: `${api_host}/document/upload_and_parse`,
+  upload_and_parse: `${api_host}/document/upload_info`,
   parse: `${api_host}/document/parse`,
   setMeta: `${api_host}/document/set_meta`,
   get_dataset_filter: `${api_host}/document/filter`,
@@ -117,7 +127,8 @@ export default {
   listDialog: `${api_host}/dialog/list`,
   setConversation: `${api_host}/conversation/set`,
   getConversation: `${api_host}/conversation/get`,
-  getConversationSSE: `${api_host}/conversation/getsse`,
+  getConversationSSE: (dialogId: string) =>
+    `${api_host}/conversation/getsse/${dialogId}`,
   listConversation: `${api_host}/conversation/list`,
   removeConversation: `${api_host}/conversation/rm`,
   completeConversation: `${api_host}/conversation/completion`,
@@ -167,7 +178,7 @@ export default {
   listTemplates: `${api_host}/canvas/templates`,
   listCanvas: `${api_host}/canvas/list`,
   getCanvas: `${api_host}/canvas/get`,
-  getCanvasSSE: `${api_host}/canvas/getsse`,
+  getCanvasSSE: (canvasId: string) => `${api_host}/canvas/getsse/${canvasId}`,
   removeCanvas: `${api_host}/canvas/rm`,
   setCanvas: `${api_host}/canvas/set`,
   settingCanvas: `${api_host}/canvas/setting`,
@@ -190,11 +201,21 @@ export default {
   uploadAgentFile: (id?: string) => `${api_host}/canvas/upload/${id}`,
   fetchAgentLogs: (canvasId: string) =>
     `${api_host}/canvas/${canvasId}/sessions`,
+  fetchAgentLogsById: (canvasId: string, sessionId: string) =>
+    `${api_host}/canvas/${canvasId}/sessions/${sessionId}`,
   fetchExternalAgentInputs: (canvasId: string) =>
     `${ExternalApi}${api_host}/agentbots/${canvasId}/inputs`,
   prompt: `${api_host}/canvas/prompts`,
   cancelDataflow: (id: string) => `${api_host}/canvas/cancel/${id}`,
   downloadFile: `${api_host}/canvas/download`,
+  testWebhook: (id: string) => `${ExternalApi}${api_host}/webhook_test/${id}`,
+  fetchWebhookTrace: (id: string) =>
+    `${ExternalApi}${api_host}/webhook_trace/${id}`,
+
+  // explore
+
+  runCanvasExplore: (canvasId: string) =>
+    `${api_host}/canvas/${canvasId}/completion`,
 
   // mcp server
   listMcpServer: `${api_host}/mcp_server/list`,
@@ -221,6 +242,22 @@ export default {
   getRelatedQuestionsShare: `${ExternalApi}${api_host}/searchbots/related_questions`,
   retrievalTestShare: `${ExternalApi}${api_host}/searchbots/retrieval_test`,
 
+  // memory
+  createMemory: `${ExternalApi}${api_host}/memories`,
+  getMemoryList: `${ExternalApi}${api_host}/memories`,
+  getMemoryConfig: (id: string) =>
+    `${ExternalApi}${api_host}/memories/${id}/config`,
+  deleteMemory: (id: string) => `${ExternalApi}${api_host}/memories/${id}`,
+  getMemoryDetail: (id: string) => `${ExternalApi}${api_host}/memories/${id}`,
+  updateMemorySetting: (id: string) =>
+    `${ExternalApi}${api_host}/memories/${id}`,
+  deleteMemoryMessage: (data: { memory_id: string; message_id: string }) =>
+    `${ExternalApi}${api_host}/messages/${data.memory_id}:${data.message_id}`,
+  getMessageContent: (data: { memory_id: string; message_id: string }) =>
+    `${ExternalApi}${api_host}/messages/${data.memory_id}:${data.message_id}/content`,
+  updateMessageState: (data: { memory_id: string; message_id: string }) =>
+    `${ExternalApi}${api_host}/messages/${data.memory_id}:${data.message_id}`,
+
   // data pipeline
   fetchDataflow: (id: string) => `${api_host}/dataflow/get/${id}`,
   setDataflow: `${api_host}/dataflow/set`,
@@ -233,6 +270,8 @@ export default {
   adminLogout: `${ExternalApi}${api_host}/admin/logout`,
   adminListUsers: `${ExternalApi}${api_host}/admin/users`,
   adminCreateUser: `${ExternalApi}${api_host}/admin/users`,
+  adminSetSuperuser: (username: string) =>
+    `${ExternalApi}${api_host}/admin/users/${username}/admin`,
   adminGetUserDetails: (username: string) =>
     `${ExternalApi}${api_host}/admin/users/${username}`,
   adminUpdateUserStatus: (username: string) =>
@@ -280,4 +319,12 @@ export default {
   adminImportWhitelist: `${ExternalApi}${api_host}/admin/whitelist/batch`,
 
   adminGetSystemVersion: `${ExternalApi}${api_host}/admin/version`,
+
+  // Sandbox settings
+  adminListSandboxProviders: `${ExternalApi}${api_host}/admin/sandbox/providers`,
+  adminGetSandboxProviderSchema: (providerId: string) =>
+    `${ExternalApi}${api_host}/admin/sandbox/providers/${providerId}/schema`,
+  adminGetSandboxConfig: `${ExternalApi}${api_host}/admin/sandbox/config`,
+  adminSetSandboxConfig: `${ExternalApi}${api_host}/admin/sandbox/config`,
+  adminTestSandboxConnection: `${ExternalApi}${api_host}/admin/sandbox/test`,
 };

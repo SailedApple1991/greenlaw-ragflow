@@ -1,3 +1,5 @@
+import { EmptyType } from '@/components/empty/constant';
+import Empty from '@/components/empty/empty';
 import FileStatusBadge from '@/components/file-status-badge';
 import { FileIcon, IconFontFill } from '@/components/icon-font';
 import { RAGFlowAvatar } from '@/components/ragflow-avatar';
@@ -22,7 +24,8 @@ import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { cn } from '@/lib/utils';
 import { PipelineResultSearchParams } from '@/pages/dataflow-result/constant';
 import { NavigateToDataflowResultProps } from '@/pages/dataflow-result/interface';
-import { DataSourceInfo } from '@/pages/user-setting/data-source/contant';
+import { useDataSourceInfo } from '@/pages/user-setting/data-source/constant';
+import { IDataSourceInfoMap } from '@/pages/user-setting/data-source/interface';
 import { formatDate, formatSecondsToHumanReadable } from '@/utils/date';
 import {
   ColumnDef,
@@ -39,9 +42,9 @@ import {
 import { TFunction } from 'i18next';
 import { ArrowUpDown, ClipboardList, Eye, MonitorUp } from 'lucide-react';
 import { FC, useMemo, useState } from 'react';
-import { useParams } from 'umi';
+import { useParams } from 'react-router';
 import { RunningStatus } from '../dataset/constant';
-import ProcessLogModal from '../process-log-modal';
+import ProcessLogModal, { ILogInfo } from '../process-log-modal';
 import { LogTabs, ProcessingType, ProcessingTypeMap } from './dataset-common';
 import { DocumentLog, FileLogsTableProps, IFileLogItem } from './interface';
 
@@ -52,6 +55,7 @@ export const getFileLogsTableColumns = (
   navigateToDataflowResult: (
     props: NavigateToDataflowResultProps,
   ) => () => void,
+  dataSourceInfo: IDataSourceInfoMap,
 ) => {
   // const { t } = useTranslate('knowledgeDetails');
   const columns: ColumnDef<IFileLogItem & DocumentLog>[] = [
@@ -115,8 +119,8 @@ export const getFileLogsTableColumns = (
           ) : (
             <div className="w-6 h-6 flex items-center justify-center">
               {
-                DataSourceInfo[
-                  row.original.source_from as keyof typeof DataSourceInfo
+                dataSourceInfo[
+                  row.original.source_from as keyof typeof dataSourceInfo
                 ].icon
               }
             </div>
@@ -344,6 +348,7 @@ const FileLogsTable: FC<FileLogsTableProps> = ({
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [rowSelection, setRowSelection] = useState({});
   const { t } = useTranslate('knowledgeDetails');
+  const { t: tDatasetOverview } = useTranslate('datasetOverview');
   const [isModalVisible, setIsModalVisible] = useState(false);
   const { navigateToDataflowResult } = useNavigatePage();
   const [logInfo, setLogInfo] = useState<IFileLogItem>();
@@ -365,7 +370,7 @@ const FileLogsTable: FC<FileLogsTableProps> = ({
     setLogInfo(logDetail);
     setIsModalVisible(true);
   };
-
+  const { dataSourceInfo } = useDataSourceInfo();
   const columns = useMemo(() => {
     return active === LogTabs.FILE_LOGS
       ? getFileLogsTableColumns(
@@ -373,6 +378,7 @@ const FileLogsTable: FC<FileLogsTableProps> = ({
           showLog,
           kowledgeId || '',
           navigateToDataflowResult,
+          dataSourceInfo,
         )
       : getDatasetLogsTableColumns(t, showLog);
   }, [active, t]);
@@ -445,7 +451,10 @@ const FileLogsTable: FC<FileLogsTableProps> = ({
           ) : (
             <TableRow>
               <TableCell colSpan={columns.length} className="h-24 text-center">
-                No results.
+                <Empty
+                  type={EmptyType.Data}
+                  text={tDatasetOverview('noData')}
+                />
               </TableCell>
             </TableRow>
           )}
@@ -465,7 +474,7 @@ const FileLogsTable: FC<FileLogsTableProps> = ({
           title={active === LogTabs.FILE_LOGS ? t('fileLogs') : t('datasetLog')}
           visible={isModalVisible}
           onCancel={() => setIsModalVisible(false)}
-          logInfo={logInfo}
+          logInfo={logInfo as unknown as ILogInfo}
         />
       )}
     </div>

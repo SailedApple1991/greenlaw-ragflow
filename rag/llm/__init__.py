@@ -50,6 +50,14 @@ class SupportedLiteLLMProvider(StrEnum):
     GiteeAI = "GiteeAI"
     AI_302 = "302.AI"
     JiekouAI = "Jiekou.AI"
+    ZHIPU_AI = "ZHIPU-AI"
+    MiniMax = "MiniMax"
+    DeerAPI = "DeerAPI"
+    GPUStack = "GPUStack"
+    OpenAI = "OpenAI"
+    Azure_OpenAI = "Azure-OpenAI"
+    n1n = "n1n"
+    HunYuan = "Tencent Hunyuan"
 
 
 FACTORY_DEFAULT_BASE_URL = {
@@ -71,6 +79,12 @@ FACTORY_DEFAULT_BASE_URL = {
     SupportedLiteLLMProvider.AI_302: "https://api.302.ai/v1",
     SupportedLiteLLMProvider.Anthropic: "https://api.anthropic.com/",
     SupportedLiteLLMProvider.JiekouAI: "https://api.jiekou.ai/openai",
+    SupportedLiteLLMProvider.ZHIPU_AI: "https://open.bigmodel.cn/api/paas/v4",
+    SupportedLiteLLMProvider.MiniMax: "https://api.minimaxi.com/v1",
+    SupportedLiteLLMProvider.DeerAPI: "https://api.deerapi.com/v1",
+    SupportedLiteLLMProvider.OpenAI: "https://api.openai.com/v1",
+    SupportedLiteLLMProvider.n1n: "https://api.n1n.ai/v1",
+    SupportedLiteLLMProvider.HunYuan: "https://api.hunyuan.cloud.tencent.com/v1",
 }
 
 
@@ -102,6 +116,14 @@ LITELLM_PROVIDER_PREFIX = {
     SupportedLiteLLMProvider.GiteeAI: "openai/",
     SupportedLiteLLMProvider.AI_302: "openai/",
     SupportedLiteLLMProvider.JiekouAI: "openai/",
+    SupportedLiteLLMProvider.ZHIPU_AI: "openai/",
+    SupportedLiteLLMProvider.MiniMax: "openai/",
+    SupportedLiteLLMProvider.DeerAPI: "openai/",
+    SupportedLiteLLMProvider.GPUStack: "openai/",
+    SupportedLiteLLMProvider.OpenAI: "openai/",
+    SupportedLiteLLMProvider.Azure_OpenAI: "azure/",
+    SupportedLiteLLMProvider.n1n: "openai/",
+    SupportedLiteLLMProvider.HunYuan: "openai/",
 }
 
 ChatModel = globals().get("ChatModel", {})
@@ -110,6 +132,7 @@ EmbeddingModel = globals().get("EmbeddingModel", {})
 RerankModel = globals().get("RerankModel", {})
 Seq2txtModel = globals().get("Seq2txtModel", {})
 TTSModel = globals().get("TTSModel", {})
+OcrModel = globals().get("OcrModel", {})
 
 
 MODULE_MAPPING = {
@@ -119,6 +142,7 @@ MODULE_MAPPING = {
     "rerank_model": RerankModel,
     "sequence2txt_model": Seq2txtModel,
     "tts_model": TTSModel,
+    "ocr_model": OcrModel,
 }
 
 package_name = __name__
@@ -160,4 +184,5 @@ __all__ = [
     "RerankModel",
     "Seq2txtModel",
     "TTSModel",
+    "OcrModel",
 ]

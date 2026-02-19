@@ -13,6 +13,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
+import asyncio
 import logging
 import json
 import os
@@ -29,19 +30,24 @@ from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.tenant_llm_service import LLMFactoriesService, TenantLLMService
 from api.db.services.llm_service import LLMService, LLMBundle, get_init_tenant_llm
 from api.db.services.user_service import TenantService, UserTenantService
+from api.db.services.system_settings_service import SystemSettingsService
+from api.db.joint_services.memory_message_service import init_message_id_sequence, init_memory_size_cache, fix_missing_tokenized_memory
 from common.constants import LLMType
 from common.file_utils import get_project_base_directory
 from common import settings
 from api.common.base64 import encode_to_base64
 
+DEFAULT_SUPERUSER_NICKNAME = os.getenv("DEFAULT_SUPERUSER_NICKNAME", "admin")
+DEFAULT_SUPERUSER_EMAIL = os.getenv("DEFAULT_SUPERUSER_EMAIL", "admin@ragflow.io")
+DEFAULT_SUPERUSER_PASSWORD = os.getenv("DEFAULT_SUPERUSER_PASSWORD", "admin")
 
-def init_superuser():
+def init_superuser(nickname=DEFAULT_SUPERUSER_NICKNAME, email=DEFAULT_SUPERUSER_EMAIL, password=DEFAULT_SUPERUSER_PASSWORD, role=UserTenantRole.OWNER):
     user_info = {
         "id": uuid.uuid1().hex,
-        "password": encode_to_base64("admin"),
-        "nickname": "admin",
+        "password": encode_to_base64(password),
+        "nickname": nickname,
         "is_superuser": True,
-        "email": "admin@ragflow.io",
+        "email": email,
         "creator": "system",
         "status": "1",
     }
@@ -58,7 +64,7 @@ def init_superuser():
         "tenant_id": user_info["id"],
         "user_id": user_info["id"],
         "invited_by": user_info["id"],
-        "role": UserTenantRole.OWNER
+        "role": role
     }
 
     tenant_llm = get_init_tenant_llm(user_info["id"])
@@ -70,11 +76,10 @@ def init_superuser():
     UserTenantService.insert(**usr_tenant)
     TenantLLMService.insert_many(tenant_llm)
     logging.info(
-        "Super user initialized. email: admin@ragflow.io, password: admin. Changing the password after login is strongly recommended.")
+        f"Super user initialized. email: {email},A default password has been set; changing the password after login is strongly recommended.")
 
     chat_mdl = LLMBundle(tenant["id"], LLMType.CHAT, tenant["llm_id"])
-    msg = chat_mdl.chat(system="", history=[
-        {"role": "user", "content": "Hello!"}], gen_conf={})
+    msg = asyncio.run(chat_mdl.async_chat(system="", history=[{"role": "user", "content": "Hello!"}], gen_conf={}))
     if msg.find("ERROR: ") == 0:
         logging.error(
             "'{}' doesn't work. {}".format(
@@ -154,19 +159,49 @@ def add_graph_templates():
                 CanvasTemplateService.save(**cnvs)
             except Exception:
                 CanvasTemplateService.update_by_id(cnvs["id"], cnvs)
-        except Exception:
-            logging.exception("Add agent templates error: ")
+        except Exception as e:
+            logging.exception(f"Add agent templates error: {e}")
 
 
 def init_web_data():
     start_time = time.time()
+
+    init_table()
 
     init_llm_factory()
     # if not UserService.get_all().count():
     #    init_superuser()
 
     add_graph_templates()
+    init_message_id_sequence()
+    init_memory_size_cache()
+    fix_missing_tokenized_memory()
     logging.info("init web data success:{}".format(time.time() - start_time))
+
+def init_table():
+    # init system_settings
+    with open(os.path.join(get_project_base_directory(), "conf", "system_settings.json"), "r") as f:
+        records_from_file = json.load(f)["system_settings"]
+
+    record_index = {}
+    records_from_db = SystemSettingsService.get_all()
+    for index, record in enumerate(records_from_db):
+        record_index[record.name] = index
+
+    to_save = []
+    for record in records_from_file:
+        setting_name = record["name"]
+        if setting_name not in record_index:
+            to_save.append(record)
+
+    len_to_save = len(to_save)
+    if len_to_save > 0:
+        # not initialized
+        try:
+            SystemSettingsService.insert_many(to_save, len_to_save)
+        except Exception as e:
+            logging.exception("System settings init error: {}".format(e))
+            raise e
 
 
 if __name__ == '__main__':

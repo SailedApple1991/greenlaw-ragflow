@@ -19,6 +19,7 @@ export default {
       portugueseBr: 'Portugis (Brasil)',
       chinese: 'Cina',
       traditionalChinese: 'Cina Tradisional',
+      bulgarian: 'Bulgaria',
       language: 'Bahasa',
       languageMessage: 'Silakan masukkan bahasa Anda!',
       languagePlaceholder: 'Pilih bahasa Anda',
@@ -163,6 +164,9 @@ export default {
       html4excelTip: `Gunakan bersama dengan metode pemotongan General. Ketika dinonaktifkan, file spreadsheet (XLSX, XLS (Excel 97-2003)) akan dianalisis baris demi baris menjadi pasangan kunci-nilai. Ketika diaktifkan, file spreadsheet akan dianalisis menjadi tabel HTML. Jika tabel asli memiliki lebih dari 12 baris, sistem akan secara otomatis membagi menjadi beberapa tabel HTML setiap 12 baris. Untuk informasi lebih lanjut, lihat https://ragflow.io/docs/dev/enable_excel2html.`,
     },
     knowledgeConfiguration: {
+      imageTableContextWindow: 'Jendela konteks gambar & tabel',
+      imageTableContextWindowTip:
+        'Mengambil N token teks di atas dan di bawah gambar dan tabel untuk memberikan konteks latar yang lebih kaya.',
       titleDescription:
         'Perbarui detail basis pengetahuan Anda terutama metode parsing di sini.',
       name: 'Nama basis pengetahuan',
@@ -176,7 +180,7 @@ export default {
       chunkTokenNumber: 'Ukuran potongan yang disarankan',
       chunkTokenNumberMessage: 'Jumlah token potongan diperlukan',
       embeddingModelTip:
-        'Model embedding default dari basis pengetahuan. Tidak dapat diubah setelah basis pengetahuan memiliki potongan data (chunks). Untuk beralih ke model embedding default yang berbeda, Anda harus menghapus semua potongan data yang ada di basis pengetahuan.',
+        'Model embedding default untuk basis pengetahuan. Setelah basis pengetahuan memiliki chunk, saat mengganti model embedding sistem akan mengambil beberapa chunk secara acak untuk pemeriksaan kompatibilitas, meng-encode ulang dengan model embedding baru, dan menghitung kemiripan kosinus antara vektor baru dan vektor lama. Pergantian hanya diizinkan jika rata-rata kemiripan sampel ≥ 0.9. Jika tidak, Anda harus menghapus semua chunk di basis pengetahuan sebelum dapat mengubahnya.',
       permissionsTip:
         "Jika izinnya 'Tim', semua anggota tim dapat memanipulasi basis pengetahuan.",
       chunkTokenNumberTip:
@@ -313,6 +317,19 @@ export default {
       randomSeed: 'Benih acak',
       randomSeedMessage: 'Benih acak diperlukan',
       entityTypes: 'Jenis entitas',
+      paddleocrOptions: 'Opsi PaddleOCR',
+      paddleocrApiUrl: 'URL API PaddleOCR',
+      paddleocrApiUrlTip: 'URL endpoint API layanan PaddleOCR',
+      paddleocrApiUrlPlaceholder:
+        'Contoh: https://paddleocr-server.com/layout-parsing',
+      paddleocrAccessToken: 'Token Akses AI Studio',
+      paddleocrAccessTokenTip: 'Token akses untuk API PaddleOCR (opsional)',
+      paddleocrAccessTokenPlaceholder: 'Token AI Studio Anda (opsional)',
+      paddleocrAlgorithm: 'Algoritma PaddleOCR',
+      paddleocrAlgorithmTip:
+        'Algoritma yang digunakan untuk pemrosesan PaddleOCR',
+      paddleocrSelectAlgorithm: 'Pilih algoritma',
+      paddleocrModelNamePlaceholder: 'Contoh: paddleocr-lingkungan-1',
     },
     chunk: {
       chunk: 'Potongan',
@@ -402,8 +419,7 @@ export default {
         'Mirip dengan penalti kehadiran, ini mengurangi kecenderungan model untuk mengulangi kata yang sama secara sering.',
       maxTokens: 'Token Maksimum',
       maxTokensMessage: 'Token Maksimum diperlukan',
-      maxTokensTip:
-        'Ini menetapkan panjang maksimum keluaran model, diukur dalam jumlah token (kata atau potongan kata).',
+      maxTokensTip: `Ukuran konteks maksimum model; nilai yang tidak valid atau salah akan menyebabkan kesalahan. Default 512.`,
       maxTokensInvalidMessage:
         'Silakan masukkan angka yang valid untuk Max Tokens.',
       maxTokensMinMessage: 'Max Tokens tidak boleh kurang dari 0.',
@@ -460,8 +476,7 @@ export default {
       profileDescription: 'Perbarui foto dan detail pribadi Anda di sini.',
       maxTokens: 'Token Maksimum',
       maxTokensMessage: 'Token Maksimum diperlukan',
-      maxTokensTip:
-        'Ini menetapkan panjang maksimum keluaran model, diukur dalam jumlah token (kata atau potongan kata).',
+      maxTokensTip: `Ukuran konteks maksimum model; nilai yang tidak valid atau salah akan menyebabkan kesalahan. Default 512.`,
       maxTokensInvalidMessage:
         'Silakan masukkan angka yang valid untuk Max Tokens.',
       maxTokensMinMessage: 'Max Tokens tidak boleh kurang dari 0.',
@@ -516,6 +531,10 @@ export default {
         'Untuk pengguna Tiongkok, tidak perlu diisi atau gunakan https://dashscope.aliyuncs.com/compatible-mode/v1. Untuk pengguna internasional, gunakan https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
       tongyiBaseUrlPlaceholder:
         '(Hanya untuk pengguna internasional, silakan lihat tip)',
+      minimaxBaseUrlTip:
+        'Hanya untuk pengguna internasional: gunakan https://api.minimax.io/v1.',
+      minimaxBaseUrlPlaceholder:
+        '(Hanya untuk pengguna internasional, isi https://api.minimax.io/v1)',
       modify: 'Ubah',
       systemModelSettings: 'Tetapkan model default',
       chatModel: 'Model Obrolan',
@@ -546,6 +565,18 @@ export default {
       modelTypeMessage: 'Silakan masukkan jenis model Anda!',
       addLlmBaseUrl: 'Base url',
       baseUrlNameMessage: 'Silakan masukkan base url Anda!',
+      paddleocr: {
+        apiUrl: 'URL API PaddleOCR',
+        apiUrlPlaceholder:
+          'Contoh: https://paddleocr-server.com/layout-parsing',
+        accessToken: 'Token Akses AI Studio',
+        accessTokenPlaceholder: 'Token AI Studio Anda (opsional)',
+        algorithm: 'Algoritma PaddleOCR',
+        selectAlgorithm: 'Pilih algoritma',
+        modelNamePlaceholder: 'Contoh: paddleocr-from-env-1',
+        modelNameRequired: 'Nama model wajib diisi',
+        apiUrlRequired: 'URL API PaddleOCR wajib diisi',
+      },
       vision: 'Apakah mendukung Vision?',
       ollamaLink: 'Cara mengintegrasikan {{name}}',
       FishAudioLink: 'Cara menggunakan FishAudio',
@@ -597,10 +628,6 @@ export default {
       'sa-east-1': 'South America (São Paulo)',
       'us-gov-east-1': 'AWS GovCloud (US-East)',
       'us-gov-west-1': 'AWS GovCloud (US-West)',
-      addHunyuanSID: 'Hunyuan Secret ID',
-      HunyuanSIDMessage: 'Silakan masukkan Secret ID Anda',
-      addHunyuanSK: 'Hunyuan Secret Key',
-      HunyuanSKMessage: 'Silakan masukkan Secret Key Anda',
       addTencentCloudSID: 'TencentCloud Secret ID',
       TencentCloudSIDMessage: 'Silakan masukkan Secret ID Anda',
       addTencentCloudSK: 'TencentCloud Secret Key',
@@ -766,6 +793,27 @@ export default {
       searXNG: 'SearXNG',
       searXNGDescription:
         'Komponen yang melakukan pencarian menggunakan URL instance SearXNG yang Anda berikan. Spesifikasikan TopN dan URL instance.',
+      pdfGenerator: 'Pembuat Dokumen',
+      pDFGenerator: 'Pembuat Dokumen',
+      pdfGeneratorDescription: `Komponen yang menghasilkan dokumen (PDF, DOCX, TXT) dari konten berformat markdown dengan gaya yang dapat disesuaikan, gambar, dan tabel. Mendukung: **tebal**, *miring*, # judul, - daftar, tabel dengan sintaks |.`,
+      pDFGeneratorDescription: `Komponen yang menghasilkan dokumen (PDF, DOCX, TXT) dari konten berformat markdown dengan gaya yang dapat disesuaikan, gambar, dan tabel. Mendukung: **tebal**, *miring*, # judul, - daftar, tabel dengan sintaks |.`,
+      subtitle: 'Subjudul',
+      logoImage: 'Gambar Logo',
+      logoPosition: 'Posisi Logo',
+      logoWidth: 'Lebar Logo',
+      logoHeight: 'Tinggi Logo',
+      fontFamily: 'Keluarga Font',
+      fontSize: 'Ukuran Font',
+      titleFontSize: 'Ukuran Font Judul',
+      pageSize: 'Ukuran Halaman',
+      orientation: 'Orientasi',
+      marginTop: 'Margin Atas',
+      marginBottom: 'Margin Bawah',
+      filename: 'Nama File',
+      outputDirectory: 'Direktori Output',
+      addPageNumbers: 'Tambahkan Nomor Halaman',
+      addTimestamp: 'Tambahkan Timestamp',
+      watermarkText: 'Teks Watermark',
       channel: 'Saluran',
       channelTip: `Lakukan pencarian teks atau pencarian berita pada input komponen`,
       text: 'Teks',

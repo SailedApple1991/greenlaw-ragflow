@@ -1,4 +1,7 @@
-import { BulkOperateBar } from '@/components/bulk-operate-bar';
+import {
+  BulkOperateBar,
+  BulkOperateItemType,
+} from '@/components/bulk-operate-bar';
 import { FileUploadDialog } from '@/components/file-upload-dialog';
 import ListFilterBar from '@/components/list-filter-bar';
 import { RenameDialog } from '@/components/rename-dialog';
@@ -14,10 +17,15 @@ import { useRowSelection } from '@/hooks/logic-hooks/use-row-selection';
 import { useFetchDocumentList } from '@/hooks/use-document-request';
 import { useFetchKnowledgeBaseConfiguration } from '@/hooks/use-knowledge-request';
 import { Upload } from 'lucide-react';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { MetadataType } from '../components/metedata/constant';
+import { useManageMetadata } from '../components/metedata/hooks/use-manage-modal';
+import { ManageMetadataModal } from '../components/metedata/manage-modal';
+import { useKnowledgeBaseContext } from '../contexts/knowledge-base-context';
 import { DatasetTable } from './dataset-table';
 import Generate from './generate-button/generate';
+import { ReparseDialog } from './reparse-dialog';
 import { useBulkOperateDataset } from './use-bulk-operate-dataset';
 import { useCreateEmptyDocument } from './use-create-empty-document';
 import { useSelectDatasetFilters } from './use-select-filters';
@@ -32,7 +40,7 @@ export default function Dataset() {
     onDocumentUploadOk,
     documentUploadLoading,
   } = useHandleUploadDocument();
-
+  const { knowledgeBase } = useKnowledgeBaseContext();
   const {
     searchString,
     documents,
@@ -42,6 +50,7 @@ export default function Dataset() {
     filterValue,
     handleFilterSubmit,
     loading,
+    checkValue,
   } = useFetchDocumentList();
 
   const refreshCount = useMemo(() => {
@@ -51,7 +60,7 @@ export default function Dataset() {
   const { data: dataSetData } = useFetchKnowledgeBaseConfiguration({
     refreshCount,
   });
-  const { filters, onOpenChange } = useSelectDatasetFilters();
+  const { filters, onOpenChange, filterGroup } = useSelectDatasetFilters();
 
   const {
     createLoading,
@@ -61,14 +70,71 @@ export default function Dataset() {
     showCreateModal,
   } = useCreateEmptyDocument();
 
+  const {
+    manageMetadataVisible,
+    showManageMetadataModal,
+    hideManageMetadataModal,
+    tableData,
+    config: metadataConfig,
+  } = useManageMetadata();
+
+  useEffect(() => {
+    checkValue(filters);
+  }, [filters]);
+
   const { rowSelection, rowSelectionIsEmpty, setRowSelection, selectedCount } =
     useRowSelection();
 
-  const { list } = useBulkOperateDataset({
+  const {
+    chunkNum,
+    list,
+    visible: reparseDialogVisible,
+    hideModal: hideReparseDialogModal,
+    handleRunClick: handleOperationIconClick,
+  } = useBulkOperateDataset({
     documents,
     rowSelection,
     setRowSelection,
   });
+
+  const handleAddMetadataWithDocuments = () => {
+    showManageMetadataModal({
+      type: MetadataType.Manage,
+      isCanAdd: true,
+      isEditField: false,
+      isDeleteSingleValue: true,
+      isAddValue: true,
+      secondTitle: (
+        <>
+          {t('knowledgeDetails.metadata.selectFiles', {
+            count: documents.length,
+          })}
+        </>
+      ),
+      title: (
+        <div className="flex flex-col gap-2">
+          <div className="text-base font-normal">
+            {t('knowledgeDetails.metadata.manageMetadata')}
+          </div>
+          {/* <div className="text-sm text-text-secondary">
+            {t('knowledgeDetails.metadata.manageMetadataForDataset')}
+          </div> */}
+        </div>
+      ),
+      documentIds: documents.map((doc) => doc.id),
+    });
+  };
+
+  const updatedList = list.map((item) => {
+    if (item.id === 'batch-metadata') {
+      return {
+        ...item,
+        onClick: handleAddMetadataWithDocuments,
+      };
+    }
+    return item;
+  });
+
   return (
     <>
       <div className="absolute top-4 right-5">
@@ -80,6 +146,7 @@ export default function Dataset() {
           onSearchChange={handleInputChange}
           searchString={searchString}
           value={filterValue}
+          filterGroup={filterGroup}
           onChange={handleFilterSubmit}
           onOpenChange={onOpenChange}
           filters={filters}
@@ -91,6 +158,37 @@ export default function Dataset() {
               </div>
             </div>
           }
+          // preChildren={
+          //   <Button
+          //     variant={'ghost'}
+          //     className="border border-border-button"
+          //     onClick={() =>
+          //       showManageMetadataModal({
+          //         type: MetadataType.Manage,
+          //         isCanAdd: false,
+          //         isEditField: false,
+          //         isDeleteSingleValue: true,
+          //         title: (
+          //           <div className="flex flex-col gap-2">
+          //             <div className="text-base font-normal">
+          //               {t('knowledgeDetails.metadata.manageMetadata')}
+          //             </div>
+          //             <div className="text-sm text-text-secondary">
+          //               {t(
+          //                 'knowledgeDetails.metadata.manageMetadataForDataset',
+          //               )}
+          //             </div>
+          //           </div>
+          //         ),
+          //       })
+          //     }
+          //   >
+          //     <div className="flex gap-1 items-center">
+          //       <Pen size={14} />
+          //       {t('knowledgeDetails.metadata.metadata')}
+          //     </div>
+          //   </Button>
+          // }
         >
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -111,7 +209,10 @@ export default function Dataset() {
           </DropdownMenu>
         </ListFilterBar>
         {rowSelectionIsEmpty || (
-          <BulkOperateBar list={list} count={selectedCount}></BulkOperateBar>
+          <BulkOperateBar
+            list={updatedList as BulkOperateItemType[]}
+            count={selectedCount}
+          ></BulkOperateBar>
         )}
         <DatasetTable
           documents={documents}
@@ -119,6 +220,7 @@ export default function Dataset() {
           setPagination={setPagination}
           rowSelection={rowSelection}
           setRowSelection={setRowSelection}
+          showManageMetadataModal={showManageMetadataModal}
           loading={loading}
         ></DatasetTable>
         {documentUploadVisible && (
@@ -136,6 +238,51 @@ export default function Dataset() {
             loading={createLoading}
             title={'File Name'}
           ></RenameDialog>
+        )}
+        {manageMetadataVisible && (
+          <ManageMetadataModal
+            title={
+              metadataConfig.title || (
+                <div className="flex flex-col gap-2">
+                  <div className="text-base font-normal">
+                    {t('knowledgeDetails.metadata.manageMetadata')}
+                  </div>
+                  {/* <div className="text-sm text-text-secondary">
+                    {t('knowledgeDetails.metadata.manageMetadataForDataset')}
+                  </div> */}
+                </div>
+              )
+            }
+            visible={manageMetadataVisible}
+            hideModal={() => {
+              setRowSelection({});
+              hideManageMetadataModal();
+            }}
+            // selectedRowKeys={selectedRowKeys}
+            tableData={tableData}
+            isCanAdd={metadataConfig.isCanAdd}
+            isAddValue={metadataConfig.isAddValue}
+            isVerticalShowValue={metadataConfig.isVerticalShowValue}
+            isEditField={metadataConfig.isEditField}
+            isDeleteSingleValue={metadataConfig.isDeleteSingleValue}
+            secondTitle={metadataConfig.secondTitle}
+            type={metadataConfig.type}
+            documentIds={metadataConfig.documentIds}
+            otherData={metadataConfig.record}
+          />
+        )}
+        {reparseDialogVisible && (
+          <ReparseDialog
+            hidden={
+              chunkNum === 0 && !knowledgeBase?.parser_config?.enable_metadata
+            }
+            // hidden={false}
+            enable_metadata={knowledgeBase?.parser_config?.enable_metadata}
+            handleOperationIconClick={handleOperationIconClick}
+            chunk_num={chunkNum}
+            visible={reparseDialogVisible}
+            hideModal={hideReparseDialogModal}
+          ></ReparseDialog>
         )}
       </section>
     </>

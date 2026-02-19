@@ -169,10 +169,12 @@ class CommonService:
         """
         if "id" not in kwargs:
             kwargs["id"] = get_uuid()
-        kwargs["create_time"] = current_timestamp()
-        kwargs["create_date"] = datetime_format(datetime.now())
-        kwargs["update_time"] = current_timestamp()
-        kwargs["update_date"] = datetime_format(datetime.now())
+        timestamp = current_timestamp()
+        cur_datetime = datetime_format(datetime.now())
+        kwargs["create_time"] = timestamp
+        kwargs["create_date"] = cur_datetime
+        kwargs["update_time"] = timestamp
+        kwargs["update_date"] = cur_datetime
         sample_obj = cls.model(**kwargs).save(force_insert=True)
         return sample_obj
 
@@ -188,10 +190,15 @@ class CommonService:
             data_list (list): List of dictionaries containing record data to insert.
             batch_size (int, optional): Number of records to insert in each batch. Defaults to 100.
         """
+        current_ts = current_timestamp()
+        current_datetime = datetime_format(datetime.now())
         with DB.atomic():
             for d in data_list:
-                d["create_time"] = current_timestamp()
-                d["create_date"] = datetime_format(datetime.now())
+                d["create_time"] = current_ts
+                d["create_date"] = current_datetime
+                d["update_time"] = current_ts
+                d["update_date"] = current_datetime
+
             for i in range(0, len(data_list), batch_size):
                 cls.model.insert_many(data_list[i : i + batch_size]).execute()
 
@@ -207,10 +214,14 @@ class CommonService:
             data_list (list): List of dictionaries containing record data to update.
                              Each dictionary must include an 'id' field.
         """
+
+        timestamp = current_timestamp()
+        cur_datetime = datetime_format(datetime.now())
+        for data in data_list:
+            data["update_time"] = timestamp
+            data["update_date"] = cur_datetime
         with DB.atomic():
             for data in data_list:
-                data["update_time"] = current_timestamp()
-                data["update_date"] = datetime_format(datetime.now())
                 cls.model.update(data).where(cls.model.id == data["id"]).execute()
 
     @classmethod

@@ -60,7 +60,9 @@ export function useDynamicSVGImport(
     setLoading(true);
     const importIcon = async (): Promise<void> => {
       try {
-        ImportedIconRef.current = (await import(name)).ReactComponent;
+        ImportedIconRef.current = (
+          await import(/* @vite-ignore */ name)
+        ).ReactComponent;
         onCompleted?.(name, ImportedIconRef.current);
       } catch (err: any) {
         onError?.(err);
@@ -76,6 +78,7 @@ export function useDynamicSVGImport(
 }
 
 interface IProps {
+  header?: string | ReactNode;
   title?: string;
   content?: ReactNode;
   onOk?: (...args: any[]) => any;
@@ -85,22 +88,23 @@ interface IProps {
 export const useShowDeleteConfirm = () => {
   const { t } = useTranslation();
   const showDeleteConfirm = useCallback(
-    ({ title, content, onOk, onCancel }: IProps): Promise<number> => {
+    ({ title, content, onOk, onCancel, header }: IProps): Promise<number> => {
       return new Promise((resolve, reject) => {
         Modal.show({
-          title: title ?? t('common.deleteModalTitle'),
+          title: header,
+          closable: !!header,
           visible: true,
           onVisibleChange: () => {
-            Modal.hide();
+            Modal.destroy();
           },
           footer: null,
-          closable: true,
           maskClosable: false,
-          okText: t('common.yes'),
-          cancelText: t('common.no'),
+          okText: t('common.delete'),
+          cancelText: t('common.cancel'),
           style: {
-            width: '400px',
+            width: '450px',
           },
+          zIndex: 1000,
           okButtonClassName:
             'bg-state-error text-white hover:bg-state-error hover:text-white',
           onOk: async () => {
@@ -114,9 +118,16 @@ export const useShowDeleteConfirm = () => {
           },
           onCancel: () => {
             onCancel?.();
-            Modal.hide();
+            Modal.destroy();
           },
-          children: content,
+          children: (
+            <div className="flex flex-col justify-start items-start mt-3">
+              <div className="text-lg font-medium">
+                {title ?? t('common.deleteModalTitle')}
+              </div>
+              <div className="text-base font-normal">{content}</div>
+            </div>
+          ),
         });
       });
     },

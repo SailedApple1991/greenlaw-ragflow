@@ -170,6 +170,7 @@ export interface IAgentForm {
   tools: Array<{
     name: string;
     component_name: string;
+    id: string;
     params: Record<string, any>;
   }>;
   mcp: Array<{
@@ -255,6 +256,7 @@ export interface IAgentLogResponse {
   user_id: string;
   dsl: string;
   reference: IReference;
+  name: string;
 }
 export interface IAgentLogsResponse {
   total: number;
@@ -268,6 +270,7 @@ export interface IAgentLogsRequest {
   desc?: boolean;
   page?: number;
   page_size?: number;
+  exp_user_id?: string; // tenant id
 }
 
 export interface IAgentLogMessage {
@@ -290,4 +293,11 @@ export interface GlobalVariableType {
   value: any;
   description: string;
   type: string;
+}
+
+export interface IWebhookTrace {
+  webhook_id: null;
+  events: any[];
+  next_since_ts: number;
+  finished: boolean;
 }

@@ -42,7 +42,7 @@ def filename_type(filename):
     if re.match(r".*\.pdf$", filename):
         return FileType.PDF.value
 
-    if re.match(r".*\.(msg|eml|doc|docx|ppt|pptx|yml|xml|htm|json|jsonl|ldjson|csv|txt|ini|xls|xlsx|wps|rtf|hlp|pages|numbers|key|md|py|js|java|c|cpp|h|php|go|ts|sh|cs|kt|html|sql)$", filename):
+    if re.match(r".*\.(msg|eml|doc|docx|ppt|pptx|yml|xml|htm|json|jsonl|ldjson|csv|txt|ini|xls|xlsx|wps|rtf|hlp|pages|numbers|key|md|mdx|py|js|java|c|cpp|h|php|go|ts|sh|cs|kt|html|sql)$", filename):
         return FileType.DOC.value
 
     if re.match(r".*\.(wav|flac|ape|alac|wavpack|wv|mp3|aac|ogg|vorbis|opus)$", filename):
@@ -84,28 +84,6 @@ def thumbnail_img(filename, blob):
         buffered = BytesIO()
         image.save(buffered, format="png")
         return buffered.getvalue()
-
-    elif re.match(r".*\.(ppt|pptx)$", filename):
-        import aspose.pydrawing as drawing
-        import aspose.slides as slides
-
-        try:
-            with slides.Presentation(BytesIO(blob)) as presentation:
-                buffered = BytesIO()
-                scale = 0.03
-                img = None
-                for _ in range(10):
-                    # https://reference.aspose.com/slides/python-net/aspose.slides/slide/get_thumbnail/#float-float
-                    presentation.slides[0].get_thumbnail(scale, scale).save(buffered, drawing.imaging.ImageFormat.png)
-                    img = buffered.getvalue()
-                    if len(img) >= 64000:
-                        scale = scale / 2.0
-                        buffered = BytesIO()
-                    else:
-                        break
-                return img
-        except Exception:
-            pass
     return None
 
 

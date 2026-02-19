@@ -14,12 +14,15 @@
 #  limitations under the License.
 #
 
+import time
+start_ts = time.time()
+
 import os
 import signal
 import logging
-import time
 import threading
 import traceback
+import faulthandler
 
 from flask import Flask
 from flask_login import LoginManager
@@ -37,6 +40,7 @@ from common.versions import get_ragflow_version
 stop_event = threading.Event()
 
 if __name__ == '__main__':
+    faulthandler.enable()
     init_root_logger("admin_service")
     logging.info(r"""
         ____  ___   ______________                 ___       __          _     
@@ -64,7 +68,7 @@ if __name__ == '__main__':
     SERVICE_CONFIGS.configs = load_configurations(SERVICE_CONF)
 
     try:
-        logging.info("RAGFlow Admin service start...")
+        logging.info(f"RAGFlow admin is ready after {time.time() - start_ts}s initialization.")
         run_simple(
             hostname="0.0.0.0",
             port=9381,

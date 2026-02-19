@@ -35,7 +35,6 @@ const {
   web_crawl,
   knowledge_graph,
   document_infos,
-  upload_and_parse,
   listTagByKnowledgeIds,
   setMeta,
   getMeta,
@@ -48,10 +47,11 @@ const {
   runRaptor,
   traceRaptor,
   check_embedding,
+  kbUpdateMetaData,
+  documentUpdateMetaData,
 } = api;
 
 const methods = {
-  // 知识库管理
   createKb: {
     url: create_kb,
     method: 'post',
@@ -158,10 +158,6 @@ const methods = {
     url: document_delete,
     method: 'delete',
   },
-  upload_and_parse: {
-    url: upload_and_parse,
-    method: 'post',
-  },
   listTagByKnowledgeIds: {
     url: listTagByKnowledgeIds,
     method: 'get',
@@ -220,6 +216,18 @@ const methods = {
     url: check_embedding,
     method: 'post',
   },
+  kbUpdateMetaData: {
+    url: kbUpdateMetaData,
+    method: 'post',
+  },
+  documentUpdateMetaData: {
+    url: documentUpdateMetaData,
+    method: 'post',
+  },
+  // getMetaData: {
+  //   url: getMetaData,
+  //   method: 'get',
+  // },
 };
 
 const kbService = registerServer<keyof typeof methods>(methods, request);
@@ -255,6 +263,23 @@ export const listDocument = (
 
 export const documentFilter = (kb_id: string) =>
   request.post(api.get_dataset_filter, { kb_id });
+
+export const getMetaDataService = ({
+  kb_id,
+  doc_ids,
+}: {
+  kb_id: string;
+  doc_ids?: string[];
+}) => request.post(api.getMetaData, { data: { kb_id, doc_ids } });
+export const updateMetaData = ({
+  kb_id,
+  doc_ids,
+  data,
+}: {
+  kb_id: string;
+  doc_ids?: string[];
+  data: any;
+}) => request.post(api.updateMetaData, { data: { kb_id, doc_ids, ...data } });
 
 export const listDataPipelineLogDocument = (
   params?: IFetchKnowledgeListRequestParams,

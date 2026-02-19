@@ -13,6 +13,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
+import asyncio
 import json
 import logging
 import random
@@ -22,7 +23,6 @@ from copy import deepcopy
 from datetime import datetime
 from io import BytesIO
 
-import trio
 import xxhash
 from peewee import fn, Case, JOIN
 
@@ -33,12 +33,13 @@ from api.db.db_models import DB, Document, Knowledgebase, Task, Tenant, UserTena
 from api.db.db_utils import bulk_insert_into_db
 from api.db.services.common_service import CommonService
 from api.db.services.knowledgebase_service import KnowledgebaseService
+from api.db.services.doc_metadata_service import DocMetadataService
 from common.misc_utils import get_uuid
 from common.time_utils import current_timestamp, get_format_time
 from common.constants import LLMType, ParserType, StatusEnum, TaskStatus, SVR_CONSUMER_GROUP_NAME
 from rag.nlp import rag_tokenizer, search
 from rag.utils.redis_conn import REDIS_CONN
-from rag.utils.doc_store_conn import OrderByExpr
+from common.doc_store.doc_store_base import OrderByExpr
 from common import settings
 
 
@@ -66,7 +67,6 @@ class DocumentService(CommonService):
             cls.model.progress_msg,
             cls.model.process_begin_at,
             cls.model.process_duration,
-            cls.model.meta_fields,
             cls.model.suffix,
             cls.model.run,
             cls.model.status,
@@ -79,7 +79,7 @@ class DocumentService(CommonService):
     @classmethod
     @DB.connection_context()
     def get_list(cls, kb_id, page_number, items_per_page,
-                 orderby, desc, keywords, id, name, suffix=None, run = None):
+                 orderby, desc, keywords, id, name, suffix=None, run = None, doc_ids=None):
         fields = cls.get_cls_model_fields()
         docs = cls.model.select(*[*fields, UserCanvas.title]).join(File2Document, on = (File2Document.document_id == cls.model.id))\
             .join(File, on = (File.id == File2Document.file_id))\
@@ -96,6 +96,8 @@ class DocumentService(CommonService):
             docs = docs.where(
                 fn.LOWER(cls.model.name).contains(keywords.lower())
             )
+        if doc_ids:
+            docs = docs.where(cls.model.id.in_(doc_ids))
         if suffix:
             docs = docs.where(cls.model.suffix.in_(suffix))
         if run:
@@ -107,7 +109,12 @@ class DocumentService(CommonService):
 
         count = docs.count()
         docs = docs.paginate(page_number, items_per_page)
-        return list(docs.dicts()), count
+
+        docs_list = list(docs.dicts())
+        metadata_map = DocMetadataService.get_metadata_for_documents(None, kb_id)
+        for doc in docs_list:
+            doc["meta_fields"] = metadata_map.get(doc["id"], {})
+        return docs_list, count
 
     @classmethod
     @DB.connection_context()
@@ -122,27 +129,29 @@ class DocumentService(CommonService):
 
     @classmethod
     @DB.connection_context()
-    def get_by_kb_id(cls, kb_id, page_number, items_per_page,
-                     orderby, desc, keywords, run_status, types, suffix):
+    def get_by_kb_id(cls, kb_id, page_number, items_per_page, orderby, desc, keywords, run_status, types, suffix, doc_ids=None, return_empty_metadata=False):
         fields = cls.get_cls_model_fields()
         if keywords:
-            docs = cls.model.select(*[*fields, UserCanvas.title.alias("pipeline_name"), User.nickname])\
-                .join(File2Document, on=(File2Document.document_id == cls.model.id))\
-                .join(File, on=(File.id == File2Document.file_id))\
-                .join(UserCanvas, on=(cls.model.pipeline_id == UserCanvas.id), join_type=JOIN.LEFT_OUTER)\
-                .join(User, on=(cls.model.created_by == User.id), join_type=JOIN.LEFT_OUTER)\
-                .where(
-                    (cls.model.kb_id == kb_id),
-                    (fn.LOWER(cls.model.name).contains(keywords.lower()))
-                )
+            docs = (
+                cls.model.select(*[*fields, UserCanvas.title.alias("pipeline_name"), User.nickname])
+                .join(File2Document, on=(File2Document.document_id == cls.model.id))
+                .join(File, on=(File.id == File2Document.file_id))
+                .join(UserCanvas, on=(cls.model.pipeline_id == UserCanvas.id), join_type=JOIN.LEFT_OUTER)
+                .join(User, on=(cls.model.created_by == User.id), join_type=JOIN.LEFT_OUTER)
+                .where((cls.model.kb_id == kb_id), (fn.LOWER(cls.model.name).contains(keywords.lower())))
+            )
         else:
-            docs = cls.model.select(*[*fields, UserCanvas.title.alias("pipeline_name"), User.nickname])\
-                .join(File2Document, on=(File2Document.document_id == cls.model.id))\
-                .join(UserCanvas, on=(cls.model.pipeline_id == UserCanvas.id), join_type=JOIN.LEFT_OUTER)\
-                .join(File, on=(File.id == File2Document.file_id))\
-                .join(User, on=(cls.model.created_by == User.id), join_type=JOIN.LEFT_OUTER)\
+            docs = (
+                cls.model.select(*[*fields, UserCanvas.title.alias("pipeline_name"), User.nickname])
+                .join(File2Document, on=(File2Document.document_id == cls.model.id))
+                .join(UserCanvas, on=(cls.model.pipeline_id == UserCanvas.id), join_type=JOIN.LEFT_OUTER)
+                .join(File, on=(File.id == File2Document.file_id))
+                .join(User, on=(cls.model.created_by == User.id), join_type=JOIN.LEFT_OUTER)
                 .where(cls.model.kb_id == kb_id)
+            )
 
+        if doc_ids:
+            docs = docs.where(cls.model.id.in_(doc_ids))
         if run_status:
             docs = docs.where(cls.model.run.in_(run_status))
         if types:
@@ -150,17 +159,28 @@ class DocumentService(CommonService):
         if suffix:
             docs = docs.where(cls.model.suffix.in_(suffix))
 
+        metadata_map = DocMetadataService.get_metadata_for_documents(None, kb_id)
+        doc_ids_with_metadata = set(metadata_map.keys())
+        if return_empty_metadata and doc_ids_with_metadata:
+            docs = docs.where(cls.model.id.not_in(doc_ids_with_metadata))
+
         count = docs.count()
         if desc:
             docs = docs.order_by(cls.model.getter_by(orderby).desc())
         else:
             docs = docs.order_by(cls.model.getter_by(orderby).asc())
 
-
         if page_number and items_per_page:
             docs = docs.paginate(page_number, items_per_page)
 
-        return list(docs.dicts()), count
+        docs_list = list(docs.dicts())
+        if return_empty_metadata:
+            for doc in docs_list:
+                doc["meta_fields"] = {}
+        else:
+            for doc in docs_list:
+                doc["meta_fields"] = metadata_map.get(doc["id"], {})
+        return docs_list, count
 
     @classmethod
     @DB.connection_context()
@@ -175,6 +195,16 @@ class DocumentService(CommonService):
             "run_status": {
              "1": 2,
              "2": 2
+            }
+            "metadata": {
+                "key1": {
+                 "key1_value1": 1,
+                 "key1_value2": 2,
+                },
+                "key2": {
+                 "key2_value1": 2,
+                 "key2_value2": 1,
+                },
             }
         }, total
         where "1" => RUNNING, "2" => CANCEL
@@ -196,19 +226,50 @@ class DocumentService(CommonService):
         if suffix:
             query = query.where(cls.model.suffix.in_(suffix))
 
-        rows = query.select(cls.model.run, cls.model.suffix)
+        rows = query.select(cls.model.run, cls.model.suffix, cls.model.id)
         total = rows.count()
 
         suffix_counter = {}
         run_status_counter = {}
+        metadata_counter = {}
+        empty_metadata_count = 0
+
+        doc_ids = [row.id for row in rows]
+        metadata = {}
+        if doc_ids:
+            try:
+                metadata = DocMetadataService.get_metadata_for_documents(doc_ids, kb_id)
+            except Exception as e:
+                logging.warning(f"Failed to fetch metadata from ES/Infinity: {e}")
 
         for row in rows:
             suffix_counter[row.suffix] = suffix_counter.get(row.suffix, 0) + 1
             run_status_counter[str(row.run)] = run_status_counter.get(str(row.run), 0) + 1
+            meta_fields = metadata.get(row.id, {})
+            if not meta_fields:
+                empty_metadata_count += 1
+                continue
+            has_valid_meta = False
+            for key, value in meta_fields.items():
+                values = value if isinstance(value, list) else [value]
+                for vv in values:
+                    if vv is None:
+                        continue
+                    if isinstance(vv, str) and not vv.strip():
+                        continue
+                    sv = str(vv)
+                    if key not in metadata_counter:
+                        metadata_counter[key] = {}
+                    metadata_counter[key][sv] = metadata_counter[key].get(sv, 0) + 1
+                    has_valid_meta = True
+            if not has_valid_meta:
+                empty_metadata_count += 1
 
+        metadata_counter["empty_metadata"] = {"true": empty_metadata_count}
         return {
             "suffix": suffix_counter,
-            "run_status": run_status_counter
+            "run_status": run_status_counter,
+            "metadata": metadata_counter,
         }, total
 
     @classmethod
@@ -299,30 +360,50 @@ class DocumentService(CommonService):
     @classmethod
     @DB.connection_context()
     def remove_document(cls, doc, tenant_id):
-        from api.db.services.task_service import TaskService
+        from api.db.services.task_service import TaskService, cancel_all_task_of
         cls.clear_chunk_num(doc.id)
+
+        # Cancel all running tasks first Using preset function in task_service.py ---  set cancel flag in Redis 
+        try:
+            cancel_all_task_of(doc.id)
+            logging.info(f"Cancelled all tasks for document {doc.id}")
+        except Exception as e:
+            logging.warning(f"Failed to cancel tasks for document {doc.id}: {e}")
+
+        # Delete tasks from database
         try:
             TaskService.filter_delete([Task.doc_id == doc.id])
-            page = 0
-            page_size = 1000
-            all_chunk_ids = []
-            while True:
-                chunks = settings.docStoreConn.search(["img_id"], [], {"doc_id": doc.id}, [], OrderByExpr(),
-                                                      page * page_size, page_size, search.index_name(tenant_id),
-                                                      [doc.kb_id])
-                chunk_ids = settings.docStoreConn.get_chunk_ids(chunks)
-                if not chunk_ids:
-                    break
-                all_chunk_ids.extend(chunk_ids)
-                page += 1
-            for cid in all_chunk_ids:
-                if settings.STORAGE_IMPL.obj_exist(doc.kb_id, cid):
-                    settings.STORAGE_IMPL.rm(doc.kb_id, cid)
+        except Exception as e:
+            logging.warning(f"Failed to delete tasks for document {doc.id}: {e}")
+
+        # Delete chunk images (non-critical, log and continue)
+        try:
+            cls.delete_chunk_images(doc, tenant_id)
+        except Exception as e:
+            logging.warning(f"Failed to delete chunk images for document {doc.id}: {e}")
+
+        # Delete thumbnail (non-critical, log and continue)
+        try:
             if doc.thumbnail and not doc.thumbnail.startswith(IMG_BASE64_PREFIX):
                 if settings.STORAGE_IMPL.obj_exist(doc.kb_id, doc.thumbnail):
                     settings.STORAGE_IMPL.rm(doc.kb_id, doc.thumbnail)
-            settings.docStoreConn.delete({"doc_id": doc.id}, search.index_name(tenant_id), doc.kb_id)
+        except Exception as e:
+            logging.warning(f"Failed to delete thumbnail for document {doc.id}: {e}")
 
+        # Delete chunks from doc store - this is critical, log errors
+        try:
+            settings.docStoreConn.delete({"doc_id": doc.id}, search.index_name(tenant_id), doc.kb_id)
+        except Exception as e:
+            logging.error(f"Failed to delete chunks from doc store for document {doc.id}: {e}")
+
+        # Delete document metadata (non-critical, log and continue)
+        try:
+            DocMetadataService.delete_document_metadata(doc.id)
+        except Exception as e:
+            logging.warning(f"Failed to delete metadata for document {doc.id}: {e}")
+
+        # Cleanup knowledge graph references (non-critical, log and continue)
+        try:
             graph_source = settings.docStoreConn.get_fields(
                 settings.docStoreConn.search(["source_id"], [], {"kb_id": doc.kb_id, "knowledge_graph_kwd": ["graph"]}, [], OrderByExpr(), 0, 1, search.index_name(tenant_id), [doc.kb_id]), ["source_id"]
             )
@@ -335,9 +416,27 @@ class DocumentService(CommonService):
                                              search.index_name(tenant_id), doc.kb_id)
                 settings.docStoreConn.delete({"kb_id": doc.kb_id, "knowledge_graph_kwd": ["entity", "relation", "graph", "subgraph", "community_report"], "must_not": {"exists": "source_id"}},
                                              search.index_name(tenant_id), doc.kb_id)
-        except Exception:
-            pass
+        except Exception as e:
+            logging.warning(f"Failed to cleanup knowledge graph for document {doc.id}: {e}")
+
         return cls.delete_by_id(doc.id)
+
+    @classmethod
+    @DB.connection_context()
+    def delete_chunk_images(cls, doc, tenant_id):
+        page = 0
+        page_size = 1000
+        while True:
+            chunks = settings.docStoreConn.search(["img_id"], [], {"doc_id": doc.id}, [], OrderByExpr(),
+                                                  page * page_size, page_size, search.index_name(tenant_id),
+                                                  [doc.kb_id])
+            chunk_ids = settings.docStoreConn.get_doc_ids(chunks)
+            if not chunk_ids:
+                break
+            for cid in chunk_ids:
+                if settings.STORAGE_IMPL.obj_exist(doc.kb_id, cid):
+                    settings.STORAGE_IMPL.rm(doc.kb_id, cid)
+            page += 1
 
     @classmethod
     @DB.connection_context()
@@ -381,6 +480,7 @@ class DocumentService(CommonService):
             .where(
             cls.model.status == StatusEnum.VALID.value,
             ~(cls.model.type == FileType.VIRTUAL.value),
+            ((cls.model.run.is_null(True)) | (cls.model.run != TaskStatus.CANCEL.value)),
             (((cls.model.progress < 1) & (cls.model.progress > 0)) |
              (cls.model.id.in_(unfinished_task_query)))) # including unfinished tasks like GraphRAG, RAPTOR and Mindmap
         return list(docs.dicts())
@@ -603,8 +703,7 @@ class DocumentService(CommonService):
                 if k not in old:
                     old[k] = v
                     continue
-                if isinstance(v, dict):
-                    assert isinstance(old[k], dict)
+                if isinstance(v, dict) and isinstance(old[k], dict):
                     dfs_update(old[k], v)
                 else:
                     old[k] = v
@@ -635,30 +734,6 @@ class DocumentService(CommonService):
             # keep the doc in DONE state when keep_progress=True for GraphRAG, RAPTOR and Mindmap tasks
 
         cls.update_by_id(doc_id, info)
-
-    @classmethod
-    @DB.connection_context()
-    def update_meta_fields(cls, doc_id, meta_fields):
-        return cls.update_by_id(doc_id, {"meta_fields": meta_fields})
-
-    @classmethod
-    @DB.connection_context()
-    def get_meta_by_kbs(cls, kb_ids):
-        fields = [
-            cls.model.id,
-            cls.model.meta_fields,
-        ]
-        meta = {}
-        for r in cls.model.select(*fields).where(cls.model.kb_id.in_(kb_ids)):
-            doc_id = r.id
-            for k,v in r.meta_fields.items():
-                if k not in meta:
-                    meta[k] = {}
-                v = str(v)
-                if v not in meta[k]:
-                    meta[k][v] = []
-                meta[k][v].append(doc_id)
-        return meta
 
     @classmethod
     @DB.connection_context()
@@ -693,6 +768,8 @@ class DocumentService(CommonService):
                 bad = 0
                 e, doc = DocumentService.get_by_id(d["id"])
                 status = doc.run  # TaskStatus.RUNNING.value
+                if status == TaskStatus.CANCEL.value:
+                    continue
                 doc_progress = doc.progress if doc and doc.progress else 0.0
                 special_task_running = False
                 priority = 0
@@ -719,10 +796,14 @@ class DocumentService(CommonService):
                 # only for special task and parsed docs and unfinished
                 freeze_progress = special_task_running and doc_progress >= 1 and not finished
                 msg = "\n".join(sorted(msg))
+                begin_at = d.get("process_begin_at")
+                if not begin_at:
+                    begin_at = datetime.now()
+                    # fallback
+                    cls.update_by_id(d["id"], {"process_begin_at": begin_at})
+
                 info = {
-                    "process_duration": datetime.timestamp(
-                        datetime.now()) -
-                                       d["process_begin_at"].timestamp(),
+                    "process_duration": max(datetime.timestamp(datetime.now()) - begin_at.timestamp(), 0),
                     "run": status}
                 if prg != 0 and not freeze_progress:
                     info["progress"] = prg
@@ -732,7 +813,16 @@ class DocumentService(CommonService):
                         info["progress_msg"] += "\n%d tasks are ahead in the queue..."%get_queue_length(priority)
                 else:
                     info["progress_msg"] = "%d tasks are ahead in the queue..."%get_queue_length(priority)
-                cls.update_by_id(d["id"], info)
+                info["update_time"] = current_timestamp()
+                info["update_date"] = get_format_time()
+                (
+                    cls.model.update(info)
+                    .where(
+                        (cls.model.id == d["id"])
+                        & ((cls.model.run.is_null(True)) | (cls.model.run != TaskStatus.CANCEL.value))
+                    )
+                    .execute()
+                )
             except Exception as e:
                 if str(e).find("'0'") < 0:
                     logging.exception("fetch task exception")
@@ -765,7 +855,7 @@ class DocumentService(CommonService):
     @classmethod
     @DB.connection_context()
     def knowledgebase_basic_info(cls, kb_id: str) -> dict[str, int]:
-        # cancelled: run == "2" but progress can vary
+        # cancelled: run == "2"
         cancelled = (
             cls.model.select(fn.COUNT(1))
             .where((cls.model.kb_id == kb_id) & (cls.model.run == TaskStatus.CANCEL))
@@ -902,12 +992,12 @@ def doc_upload_and_parse(conversation_id, file_objs, user_id):
 
     e, dia = DialogService.get_by_id(conv.dialog_id)
     if not dia.kb_ids:
-        raise LookupError("No knowledge base associated with this conversation. "
-                          "Please add a knowledge base before uploading documents")
+        raise LookupError("No dataset associated with this conversation. "
+                          "Please add a dataset before uploading documents")
     kb_id = dia.kb_ids[0]
     e, kb = KnowledgebaseService.get_by_id(kb_id)
     if not e:
-        raise LookupError("Can't find this knowledgebase!")
+        raise LookupError("Can't find this dataset!")
 
     embd_mdl = LLMBundle(kb.tenant_id, LLMType.EMBEDDING, llm_name=kb.embd_id, lang=kb.language)
 
@@ -923,7 +1013,7 @@ def doc_upload_and_parse(conversation_id, file_objs, user_id):
         ParserType.AUDIO.value: audio,
         ParserType.EMAIL.value: email
     }
-    parser_config = {"chunk_token_num": 4096, "delimiter": "\n!?;。；！？", "layout_recognize": "Plain Text"}
+    parser_config = {"chunk_token_num": 4096, "delimiter": "\n!?;。；！？", "layout_recognize": "Plain Text", "table_context_size": 0, "image_context_size": 0}
     exe = ThreadPoolExecutor(max_workers=12)
     threads = []
     doc_nm = {}
@@ -992,10 +1082,10 @@ def doc_upload_and_parse(conversation_id, file_objs, user_id):
         cks = [c for c in docs if c["doc_id"] == doc_id]
 
         if parser_ids[doc_id] != ParserType.PICTURE.value:
-            from graphrag.general.mind_map_extractor import MindMapExtractor
+            from rag.graphrag.general.mind_map_extractor import MindMapExtractor
             mindmap = MindMapExtractor(llm_bdl)
             try:
-                mind_map = trio.run(mindmap, [c["content_with_weight"] for c in docs if c["doc_id"] == doc_id])
+                mind_map = asyncio.run(mindmap([c["content_with_weight"] for c in docs if c["doc_id"] == doc_id]))
                 mind_map = json.dumps(mind_map.output, ensure_ascii=False, indent=2)
                 if len(mind_map) < 32:
                     raise Exception("Few content: " + mind_map)
@@ -1019,8 +1109,8 @@ def doc_upload_and_parse(conversation_id, file_objs, user_id):
             d["q_%d_vec" % len(v)] = v
         for b in range(0, len(cks), es_bulk_size):
             if try_create_idx:
-                if not settings.docStoreConn.indexExist(idxnm, kb_id):
-                    settings.docStoreConn.createIdx(idxnm, kb_id, len(vectors[0]))
+                if not settings.docStoreConn.index_exist(idxnm, kb_id):
+                    settings.docStoreConn.create_idx(idxnm, kb_id, len(vectors[0]), kb.parser_id)
                 try_create_idx = False
             settings.docStoreConn.insert(cks[b:b + es_bulk_size], idxnm, kb_id)
 
