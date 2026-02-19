@@ -206,15 +206,12 @@ COPY docker/entrypoint.sh ./
 RUN chmod +x ./entrypoint*.sh
 
 # Install PaddleOCR into the virtual environment
-# This is needed because the base stage installs to system Python,
-# but the app runs in a virtual environment
-ARG NEED_MIRROR=0
 ARG ENABLE_PADDLEOCR="1"
 RUN if [ "$ENABLE_PADDLEOCR" = "1" ]; then \
-        pip install --no-cache-dir \
+        uv pip install --no-cache \
             "paddlepaddle==3.2.2" \
             -i https://www.paddlepaddle.org.cn/packages/stable/cpu/ && \
-        pip install --no-cache-dir \
+        uv pip install --no-cache \
             "paddleocr>=2.7.0" && \
         # Install PaddleX high-performance inference dependencies for CPU
         paddleocr install_hpi_deps cpu && \
