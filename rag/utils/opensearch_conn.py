@@ -102,6 +102,22 @@ class OSConnection(DocStoreConnection):
         except Exception:
             logger.exception("OSConnection.createIndex error %s" % (indexName))
 
+    def create_doc_meta_idx(self, index_name: str):
+        if self.index_exist(index_name, ""):
+            return True
+        try:
+            from opensearchpy.client import IndicesClient
+            fp_mapping = os.path.join(get_project_base_directory(), "conf", "doc_meta_os_mapping.json")
+            if not os.path.exists(fp_mapping):
+                logger.error(f"Document metadata mapping file not found at {fp_mapping}")
+                return False
+            with open(fp_mapping, "r") as f:
+                doc_meta_mapping = json.load(f)
+            return IndicesClient(self.os).create(index=index_name, body=doc_meta_mapping)
+        except Exception:
+            logger.exception(f"OSConnection.create_doc_meta_idx error {index_name}")
+            return False
+
     def delete_idx(self, indexName: str, knowledgebaseId: str):
         if len(knowledgebaseId) > 0:
             # The index need to be alive after any kb deletion since all kb under this tenant are in one index.

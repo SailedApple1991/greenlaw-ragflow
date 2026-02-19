@@ -24,7 +24,6 @@ from typing import Callable
 import networkx as nx
 
 from api.db.services.task_service import has_canceled
-from common.connection_utils import timeout
 from common.token_utils import truncate
 from rag.graphrag.general.graph_prompt import SUMMARIZE_DESCRIPTIONS_PROMPT
 from rag.graphrag.utils import (
@@ -38,10 +37,11 @@ from rag.graphrag.utils import (
     set_llm_cache,
     split_string_by_multi_markers,
 )
-from common.misc_utils import thread_pool_exec
 from rag.llm.chat_model import Base as CompletionLLM
 from rag.prompts.generator import message_fit_in
 from common.exceptions import TaskCanceledException
+
+_CHAT_TIMEOUT = 60 * 20  # 20 minutes
 
 GRAPH_FIELD_SEP = "<SEP>"
 DEFAULT_ENTITY_TYPES = ["organization", "person", "geo", "event", "category"]
@@ -62,8 +62,7 @@ class Extractor:
         self._language = language
         self._entity_types = entity_types or DEFAULT_ENTITY_TYPES
 
-    @timeout(60 * 20)
-    def _chat(self, system, history, gen_conf={}, task_id=""):
+    async def _chat(self, system, history, gen_conf={}, task_id=""):
         hist = deepcopy(history)
         conf = deepcopy(gen_conf)
         response = get_llm_cache(self._llm.llm_name, system, hist, conf)
@@ -77,12 +76,19 @@ class Extractor:
                     logging.info(f"Task {task_id} cancelled during entity resolution candidate processing.")
                     raise TaskCanceledException(f"Task {task_id} was cancelled")
             try:
-                response = asyncio.run(self._llm.async_chat(system_msg[0]["content"], hist, conf))
-                response = re.sub(r"^.*</think>", "", response[0], flags=re.DOTALL)
+                result = await asyncio.wait_for(
+                    self._llm.async_chat(system_msg[0]["content"], hist, conf),
+                    timeout=_CHAT_TIMEOUT,
+                )
+                response = re.sub(r"^.*</think>", "", result[0], flags=re.DOTALL)
                 if response.find("**ERROR**") >= 0:
                     raise Exception(response)
                 set_llm_cache(self._llm.llm_name, system, response, history, gen_conf)
                 break
+            except asyncio.TimeoutError:
+                logging.warning(f"_chat timeout on attempt {attempt + 1}/3")
+                if attempt == 2:
+                    raise TimeoutError(f"_chat timed out after 3 attempts of {_CHAT_TIMEOUT}s each")
             except Exception as e:
                 logging.exception(e)
                 if attempt == 2:
@@ -94,17 +100,43 @@ class Extractor:
         maybe_nodes = defaultdict(list)
         maybe_edges = defaultdict(list)
         ent_types = [t.lower() for t in self._entity_types]
+        entity_parse_fail = 0
+        entity_type_mismatch = 0
+        relation_parse_fail = 0
         for record in records:
             record_attributes = split_string_by_multi_markers(record, [tuple_delimiter])
 
             if_entities = handle_single_entity_extraction(record_attributes, chunk_key)
-            if if_entities is not None and if_entities.get("entity_type", "unknown").lower() in ent_types:
-                maybe_nodes[if_entities["entity_name"]].append(if_entities)
-                continue
+            if if_entities is not None:
+                if if_entities.get("entity_type", "unknown").lower() in ent_types:
+                    maybe_nodes[if_entities["entity_name"]].append(if_entities)
+                    continue
+                else:
+                    entity_type_mismatch += 1
+                    continue
 
             if_relation = handle_single_relationship_extraction(record_attributes, chunk_key)
             if if_relation is not None:
                 maybe_edges[(if_relation["src_id"], if_relation["tgt_id"])].append(if_relation)
+            else:
+                # Neither entity nor relation - log first few failures for debugging
+                if entity_parse_fail + relation_parse_fail < 3:
+                    logging.debug(
+                        f"Record parse fail: attrs={record_attributes[:5]}, "
+                        f"tuple_delim='{tuple_delimiter}', raw='{record[:200]}'"
+                    )
+                entity_parse_fail += 1
+
+        if not maybe_nodes and not maybe_edges:
+            logging.warning(
+                f"0 entities/relations from {len(records)} records. "
+                f"entity_type_mismatch={entity_type_mismatch}, parse_fail={entity_parse_fail}, "
+                f"configured_types={ent_types[:10]}{'...' if len(ent_types) > 10 else ''}"
+            )
+        elif entity_type_mismatch > 0:
+            logging.info(
+                f"Entity type mismatch: {entity_type_mismatch}/{len(records)} records had unrecognized types"
+            )
         return dict(maybe_nodes), dict(maybe_edges)
 
     async def __call__(self, doc_id: str, chunks: list[str], callback: Callable | None = None, task_id: str = ""):
@@ -340,5 +372,5 @@ class Extractor:
             raise TaskCanceledException(f"Task {task_id} was cancelled during summary handling")
 
         async with chat_limiter:
-            summary = await thread_pool_exec(self._chat, "", [{"role": "user", "content": use_prompt}], {}, task_id)
+            summary = await self._chat("", [{"role": "user", "content": use_prompt}], {}, task_id)
         return summary
