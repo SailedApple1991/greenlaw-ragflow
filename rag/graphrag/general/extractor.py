@@ -88,7 +88,7 @@ class Extractor:
                     self._llm.async_chat(system_msg[0]["content"], hist, conf, **kwargs),
                     timeout=_CHAT_TIMEOUT,
                 )
-                response = re.sub(r"^.*</think>", "", result[0], flags=re.DOTALL)
+                response = re.sub(r"^.*</think>", "", result, flags=re.DOTALL)
                 if response.find("**ERROR**") >= 0:
                     raise Exception(response)
                 set_llm_cache(self._llm.llm_name, system, response, history, gen_conf)
