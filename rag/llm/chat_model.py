@@ -459,13 +459,20 @@ class Base(ABC):
             return final_ans.strip(), tol_token
 
         if self.model_name.lower().find("qwen3") >= 0:
-            kwargs["extra_body"] = {"enable_thinking": False}
+            # Disable thinking for both standard OpenAI-compatible and vLLM backends
+            kwargs["extra_body"] = {
+                "enable_thinking": False,
+                "chat_template_kwargs": {"enable_thinking": False},
+            }
 
         response = await self.async_client.chat.completions.create(model=self.model_name, messages=history, **gen_conf, **kwargs)
 
         if not response.choices or not response.choices[0].message or not response.choices[0].message.content:
             return "", 0
         ans = response.choices[0].message.content.strip()
+        # Strip any residual <think> blocks if thinking disable was ignored by the API
+        if "<think>" in ans and "</think>" in ans:
+            ans = re.sub(r"<think>.*?</think>", "", ans, flags=re.DOTALL).strip()
         if response.choices[0].finish_reason == "length":
             ans = self._length_stop(ans)
         return ans, total_token_count_from_response(response)
@@ -1215,7 +1222,10 @@ class LiteLLMBase(ABC):
 
         logging.info("[HISTORY]" + json.dumps(hist, ensure_ascii=False, indent=2))
         if self.model_name.lower().find("qwen3") >= 0:
-            kwargs["extra_body"] = {"enable_thinking": False}
+            kwargs["extra_body"] = {
+                "enable_thinking": False,
+                "chat_template_kwargs": {"enable_thinking": False},
+            }
 
         completion_args = self._construct_completion_args(history=hist, stream=False, tools=False, **{**gen_conf, **kwargs})
 
@@ -1230,6 +1240,9 @@ class LiteLLMBase(ABC):
                 if any([not response.choices, not response.choices[0].message, not response.choices[0].message.content]):
                     return "", 0
                 ans = response.choices[0].message.content.strip()
+                # Strip any residual <think> blocks if thinking disable was ignored
+                if "<think>" in ans and "</think>" in ans:
+                    ans = re.sub(r"<think>.*?</think>", "", ans, flags=re.DOTALL).strip()
                 if response.choices[0].finish_reason == "length":
                     ans = self._length_stop(ans)
 
