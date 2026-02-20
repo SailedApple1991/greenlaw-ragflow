@@ -69,6 +69,14 @@ class Extractor:
         if response:
             return response
         _, system_msg = message_fit_in([{"role": "system", "content": system}], int(self._llm.max_length * 0.92))
+        # Disable thinking mode for Qwen3 during extraction to avoid
+        # wasting tokens on <think> reasoning instead of structured output
+        kwargs = {}
+        if self._llm.model_name.lower().find("qwen3") >= 0:
+            kwargs["extra_body"] = {
+                "enable_thinking": False,
+                "chat_template_kwargs": {"enable_thinking": False},
+            }
         response = ""
         for attempt in range(3):
             if task_id:
@@ -77,7 +85,7 @@ class Extractor:
                     raise TaskCanceledException(f"Task {task_id} was cancelled")
             try:
                 result = await asyncio.wait_for(
-                    self._llm.async_chat(system_msg[0]["content"], hist, conf),
+                    self._llm.async_chat(system_msg[0]["content"], hist, conf, **kwargs),
                     timeout=_CHAT_TIMEOUT,
                 )
                 response = re.sub(r"^.*</think>", "", result[0], flags=re.DOTALL)

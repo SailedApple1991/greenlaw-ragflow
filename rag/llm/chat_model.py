@@ -458,13 +458,6 @@ class Base(ABC):
 
             return final_ans.strip(), tol_token
 
-        if self.model_name.lower().find("qwen3") >= 0:
-            # Disable thinking for both standard OpenAI-compatible and vLLM backends
-            kwargs["extra_body"] = {
-                "enable_thinking": False,
-                "chat_template_kwargs": {"enable_thinking": False},
-            }
-
         response = await self.async_client.chat.completions.create(model=self.model_name, messages=history, **gen_conf, **kwargs)
 
         if not response.choices or not response.choices[0].message or not response.choices[0].message.content:
@@ -1221,11 +1214,6 @@ class LiteLLMBase(ABC):
                 hist.insert(0, {"role": "system", "content": system})
 
         logging.info("[HISTORY]" + json.dumps(hist, ensure_ascii=False, indent=2))
-        if self.model_name.lower().find("qwen3") >= 0:
-            kwargs["extra_body"] = {
-                "enable_thinking": False,
-                "chat_template_kwargs": {"enable_thinking": False},
-            }
 
         completion_args = self._construct_completion_args(history=hist, stream=False, tools=False, **{**gen_conf, **kwargs})
 
