@@ -72,7 +72,7 @@ class Extractor:
         # Disable thinking mode for Qwen3 during extraction to avoid
         # wasting tokens on <think> reasoning instead of structured output
         kwargs = {}
-        if self._llm.model_name.lower().find("qwen3") >= 0:
+        if self._llm.llm_name.lower().find("qwen3") >= 0:
             kwargs["extra_body"] = {
                 "enable_thinking": False,
                 "chat_template_kwargs": {"enable_thinking": False},
