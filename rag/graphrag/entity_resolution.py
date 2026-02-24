@@ -158,23 +158,12 @@ class EntityResolution(Extractor):
         connect_graph = nx.Graph()
         connect_graph.add_edges_from(resolution_result)
 
-        async def limited_merge_nodes(graph, nodes, change):
-            async with semaphore:
-                await self._merge_graph_nodes(graph, nodes, change, task_id)
-
-        tasks = []
+        # Merge sequentially: connected components in connect_graph can share
+        # neighbors in the main graph, so concurrent merges cause
+        # "dictionary changed size during iteration" at await yield points.
         for sub_connect_graph in nx.connected_components(connect_graph):
             merging_nodes = list(sub_connect_graph)
-            tasks.append(asyncio.create_task(limited_merge_nodes(graph, merging_nodes, change))
-            )
-        try:
-            await asyncio.gather(*tasks, return_exceptions=False)
-        except Exception as e:
-            logging.error(f"Error merging nodes: {e}")
-            for t in tasks:
-                t.cancel()
-            await asyncio.gather(*tasks, return_exceptions=True)
-            raise
+            await self._merge_graph_nodes(graph, merging_nodes, change, task_id)
 
         # Update pagerank
         pr = nx.pagerank(graph)
