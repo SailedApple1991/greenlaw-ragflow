@@ -29,7 +29,7 @@ from common.decorator import singleton
 from common.doc_store.doc_store_base import DocStoreConnection, MatchExpr, OrderByExpr, MatchTextExpr, MatchDenseExpr, FusionExpr
 from common.float_utils import get_float
 from common.constants import PAGERANK_FLD, TAG_FLD
-from common.utils import get_project_base_directory
+from common.file_utils import get_project_base_directory
 from rag.nlp.rag_tokenizer import tokenize, fine_grained_tokenize
 from common import settings
 
