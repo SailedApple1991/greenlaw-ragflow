@@ -37,7 +37,7 @@ TITLE_TAGS = {"h1": "#", "h2": "##", "h3": "###", "h4": "#####", "h5": "#####", 
 
 
 class RAGFlowHtmlParser:
-    def __call__(self, fnm, binary=None, chunk_token_num=512):
+    def __call__(self, fnm, binary=None, chunk_token_num=1024):
         if binary:
             encoding = find_codec(binary)
             txt = binary.decode(encoding, errors="ignore")
@@ -76,7 +76,7 @@ class RAGFlowHtmlParser:
         return sections
 
     @classmethod
-    def split_table(cls, html_table, chunk_token_num=512):
+    def split_table(cls, html_table, chunk_token_num=1024):
         soup = BeautifulSoup(html_table, "html.parser")
         rows = soup.find_all("tr")
         tables = []
@@ -104,7 +104,7 @@ class RAGFlowHtmlParser:
         return table_str_list
 
     @classmethod
-    def read_text_recursively(cls, element, parser_result, chunk_token_num=512, parent_name=None, block_id=None):
+    def read_text_recursively(cls, element, parser_result, chunk_token_num=1024, parent_name=None, block_id=None):
         if isinstance(element, NavigableString):
             content = element.strip()
 
@@ -177,7 +177,7 @@ class RAGFlowHtmlParser:
         return block_content, table_info_list
 
     @classmethod
-    def chunk_block(cls, block_txt_list, chunk_token_num=512):
+    def chunk_block(cls, block_txt_list, chunk_token_num=1024):
         chunks = []
         current_block = ""
         current_token_count = 0

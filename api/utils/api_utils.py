@@ -372,7 +372,7 @@ def get_parser_config(chunk_method, parser_config):
     key_mapping = {
         "naive": {
             "layout_recognize": "DeepDOC",
-            "chunk_token_num": 512,
+            "chunk_token_num": 1024,
             "delimiter": "\n",
             "auto_keywords": 0,
             "auto_questions": 0,
