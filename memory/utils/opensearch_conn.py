@@ -30,6 +30,8 @@ from common.doc_store.doc_store_base import DocStoreConnection, MatchExpr, Order
 from common.float_utils import get_float
 from common.constants import PAGERANK_FLD, TAG_FLD
 from common.file_utils import get_project_base_directory
+from rag.nlp import is_english
+from rag.nlp import rag_tokenizer
 from rag.nlp.rag_tokenizer import tokenize, fine_grained_tokenize
 from common import settings
 
@@ -623,6 +625,73 @@ class OSConnection(DocStoreConnection):
                 if re.search(r"(not_found)", str(e), re.IGNORECASE):
                     return 0
         return 0
+
+    def get_highlight(self, res, keywords: list[str], field_name: str):
+        ans = {}
+        for d in res["hits"]["hits"]:
+            highlights = d.get("highlight")
+            if not highlights:
+                continue
+            txt = "...".join([a for a in list(highlights.items())[0][1]])
+            if not is_english(txt.split()):
+                ans[d["_id"]] = txt
+                continue
+
+            txt = d["_source"][field_name]
+            txt = re.sub(r"[\r\n]", " ", txt, flags=re.IGNORECASE | re.MULTILINE)
+            txt_list = []
+            for t in re.split(r"[.?!;\n]", txt):
+                for w in keywords:
+                    t = re.sub(r"(^|[ .?/'\"\(\)!,:;-])(%s)([ .?/'\"\(\)!,:;-])" % re.escape(w), r"\1<em>\2</em>\3", t,
+                               flags=re.IGNORECASE | re.MULTILINE)
+                if not re.search(r"<em>[^<>]+</em>", t, flags=re.IGNORECASE | re.MULTILINE):
+                    continue
+                txt_list.append(t)
+            ans[d["_id"]] = "...".join(txt_list) if txt_list else "...".join([a for a in list(highlights.items())[0][1]])
+        return ans
+
+    def get_aggregation(self, res, field_name: str):
+        agg_field = "aggs_" + field_name
+        if "aggregations" not in res or agg_field not in res["aggregations"]:
+            return list()
+        buckets = res["aggregations"][agg_field]["buckets"]
+        return [(b["key"], b["doc_count"]) for b in buckets]
+
+    def sql(self, sql: str, fetch_size: int, format: str):
+        logger.debug(f"OSConnection.sql get sql: {sql}")
+        sql = re.sub(r"[ `]+", " ", sql)
+        sql = sql.replace("%", "")
+        replaces = []
+        for r in re.finditer(r" ([a-z_]+_l?tks)( like | ?= ?)'([^']+)'", sql):
+            fld, v = r.group(1), r.group(3)
+            match = " MATCH({}, '{}', 'operator=OR;minimum_should_match=30%') ".format(
+                fld, rag_tokenizer.fine_grained_tokenize(rag_tokenizer.tokenize(v)))
+            replaces.append(
+                ("{}{}'{}'".format(
+                    r.group(1),
+                    r.group(2),
+                    r.group(3)),
+                 match))
+        for p, r in replaces:
+            sql = sql.replace(p, r, 1)
+        logger.debug(f"OSConnection.sql to os: {sql}")
+        for i in range(ATTEMPT_TIME):
+            try:
+                res = self.os.transport.perform_request(
+                    "POST", "/_plugins/_sql",
+                    body={"query": sql, "fetch_size": fetch_size},
+                    params={"format": format})
+                return res
+            except ConnectionTimeout:
+                logger.exception("OpenSearch request timeout")
+                time.sleep(3)
+                self._connect()
+                continue
+            except Exception as e:
+                logger.exception(f"OSConnection.sql got exception. SQL:\n{sql}")
+                raise Exception(f"SQL error: {e}\n\nSQL: {sql}")
+        logger.error(f"OSConnection.sql timeout for {ATTEMPT_TIME} times!")
+        return None
 
     """
     Helper functions for search result
