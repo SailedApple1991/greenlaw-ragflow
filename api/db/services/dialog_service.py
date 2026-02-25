@@ -567,8 +567,11 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             await task
 
         else:
-            if embd_mdl:
-                kbinfos = await retriever.retrieval(
+            # Run independent retrieval operations in parallel
+            async def _vector_retrieval():
+                if not embd_mdl:
+                    return {"total": 0, "chunks": [], "doc_aggs": []}
+                result = await retriever.retrieval(
                     " ".join(questions),
                     embd_mdl,
                     tenant_ids,
@@ -584,20 +587,35 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
                     rank_feature=label_question(" ".join(questions), kbs),
                 )
                 if prompt_config.get("toc_enhance"):
-                    cks = await retriever.retrieval_by_toc(" ".join(questions), kbinfos["chunks"], tenant_ids, chat_mdl, dialog.top_n)
+                    cks = await retriever.retrieval_by_toc(" ".join(questions), result["chunks"], tenant_ids, chat_mdl, dialog.top_n)
                     if cks:
-                        kbinfos["chunks"] = cks
-                kbinfos["chunks"] = retriever.retrieval_by_children(kbinfos["chunks"], tenant_ids)
-            if prompt_config.get("tavily_api_key"):
+                        result["chunks"] = cks
+                result["chunks"] = retriever.retrieval_by_children(result["chunks"], tenant_ids)
+                return result
+
+            async def _kg_retrieval():
+                if not prompt_config.get("use_kg"):
+                    return None
+                return await settings.kg_retriever.retrieval(
+                    " ".join(questions), tenant_ids, dialog.kb_ids, embd_mdl,
+                    LLMBundle(dialog.tenant_id, LLMType.CHAT))
+
+            async def _tavily_retrieval():
+                if not prompt_config.get("tavily_api_key"):
+                    return None
                 tav = Tavily(prompt_config["tavily_api_key"])
-                tav_res = tav.retrieve_chunks(" ".join(questions))
-                kbinfos["chunks"].extend(tav_res["chunks"])
-                kbinfos["doc_aggs"].extend(tav_res["doc_aggs"])
-            if prompt_config.get("use_kg"):
-                ck = await settings.kg_retriever.retrieval(" ".join(questions), tenant_ids, dialog.kb_ids, embd_mdl,
-                                                       LLMBundle(dialog.tenant_id, LLMType.CHAT))
-                if ck["content_with_weight"]:
-                    kbinfos["chunks"].insert(0, ck)
+                return tav.retrieve_chunks(" ".join(questions))
+
+            vector_result, kg_result, tavily_result = await asyncio.gather(
+                _vector_retrieval(), _kg_retrieval(), _tavily_retrieval()
+            )
+
+            kbinfos = vector_result
+            if tavily_result:
+                kbinfos["chunks"].extend(tavily_result["chunks"])
+                kbinfos["doc_aggs"].extend(tavily_result["doc_aggs"])
+            if kg_result and kg_result.get("content_with_weight"):
+                kbinfos["chunks"].insert(0, kg_result)
 
     knowledges = kb_prompt(kbinfos, max_tokens)
     logging.debug("{}->{}".format(" ".join(questions), "\n->".join(knowledges)))
@@ -1204,7 +1222,7 @@ def _next_think_delta(state: _ThinkStreamState) -> str:
     return re.sub(r"(<think>|</think>)", "", delta_ans)
 
 
-async def _stream_with_think_delta(stream_iter, min_tokens: int = 16):
+async def _stream_with_think_delta(stream_iter, min_tokens: int = 1):
     state = _ThinkStreamState()
     async for chunk in stream_iter:
         if not chunk:
