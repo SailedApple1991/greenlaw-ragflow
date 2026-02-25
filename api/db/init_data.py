@@ -174,9 +174,13 @@ def init_web_data():
     #    init_superuser()
 
     add_graph_templates()
-    init_message_id_sequence()
-    init_memory_size_cache()
-    fix_missing_tokenized_memory()
+    if settings.msgStoreConn is not None:
+        init_message_id_sequence()
+        init_memory_size_cache()
+        fix_missing_tokenized_memory()
+    else:
+        logging.warning("msgStoreConn is not initialized (Memory feature not supported for DOC_ENGINE=%s), "
+                        "skipping memory initialization.", settings.DOC_ENGINE)
     logging.info("init web data success:{}".format(time.time() - start_time))
 
 def init_table():
