@@ -73,9 +73,8 @@ export function ChatSettings({ hasSingleChatBox }: ChatSettingsProps) {
       'llm_setting.',
     );
 
-    // Extract llm_id from llm_setting to top level (backend expects llm_id at root)
-    if (nextValues.llm_setting?.llm_id) {
-      nextValues.llm_id = nextValues.llm_setting.llm_id;
+    // Clean up llm_id from llm_setting (it belongs at root level, not nested)
+    if (nextValues.llm_setting) {
       delete nextValues.llm_setting.llm_id;
     }
 
