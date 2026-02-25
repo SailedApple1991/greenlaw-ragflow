@@ -126,7 +126,7 @@ class DocMetadataService:
 
         # Check if ES format (has 'hits' key)
         # Note: ES returns ObjectApiResponse which is dict-like but not isinstance(dict)
-        elif hasattr(results, 'get') and 'hits' in results:
+        elif hasattr(results, '__getitem__') and 'hits' in results:
             # ES format: {"hits": {"hits": [{"_source": {...}, "_id": "..."}]}}
             hits = results.get('hits', {}).get('hits', [])
             for hit in hits:
@@ -157,14 +157,14 @@ class DocMetadataService:
                     yield doc_id, doc
 
     @classmethod
-    def _search_metadata(cls, kb_id: str, condition: Dict = None):
+    def _search_metadata(cls, kb_id: str, condition: Dict = None, limit: int = 10000):
         """
         Common search logic for metadata queries.
-        Uses pagination internally to retrieve ALL data from the index.
 
         Args:
             kb_id: Knowledge base ID
             condition: Optional search condition (defaults to {"kb_id": kb_id})
+            limit: Max results to return
 
         Returns:
             Search results from ES/Infinity, or empty list if index doesn't exist
@@ -190,78 +190,17 @@ class DocMetadataService:
 
         order_by = OrderByExpr()
 
-        page_size = 1000
-        all_results = []
-        page = 0
-
-        while True:
-            results = settings.docStoreConn.search(
-                select_fields=["*"],
-                highlight_fields=[],
-                condition=condition,
-                match_expressions=[],
-                order_by=order_by,
-                offset=page * page_size,
-                limit=page_size,
-                index_names=index_name,
-                knowledgebase_ids=[kb_id]
-            )
-
-            # Handle different result formats
-            if results is None:
-                break
-
-            # Extract docs from results
-            page_docs = []
-            total_count = None  # Used for Infinity to determine if more results exist
-
-            # Check for Infinity format first (DataFrame, total) tuple
-            if isinstance(results, tuple) and len(results) == 2:
-                df, total_count = results
-                if hasattr(df, 'iterrows'):
-                    # Pandas DataFrame from Infinity
-                    page_docs = df.to_dict('records')
-                else:
-                    page_docs = list(df) if df else []
-            # Check for ES format (dict with 'hits' key)
-            elif hasattr(results, 'get') and 'hits' in results:
-                hits_obj = results.get('hits', {})
-                hits = hits_obj.get('hits', [])
-                page_docs = []
-                for hit in hits:
-                    doc = hit.get('_source', {})
-                    doc['id'] = hit.get('_id', '')  # Add _id as 'id' for _extract_doc_id to work
-                    page_docs.append(doc)
-                # Extract total count from ES response
-                total_hits = hits_obj.get('total', {})
-                if isinstance(total_hits, dict):
-                    total_count = total_hits.get('value', len(page_docs))
-                else:
-                    total_count = total_hits if total_hits else len(page_docs)
-            # Handle list/iterable results
-            elif hasattr(results, '__iter__') and not isinstance(results, dict):
-                page_docs = list(results)
-            else:
-                page_docs = []
-
-            if not page_docs:
-                break
-
-            all_results.extend(page_docs)
-            page += 1
-
-            # Determine if there are more results to fetch
-            # For Infinity: use total_count if available
-            if total_count is not None:
-                if len(all_results) >= total_count:
-                    break
-            else:
-                # For ES or other: check if we got fewer than page_size
-                if len(page_docs) < page_size:
-                    break
-
-        logging.debug(f"[_search_metadata] Retrieved {len(all_results)} total results for kb_id: {kb_id}")
-        return all_results
+        return settings.docStoreConn.search(
+            select_fields=["*"],
+            highlight_fields=[],
+            condition=condition,
+            match_expressions=[],
+            order_by=order_by,
+            offset=0,
+            limit=limit,
+            index_names=index_name,
+            knowledgebase_ids=[kb_id]
+        )
 
     @classmethod
     def _split_combined_values(cls, meta_fields: Dict) -> Dict:
@@ -437,44 +376,24 @@ class DocMetadataService:
 
             # For Elasticsearch, use efficient partial update
             if not settings.DOC_ENGINE_INFINITY and not settings.DOC_ENGINE_OCEANBASE:
-                # Check if index exists first
-                index_exists = settings.docStoreConn.index_exist(index_name, "")
-                if not index_exists:
-                    # Index doesn't exist - create it and insert directly
-                    logging.debug(f"[update_document_metadata] Index {index_name} does not exist, creating and inserting")
-                    result = settings.docStoreConn.create_doc_meta_idx(index_name)
-                    if result is False:
-                        logging.error(f"Failed to create metadata index {index_name}")
-                        return False
-                    return cls.insert_document_metadata(doc_id, processed_meta)
-
-                # Index exists - check if document exists
                 try:
-                    doc_exists = settings.docStoreConn.get(
-                        index_name=index_name,
+                    # Use ES partial update API - much more efficient than delete+insert
+                    settings.docStoreConn.es.update(
+                        index=index_name,
                         id=doc_id,
-                        kb_id=kb_id
+                        refresh=True,  # Make changes immediately visible
+                        doc={"meta_fields": processed_meta}
                     )
-                    if doc_exists:
-                        # Document exists - use partial update
-                        settings.docStoreConn.es.update(
-                            index=index_name,
-                            id=doc_id,
-                            refresh=True,
-                            doc={"meta_fields": processed_meta}
-                        )
-                        logging.debug(f"Successfully updated metadata for document {doc_id} using ES partial update")
-                        return True
+                    logging.debug(f"Successfully updated metadata for document {doc_id} using ES partial update")
+                    return True
                 except Exception as e:
-                    logging.debug(f"Document {doc_id} not found in index, will insert: {e}")
-
-                # Document doesn't exist - insert new
-                logging.debug(f"[update_document_metadata] Document {doc_id} not found, inserting new")
-                return cls.insert_document_metadata(doc_id, processed_meta)
+                    logging.error(f"ES partial update failed for document {doc_id}: {e}")
+                    # Fall back to delete+insert if partial update fails
+                    logging.info(f"Falling back to delete+insert for document {doc_id}")
 
             # For Infinity or as fallback: use delete+insert
             logging.debug(f"[update_document_metadata] Using delete+insert method for doc_id: {doc_id}")
-            cls.delete_document_metadata(doc_id, kb_id, tenant_id, skip_empty_check=True)
+            cls.delete_document_metadata(doc_id, skip_empty_check=True)
             return cls.insert_document_metadata(doc_id, processed_meta)
 
         except Exception as e:
@@ -483,7 +402,7 @@ class DocMetadataService:
 
     @classmethod
     @DB.connection_context()
-    def delete_document_metadata(cls, doc_id: str, kb_id: str, tenant_id: str = None, skip_empty_check: bool = False) -> bool:
+    def delete_document_metadata(cls, doc_id: str, skip_empty_check: bool = False) -> bool:
         """
         Delete document metadata from ES/Infinity.
         Also drops the metadata table if it becomes empty (efficiently).
@@ -491,8 +410,6 @@ class DocMetadataService:
 
         Args:
             doc_id: Document ID
-            kb_id: Knowledge base ID
-            tenant_id: Tenant ID, if not provided, get it from kb_id
             skip_empty_check: If True, skip checking/dropping empty table (for bulk deletions)
 
         Returns:
@@ -500,15 +417,18 @@ class DocMetadataService:
         """
         try:
             logging.debug(f"[METADATA DELETE] Starting metadata deletion for document: {doc_id}")
+            # Get document with tenant_id
+            doc_query = Document.select(Document, Knowledgebase.tenant_id).join(
+                Knowledgebase, on=(Knowledgebase.id == Document.kb_id)
+            ).where(Document.id == doc_id)
 
-            # Get tenant_id from kb_id if not provided
-            if tenant_id is None:
-                kb = Knowledgebase.get_or_none(Knowledgebase.id == kb_id)
-                if not kb:
-                    logging.warning(f"Knowledgebase {kb_id} not found for metadata deletion")
-                    return False
-                tenant_id = kb.tenant_id
+            doc = doc_query.first()
+            if not doc:
+                logging.warning(f"Document {doc_id} not found for metadata deletion")
+                return False
 
+            tenant_id = doc.knowledgebase.tenant_id
+            kb_id = doc.kb_id
             index_name = cls._get_doc_meta_index_name(tenant_id)
             logging.debug(f"[delete_document_metadata] Deleting doc_id: {doc_id}, kb_id: {kb_id}, index: {index_name}")
 
@@ -1142,7 +1062,7 @@ class DocMetadataService:
                     logging.debug(f"[batch_update_metadata] Updating doc_id: {doc_id}, meta: {meta}")
                     # If metadata is empty, delete the row entirely instead of keeping empty metadata
                     if not meta:
-                        cls.delete_document_metadata(doc_id, kb_id, tenant_id=None, skip_empty_check=True)
+                        cls.delete_document_metadata(doc_id, skip_empty_check=True)
                     else:
                         cls.update_document_metadata(doc_id, meta)
                     updated_docs += 1
