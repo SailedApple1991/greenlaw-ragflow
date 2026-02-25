@@ -146,29 +146,31 @@ class OSConnection(DocStoreConnection):
     """
 
     def search(
-            self, selectFields: list[str],
-            highlightFields: list[str],
+            self, select_fields: list[str],
+            highlight_fields: list[str],
             condition: dict,
-            matchExprs: list[MatchExpr],
-            orderBy: OrderByExpr,
+            match_expressions: list[MatchExpr],
+            order_by: OrderByExpr,
             offset: int,
             limit: int,
-            indexNames: str | list[str],
-            knowledgebaseIds: list[str],
-            aggFields: list[str] = [],
+            index_names: str | list[str],
+            knowledgebase_ids: list[str],
+            agg_fields: list[str] | None = None,
             rank_feature: dict | None = None
     ):
         """
         Refers to https://github.com/opensearch-project/opensearch-py/blob/main/guides/dsl.md
         """
+        if agg_fields is None:
+            agg_fields = []
         use_knn = False
-        if isinstance(indexNames, str):
-            indexNames = indexNames.split(",")
-        assert isinstance(indexNames, list) and len(indexNames) > 0
+        if isinstance(index_names, str):
+            index_names = index_names.split(",")
+        assert isinstance(index_names, list) and len(index_names) > 0
         assert "_id" not in condition
 
         bqry = Q("bool", must=[])
-        condition["kb_id"] = knowledgebaseIds
+        condition["kb_id"] = knowledgebase_ids
         for k, v in condition.items():
             if k == "available_int":
                 if v == 0:
@@ -189,15 +191,15 @@ class OSConnection(DocStoreConnection):
 
         s = Search()
         vector_similarity_weight = 0.5
-        for m in matchExprs:
+        for m in match_expressions:
             if isinstance(m, FusionExpr) and m.method == "weighted_sum" and "weights" in m.fusion_params:
-                assert len(matchExprs) == 3 and isinstance(matchExprs[0], MatchTextExpr) and isinstance(matchExprs[1],
+                assert len(match_expressions) == 3 and isinstance(match_expressions[0], MatchTextExpr) and isinstance(match_expressions[1],
                                                                                                         MatchDenseExpr) and isinstance(
-                    matchExprs[2], FusionExpr)
+                    match_expressions[2], FusionExpr)
                 weights = m.fusion_params["weights"]
                 vector_similarity_weight = float(weights.split(",")[1])
         knn_query = {}
-        for m in matchExprs:
+        for m in match_expressions:
             if isinstance(m, MatchTextExpr):
                 minimum_should_match = m.extra_options.get("minimum_should_match", 0.0)
                 if isinstance(minimum_should_match, float):
@@ -233,12 +235,12 @@ class OSConnection(DocStoreConnection):
 
         if bqry:
             s = s.query(bqry)
-        for field in highlightFields:
+        for field in highlight_fields:
             s = s.highlight(field, force_source=True, no_match_size=30, require_field_match=False)
 
-        if orderBy:
+        if order_by:
             orders = list()
-            for field, order in orderBy.fields:
+            for field, order in order_by.fields:
                 order = "asc" if order == 0 else "desc"
                 if field in ["page_num_int", "top_int"]:
                     order_info = {"order": order, "unmapped_type": "float",
@@ -250,13 +252,13 @@ class OSConnection(DocStoreConnection):
                 orders.append({field: order_info})
             s = s.sort(*orders)
 
-        for fld in aggFields:
+        for fld in agg_fields:
             s.aggs.bucket(f'aggs_{fld}', 'terms', field=fld, size=1000000)
 
         if limit > 0:
             s = s[offset:offset + limit]
         q = s.to_dict()
-        logger.debug(f"OSConnection.search {str(indexNames)} query: " + json.dumps(q))
+        logger.debug(f"OSConnection.search {str(index_names)} query: " + json.dumps(q))
 
         if use_knn:
             del q["query"]
@@ -264,7 +266,7 @@ class OSConnection(DocStoreConnection):
 
         for i in range(ATTEMPT_TIME):
             try:
-                res = self.os.search(index=indexNames,
+                res = self.os.search(index=index_names,
                                      body=q,
                                      timeout=600,
                                      # search_type="dfs_query_then_fetch",
@@ -272,10 +274,10 @@ class OSConnection(DocStoreConnection):
                                      _source=True)
                 if str(res.get("timed_out", "")).lower() == "true":
                     raise Exception("OpenSearch Timeout.")
-                logger.debug(f"OSConnection.search {str(indexNames)} res: " + str(res))
+                logger.debug(f"OSConnection.search {str(index_names)} res: " + str(res))
                 return res
             except Exception as e:
-                logger.exception(f"OSConnection.search {str(indexNames)} query: " + str(q))
+                logger.exception(f"OSConnection.search {str(index_names)} query: " + str(q))
                 if str(e).find("Timeout") > 0:
                     continue
                 raise e
