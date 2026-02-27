@@ -431,17 +431,20 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
 
     langfuse_tracer = None
     trace_context = {}
-    langfuse_keys = TenantLangfuseService.filter_by_tenant(tenant_id=dialog.tenant_id)
-    if langfuse_keys:
-        langfuse = Langfuse(public_key=langfuse_keys.public_key, secret_key=langfuse_keys.secret_key, host=langfuse_keys.host)
-        try:
-            if langfuse.auth_check():
-                langfuse_tracer = langfuse
-                trace_id = langfuse_tracer.create_trace_id()
-                trace_context = {"trace_id": trace_id}
-        except Exception:
-            # Skip langfuse tracing if connection fails
-            pass
+
+    # Initialize Langfuse in background to avoid blocking the main pipeline
+    async def _init_langfuse():
+        langfuse_keys = TenantLangfuseService.filter_by_tenant(tenant_id=dialog.tenant_id)
+        if langfuse_keys:
+            langfuse = Langfuse(public_key=langfuse_keys.public_key, secret_key=langfuse_keys.secret_key, host=langfuse_keys.host)
+            try:
+                if langfuse.auth_check():
+                    return langfuse, langfuse.create_trace_id()
+            except Exception:
+                pass
+        return None, None
+
+    langfuse_task = asyncio.create_task(_init_langfuse())
 
     check_langfuse_tracer_ts = timer()
     kbs, embd_mdl, rerank_mdl, chat_mdl, tts_mdl = get_models(dialog)
@@ -484,6 +487,7 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
         ans = await use_sql(questions[-1], field_map, dialog.tenant_id, chat_mdl, prompt_config.get("quote", True), dialog.kb_ids)
         # For aggregate queries (COUNT, SUM, etc.), chunks may be empty but answer is still valid
         if ans and (ans.get("reference", {}).get("chunks") or ans.get("answer")):
+            langfuse_task.cancel()
             yield ans
             return
         else:
@@ -505,21 +509,58 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
     else:
         questions = questions[-1:]
 
-    if prompt_config.get("cross_languages"):
-        questions = [await cross_languages(dialog.tenant_id, dialog.llm_id, questions[0], prompt_config["cross_languages"])]
+    # Run cross_languages, keyword_extraction, and meta_data_filter in parallel
+    # since they are independent operations on the refined question.
+    need_cross_lang = prompt_config.get("cross_languages")
+    need_keyword = prompt_config.get("keyword", False)
+    need_meta_filter = dialog.meta_data_filter
 
-    if dialog.meta_data_filter:
+    parallel_tasks = []
+    task_names = []
+
+    if need_cross_lang:
+        parallel_tasks.append(cross_languages(dialog.tenant_id, dialog.llm_id, questions[0], prompt_config["cross_languages"]))
+        task_names.append("cross_languages")
+
+    if need_keyword:
+        parallel_tasks.append(keyword_extraction(chat_mdl, questions[-1]))
+        task_names.append("keyword")
+
+    if need_meta_filter:
         metas = DocMetadataService.get_flatted_meta_by_kbs(dialog.kb_ids)
-        attachments = await apply_meta_data_filter(
+        parallel_tasks.append(apply_meta_data_filter(
             dialog.meta_data_filter,
             metas,
             questions[-1],
             chat_mdl,
             attachments,
-        )
+        ))
+        task_names.append("meta_filter")
 
-    if prompt_config.get("keyword", False):
-        questions[-1] += await keyword_extraction(chat_mdl, questions[-1])
+    if parallel_tasks:
+        results = await asyncio.gather(*parallel_tasks, return_exceptions=True)
+        result_map = dict(zip(task_names, results))
+
+        if "cross_languages" in result_map:
+            cl_result = result_map["cross_languages"]
+            if cl_result and not isinstance(cl_result, Exception):
+                questions = [cl_result]
+            elif isinstance(cl_result, Exception):
+                logging.warning("cross_languages failed, using original question: %s", cl_result)
+
+        if "keyword" in result_map:
+            kw_result = result_map["keyword"]
+            if kw_result and not isinstance(kw_result, Exception):
+                questions[-1] += kw_result
+            elif isinstance(kw_result, Exception):
+                logging.warning("keyword_extraction failed, skipping: %s", kw_result)
+
+        if "meta_filter" in result_map:
+            mf_result = result_map["meta_filter"]
+            if not isinstance(mf_result, Exception):
+                attachments = mf_result
+            else:
+                logging.warning("meta_data_filter failed, using original attachments: %s", mf_result)
 
     refine_question_ts = timer()
 
@@ -622,6 +663,7 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
 
     retrieval_ts = timer()
     if not knowledges and prompt_config.get("empty_response"):
+        langfuse_task.cancel()
         empty_res = prompt_config["empty_response"]
         yield {"answer": empty_res, "reference": kbinfos, "prompt": "\n\n### Query:\n%s" % " ".join(questions),
                "audio_binary": tts(tts_mdl, empty_res), "final": True}
@@ -721,6 +763,12 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             langfuse_generation.end()
 
         return {"answer": think + answer, "reference": refs, "prompt": re.sub(r"\n", "  \n", prompt), "created_at": time.time()}
+
+    # Await deferred Langfuse initialization (ran in parallel with question refinement + retrieval)
+    langfuse_result, langfuse_trace_id = await langfuse_task
+    if langfuse_result:
+        langfuse_tracer = langfuse_result
+        trace_context = {"trace_id": langfuse_trace_id}
 
     if langfuse_tracer:
         langfuse_generation = langfuse_tracer.start_generation(

@@ -9,6 +9,7 @@ import {
 import { useGetChatSearchParams } from '@/hooks/use-chat-request';
 import { IMessage } from '@/interfaces/database/chat';
 import api from '@/utils/api';
+import { generateConversationId } from '@/utils/chat';
 import { trim } from 'lodash';
 import { useCallback, useEffect } from 'react';
 import { useParams } from 'react-router';
@@ -145,32 +146,46 @@ export const useSendMessage = (controller: AbortController) => {
     }: NextMessageInputOnPressEnterParameter) => {
       if (trim(value) === '') return;
 
-      const data = await createConversationBeforeSendMessage(value);
-
-      if (data === undefined) {
-        return;
-      }
-
-      const { targetConversationId, currentMessages } = data;
-
+      // Pre-compute conversationId so we can show the message immediately
+      const targetConversationId = conversationId || generateConversationId();
       const id = uuid();
+      const messageValue = value;
 
+      // Optimistic UI: show user message immediately before awaiting conversation creation
       addNewestQuestion({
-        content: value,
+        content: messageValue,
         files: files,
         id,
         role: MessageType.User,
         conversationId: targetConversationId,
       });
 
+      // Clear input immediately for better responsiveness
+      setValue('');
+      clearFiles();
+
+      // Now create conversation if needed (this was previously blocking message display)
+      const data = await createConversationBeforeSendMessage(
+        messageValue,
+        conversationId ? undefined : targetConversationId,
+      );
+
+      if (data === undefined) {
+        // Rollback: remove the optimistic message on failure
+        removeLatestMessage();
+        setValue(messageValue);
+        return;
+      }
+
+      const { currentMessages } = data;
+
       if (done) {
-        setValue('');
         sendMessage({
           currentConversationId: targetConversationId,
           messages: currentMessages,
           message: {
             id,
-            content: value.trim(),
+            content: messageValue.trim(),
             role: MessageType.User,
             files: files,
             conversationId: targetConversationId,
@@ -178,13 +193,18 @@ export const useSendMessage = (controller: AbortController) => {
           enableInternet,
           enableThinking,
         });
+      } else {
+        // Previous streaming still in flight — rollback the optimistic message
+        removeLatestMessage();
+        setValue(messageValue);
       }
-      clearFiles();
     },
     [
       value,
+      conversationId,
       createConversationBeforeSendMessage,
       addNewestQuestion,
+      removeLatestMessage,
       files,
       done,
       clearFiles,

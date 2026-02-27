@@ -60,10 +60,12 @@ export function useCreateConversationBeforeSendMessage() {
   const { setIsNew, setConversationBoth } = useChatUrlParams();
 
   // Create conversation if it doesn't exist
+  // Accepts an optional preGeneratedId so the caller can show the message
+  // optimistically before this async call completes.
   const createConversationBeforeSendMessage = useCallback(
-    async (value: string) => {
+    async (value: string, preGeneratedId?: string) => {
       let currentMessages: Array<IMessage> = [];
-      const currentConversationId = generateConversationId();
+      const currentConversationId = preGeneratedId || generateConversationId();
       if (conversationId === '' || isNew === 'true') {
         if (conversationId === '') {
           setConversationBoth(currentConversationId, 'true');
