@@ -593,10 +593,23 @@ async def rm():
         if not DocumentService.accessible4deletion(doc_id, current_user.id):
             return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
 
+    # Collect KB IDs before deletion for cache invalidation
+    affected_kb_ids = set()
+    for doc_id in doc_ids:
+        e, doc = DocumentService.get_by_id(doc_id)
+        if e and doc.kb_id:
+            affected_kb_ids.add(doc.kb_id)
+
     errors = await thread_pool_exec(FileService.delete_docs, doc_ids, current_user.id)
 
     if errors:
         return get_json_result(data=False, message=errors, code=RetCode.SERVER_ERROR)
+
+    # Invalidate cache for affected KBs after successful deletion
+    if affected_kb_ids:
+        from api.db.services.cache_service import invalidate_kb_cache
+        for kb_id in affected_kb_ids:
+            invalidate_kb_cache(kb_id)
 
     return get_json_result(data=True)
 

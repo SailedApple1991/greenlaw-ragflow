@@ -846,6 +846,16 @@ This auto-tagging feature enhances retrieval by adding another layer of domain-s
       tts: 'Text to speech',
       ttsTip:
         'Ensure you select a TTS model on the Settings page before enabling this toggle to play text as audio.',
+      enableCache: 'Enable cache',
+      enableCacheTip:
+        'Cache answers for identical or similar questions to reduce response latency. Cached answers are returned instantly without invoking the LLM or retrieval pipeline.',
+      cacheTtl: 'Cache TTL (seconds)',
+      cacheTtlTip:
+        'Time-to-live for cached answers in seconds. Cached answers expire after this duration. Default: 86400 (24 hours).',
+      cacheThreshold: 'Similarity threshold',
+      cacheThresholdTip:
+        'Minimum cosine similarity for semantic cache hits. Higher values require closer matches. Range: 0.80–1.00. Default: 0.95.',
+      cachedResponse: 'Cached',
       relatedQuestion: 'Related question',
       answerTitle: 'R',
       multiTurn: 'Multi-turn optimization',

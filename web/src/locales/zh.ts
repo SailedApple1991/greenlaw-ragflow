@@ -794,6 +794,16 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       read: '朗读内容',
       tts: '文本转语音',
       ttsTip: '是否用语音转换播放语音，请先在设置里面选择TTS（语音转换模型）。',
+      enableCache: '启用缓存',
+      enableCacheTip:
+        '缓存相同或相似问题的答案以降低响应延迟。命中缓存时将直接返回答案，无需调用大模型或检索流程。',
+      cacheTtl: '缓存有效期（秒）',
+      cacheTtlTip:
+        '缓存答案的有效时间（秒）。超过此时间后缓存将自动失效。默认值：86400（24小时）。',
+      cacheThreshold: '相似度阈值',
+      cacheThresholdTip:
+        '语义缓存命中所需的最低余弦相似度。值越高，匹配要求越严格。范围：0.80–1.00。默认值：0.95。',
+      cachedResponse: '来自缓存',
       relatedQuestion: '相关问题',
       answerTitle: '智能回答',
       multiTurn: '多轮对话优化',

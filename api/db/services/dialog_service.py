@@ -42,6 +42,7 @@ from rag.app.tag import label_question
 from rag.nlp.search import index_name
 from rag.prompts.generator import chunks_format, citation_prompt, cross_languages, full_question, kb_prompt, keyword_extraction, message_fit_in, \
     PROMPT_JINJA_ENV, ASK_SUMMARY
+from common.misc_utils import thread_pool_exec
 from common.token_utils import num_tokens_from_string
 from rag.utils.tavily_conn import Tavily
 from common.string_utils import remove_redundant_spaces
@@ -217,12 +218,17 @@ async def async_chat_solo(dialog, messages, stream=True):
             stream_iter = chat_mdl.async_chat_streamly_delta(prompt_config.get("system", ""), msg, dialog.llm_setting)
         else:
             stream_iter = chat_mdl.async_chat_streamly_delta(prompt_config.get("system", ""), msg, dialog.llm_setting, images=image_files)
+        last_state = None
         async for kind, value, state in _stream_with_think_delta(stream_iter):
+            last_state = state
             if kind == "marker":
                 flags = {"start_to_think": True} if value == "<think>" else {"end_to_think": True}
                 yield {"answer": "", "reference": {}, "audio_binary": None, "prompt": "", "created_at": time.time(), "final": False, **flags}
                 continue
-            yield {"answer": value, "reference": {}, "audio_binary": tts(tts_mdl, value), "prompt": "", "created_at": time.time(), "final": False}
+            yield {"answer": value, "reference": {}, "audio_binary": None, "prompt": "", "created_at": time.time(), "final": False}
+        full_answer = last_state.full_text if last_state else ""
+        if full_answer:
+            yield {"answer": "", "reference": {}, "audio_binary": tts(tts_mdl, full_answer), "prompt": "", "created_at": time.time(), "final": True}
     else:
         if llm_type == "chat":
             answer = await chat_mdl.async_chat(prompt_config.get("system", ""), msg, dialog.llm_setting)
@@ -505,7 +511,7 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             prompt_config["system"] = prompt_config["system"].replace("{%s}" % p["key"], " ")
 
     if len(questions) > 1 and prompt_config.get("refine_multiturn"):
-        questions = [await full_question(dialog.tenant_id, dialog.llm_id, messages)]
+        questions = [await full_question(dialog.tenant_id, dialog.llm_id, messages, chat_mdl=chat_mdl)]
     else:
         questions = questions[-1:]
 
@@ -519,7 +525,7 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
     task_names = []
 
     if need_cross_lang:
-        parallel_tasks.append(cross_languages(dialog.tenant_id, dialog.llm_id, questions[0], prompt_config["cross_languages"]))
+        parallel_tasks.append(cross_languages(dialog.tenant_id, dialog.llm_id, questions[0], prompt_config["cross_languages"], chat_mdl=chat_mdl))
         task_names.append("cross_languages")
 
     if need_keyword:
@@ -563,6 +569,26 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
                 logging.warning("meta_data_filter failed, using original attachments: %s", mf_result)
 
     refine_question_ts = timer()
+
+    # L2 semantic cache check
+    if prompt_config.get("enable_cache", False) and embd_mdl:
+        from api.db.services.cache_service import get_l2_cache
+        try:
+            cache_emb, _ = await thread_pool_exec(embd_mdl.encode_queries, " ".join(questions))
+            cache_threshold = prompt_config.get("cache_similarity_threshold", 0.95)
+            l2_cached = get_l2_cache(dialog.id, cache_emb, dialog.tenant_id, cache_threshold)
+            if l2_cached:
+                l2_cached["audio_binary"] = tts(tts_mdl, l2_cached.get("answer", ""))
+                l2_cached["final"] = True
+                langfuse_task.cancel()
+                try:
+                    await langfuse_task
+                except asyncio.CancelledError:
+                    pass
+                yield l2_cached
+                return
+        except Exception as e:
+            logging.warning("L2 cache check failed, continuing with normal flow: %s", e)
 
     thought = ""
     kbinfos = {"total": 0, "chunks": [], "doc_aggs": []}
@@ -639,7 +665,7 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
                     return None
                 return await settings.kg_retriever.retrieval(
                     " ".join(questions), tenant_ids, dialog.kb_ids, embd_mdl,
-                    LLMBundle(dialog.tenant_id, LLMType.CHAT))
+                    chat_mdl)
 
             async def _tavily_retrieval():
                 if not prompt_config.get("tavily_api_key"):
@@ -776,6 +802,7 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             input={"prompt": prompt, "prompt4citation": prompt4citation, "messages": msg}
         )
 
+    cache_result = None
     if stream:
         if llm_type == "chat":
             stream_iter = chat_mdl.async_chat_streamly_delta(prompt + prompt4citation, msg[1:], gen_conf)
@@ -788,12 +815,14 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
                 flags = {"start_to_think": True} if value == "<think>" else {"end_to_think": True}
                 yield {"answer": "", "reference": {}, "audio_binary": None, "final": False, **flags}
                 continue
-            yield {"answer": value, "reference": {}, "audio_binary": tts(tts_mdl, value), "final": False}
+            yield {"answer": value, "reference": {}, "audio_binary": None, "final": False}
         full_answer = last_state.full_text if last_state else ""
         if full_answer:
             final = decorate_answer(thought + full_answer)
             final["final"] = True
-            final["audio_binary"] = None
+            final["audio_binary"] = tts(tts_mdl, thought + full_answer)
+            # Preserve full answer for caching before clearing for streaming client
+            cache_result = {**final, "answer": thought + full_answer}
             final["answer"] = ""
             yield final
     else:
@@ -805,7 +834,21 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
         logging.debug("User: {}|Assistant: {}".format(user_content, answer))
         res = decorate_answer(answer)
         res["audio_binary"] = tts(tts_mdl, answer)
+        cache_result = res
         yield res
+
+    # L2 semantic cache set
+    if prompt_config.get("enable_cache", False) and embd_mdl and cache_result:
+        from api.db.services.cache_service import set_l2_cache
+        try:
+            cache_emb, _ = await thread_pool_exec(embd_mdl.encode_queries, " ".join(questions))
+            cache_ttl = prompt_config.get("cache_ttl", 86400)
+            set_l2_cache(
+                dialog.id, dialog.tenant_id, " ".join(questions),
+                cache_emb, cache_result, cache_ttl,
+            )
+        except Exception:
+            logging.warning("L2 cache set failed", exc_info=True)
 
     return
 

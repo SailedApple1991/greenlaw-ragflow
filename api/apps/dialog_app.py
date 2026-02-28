@@ -133,6 +133,8 @@ async def set_dialog():
                 del req["kb_names"]
             if not DialogService.update_by_id(dialog_id, req):
                 return get_data_error_result(message="Dialog not found!")
+            from api.db.services.cache_service import invalidate_dialog_cache
+            invalidate_dialog_cache(dialog_id, current_user.id)
             e, dia = DialogService.get_by_id(dialog_id)
             if not e:
                 return get_data_error_result(message="Fail to update a dialog!")
