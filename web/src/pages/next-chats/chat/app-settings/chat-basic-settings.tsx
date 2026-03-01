@@ -3,6 +3,7 @@
 import { AvatarUpload } from '@/components/avatar-upload';
 import { KnowledgeBaseFormField } from '@/components/knowledge-base-item';
 import { MetadataFilter } from '@/components/metadata-filter';
+import { SliderInputFormField } from '@/components/slider-input-form-field';
 import { SwitchFormField } from '@/components/switch-fom-field';
 import { TavilyFormField } from '@/components/tavily-form-field';
 import { TOCEnhanceFormField } from '@/components/toc-enhance-form-field';
@@ -13,8 +14,9 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
+import { Input, NumberInput } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { FormLayout } from '@/constants/form';
 import { useTranslate } from '@/hooks/common-hooks';
 import { useFormContext, useWatch } from 'react-hook-form';
 
@@ -124,49 +126,33 @@ export default function ChatBasicSetting() {
           <FormField
             control={form.control}
             name={'prompt_config.cache_ttl'}
+            defaultValue={86400}
             render={({ field }) => (
               <FormItem>
                 <FormLabel tooltip={t('cacheTtlTip')}>
                   {t('cacheTtl')}
                 </FormLabel>
                 <FormControl>
-                  <Input
-                    type="number"
+                  <NumberInput
                     min={60}
                     max={604800}
-                    value={field.value || 86400}
-                    onChange={(e) =>
-                      field.onChange(parseInt(e.target.value, 10) || 86400)
-                    }
+                    value={field.value}
+                    onChange={field.onChange}
                   />
                 </FormControl>
                 <FormMessage />
               </FormItem>
             )}
           />
-          <FormField
-            control={form.control}
+          <SliderInputFormField
             name={'prompt_config.cache_similarity_threshold'}
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel tooltip={t('cacheThresholdTip')}>
-                  {t('cacheThreshold')}
-                </FormLabel>
-                <FormControl>
-                  <Input
-                    type="number"
-                    min={0.8}
-                    max={1.0}
-                    step={0.01}
-                    value={field.value || 0.95}
-                    onChange={(e) =>
-                      field.onChange(parseFloat(e.target.value) || 0.95)
-                    }
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
+            label={t('cacheThreshold')}
+            tooltip={t('cacheThresholdTip')}
+            min={0.8}
+            max={1}
+            step={0.01}
+            defaultValue={0.95}
+            layout={FormLayout.Vertical}
           />
         </>
       )}
