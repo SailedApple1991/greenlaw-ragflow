@@ -20,6 +20,7 @@ import {
   ChevronDown,
   CircleHelp,
   Cpu,
+  Database,
   File,
   House,
   Library,
@@ -44,6 +45,7 @@ const PathMap = {
   [Routes.Agents]: [Routes.Agents],
   [Routes.Memories]: [Routes.Memories, Routes.Memory, Routes.MemoryMessage],
   [Routes.Files]: [Routes.Files],
+  [Routes.AdminCacheManagement]: [Routes.AdminCacheManagement],
 } as const;
 
 export function Header() {
@@ -81,6 +83,11 @@ export function Header() {
       { path: Routes.Agents, name: t('header.flow'), icon: Cpu },
       { path: Routes.Memories, name: t('header.memories'), icon: Cpu },
       { path: Routes.Files, name: t('header.fileManager'), icon: File },
+      {
+        path: Routes.AdminCacheManagement,
+        name: t('header.cacheManagement'),
+        icon: Database,
+      },
     ],
     [t],
   );

@@ -291,6 +291,17 @@ const routeConfigOptions = [
     ],
   },
   {
+    path: Routes.AdminCacheManagement,
+    layout: false,
+    Component: () => import('@/layouts/next'),
+    children: [
+      {
+        path: Routes.AdminCacheManagement,
+        Component: () => import('@/pages/admin/cache-management'),
+      },
+    ],
+  },
+  {
     path: Routes.DatasetBase,
     layout: false,
     Component: () => import('@/layouts/next'),

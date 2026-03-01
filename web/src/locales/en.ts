@@ -103,6 +103,7 @@ export default {
       welcome: 'Welcome to',
       dataset: 'Dataset',
       memories: 'Memory',
+      cacheManagement: 'Cache',
     },
     memories: {
       llmTooltip:
