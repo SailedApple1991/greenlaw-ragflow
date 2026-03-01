@@ -140,6 +140,13 @@ const {
   adminGetSandboxConfig,
   adminSetSandboxConfig,
   adminTestSandboxConnection,
+
+  adminCacheStats,
+  adminCacheTenants,
+  adminCacheTenantDialogs,
+  adminCacheL2Entries,
+  adminCacheL2Entry,
+  adminCacheL1InvalidateDialog,
 } = api;
 
 type ResponseData<D = NonNullable<unknown>> = {
@@ -318,3 +325,73 @@ export const testSandboxConnection = (params: {
     provider_type: params.providerType,
     config: params.config,
   });
+
+// Cache management APIs
+export const getCacheStats = () =>
+  request.get<ResponseData<AdminService.CacheStats>>(adminCacheStats);
+
+export const getCacheTenants = () =>
+  request.get<ResponseData<AdminService.CacheTenant[]>>(adminCacheTenants);
+
+export const getCacheTenantDialogs = (tenantId: string) =>
+  request.get<ResponseData<AdminService.CacheDialog[]>>(
+    adminCacheTenantDialogs(tenantId),
+  );
+
+export const listCacheL2Entries = (params: {
+  tenantId: string;
+  dialogId?: string;
+  questionSearch?: string;
+  page?: number;
+  pageSize?: number;
+}) =>
+  request.get<ResponseData<AdminService.CacheL2EntriesResponse>>(
+    adminCacheL2Entries,
+    {
+      params: {
+        tenant_id: params.tenantId,
+        dialog_id: params.dialogId,
+        question_search: params.questionSearch,
+        page: params.page || 1,
+        page_size: params.pageSize || 20,
+      },
+    },
+  );
+
+export const getCacheL2Entry = (tenantId: string, entryId: string) =>
+  request.get<ResponseData<AdminService.CacheL2Entry>>(
+    adminCacheL2Entry(tenantId, entryId),
+  );
+
+export const updateCacheL2Entry = (
+  tenantId: string,
+  entryId: string,
+  data: Partial<Pick<AdminService.CacheL2Entry, 'answer_json' | 'ttl'>>,
+) =>
+  request.put<ResponseData<boolean>>(
+    adminCacheL2Entry(tenantId, entryId),
+    data,
+  );
+
+export const createCacheL2Entry = (data: {
+  tenantId: string;
+  dialogId: string;
+  questionText: string;
+  answer: string;
+  reference?: string;
+  ttl?: number;
+}) =>
+  request.post<ResponseData<AdminService.CacheL2Entry>>(
+    adminCacheL2Entries,
+    data,
+  );
+
+export const deleteCacheL2Entries = (tenantId: string, entryIds: string[]) =>
+  request.delete<ResponseData<{ deleted: number }>>(adminCacheL2Entries, {
+    data: { tenant_id: tenantId, entry_ids: entryIds },
+  });
+
+export const invalidateCacheL1Dialog = (dialogId: string) =>
+  request.delete<ResponseData<{ count: number }>>(
+    adminCacheL1InvalidateDialog(dialogId),
+  );

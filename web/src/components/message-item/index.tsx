@@ -6,10 +6,13 @@ import {
   UploadResponseDataType,
 } from '@/interfaces/database/chat';
 import classNames from 'classnames';
+import { LucideZap } from 'lucide-react';
 import { memo, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { IRegenerateMessage, IRemoveMessageById } from '@/hooks/logic-hooks';
 import { cn } from '@/lib/utils';
+import { Badge } from '../ui/badge';
 import MarkdownContent from '../markdown-content';
 import { ReferenceDocumentList } from '../next-message-item/reference-document-list';
 import { ReferenceImageList } from '../next-message-item/reference-image-list';
@@ -55,6 +58,7 @@ const MessageItem = ({
   showLoudspeaker = true,
   visibleAvatar = true,
 }: IProps) => {
+  const { t } = useTranslation();
   const { theme } = useTheme();
   const isAssistant = item.role === MessageType.Assistant;
   const isUser = item.role === MessageType.User;
@@ -170,6 +174,14 @@ const MessageItem = ({
                   reference={reference}
                   clickDocumentButton={clickDocumentButton}
                 ></MarkdownContent>
+              </div>
+            )}
+            {isAssistant && item.cached && (
+              <div className="flex items-center gap-1 mt-1">
+                <Badge variant="secondary" className="text-xs px-1.5 py-0 h-5">
+                  <LucideZap className="size-3 mr-0.5" />
+                  {t('chat.cachedResponse')}
+                </Badge>
               </div>
             )}
             {isAssistant && (

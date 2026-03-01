@@ -16,11 +16,16 @@ import {
 import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
 import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@/components/ui/button';
 import { useTranslate } from '@/hooks/common-hooks';
+import { Routes } from '@/routes';
+import { LucideExternalLink } from 'lucide-react';
 import { useFormContext, useWatch } from 'react-hook-form';
+import { useParams } from 'react-router';
 
 export default function ChatBasicSetting() {
   const { t } = useTranslate('chat');
+  const { id: dialogId } = useParams();
   const form = useFormContext();
   const enableCache = useWatch({
     control: form.control,
@@ -167,6 +172,18 @@ export default function ChatBasicSetting() {
               </FormItem>
             )}
           />
+          {dialogId && (
+            <Button variant="link" className="px-0 h-auto" asChild>
+              <a
+                href={`${Routes.AdminCacheManagement}?dialog_id=${dialogId}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {t('manageCacheEntries')}
+                <LucideExternalLink className="size-3 ml-1" />
+              </a>
+            </Button>
+          )}
         </>
       )}
       <TOCEnhanceFormField name="prompt_config.toc_enhance"></TOCEnhanceFormField>

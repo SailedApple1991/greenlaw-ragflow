@@ -804,6 +804,7 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       cacheThresholdTip:
         '语义缓存命中所需的最低余弦相似度。值越高，匹配要求越严格。范围：0.80–1.00。默认值：0.95。',
       cachedResponse: '来自缓存',
+      manageCacheEntries: '管理缓存条目',
       relatedQuestion: '相关问题',
       answerTitle: '智能回答',
       multiTurn: '多轮对话优化',

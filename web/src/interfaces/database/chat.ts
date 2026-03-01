@@ -137,6 +137,7 @@ export interface IAnswer {
   audio_binary?: string;
   data?: any;
   chatBoxId?: string;
+  cached?: boolean;
 }
 
 export interface Docagg {
@@ -190,6 +191,7 @@ export interface IMessage extends Message {
   id: string;
   reference?: IReference; // the latest news has reference
   conversationId?: string; // To distinguish which conversation the message belongs to
+  cached?: boolean;
 }
 
 export interface IClientConversation extends IConversation {
