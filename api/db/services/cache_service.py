@@ -184,8 +184,12 @@ def _ensure_cache_index(tenant_id: str, vector_size: int = 1024):
     try:
         from common.file_utils import get_project_base_directory
 
+        # Pick the right mapping file based on doc engine type
+        is_opensearch = conn.db_type() == "opensearch"
+        mapping_file = "cache_os_mapping.json" if is_opensearch else "cache_es_mapping.json"
+
         fp_mapping = os.path.join(
-            get_project_base_directory(), "conf", "cache_es_mapping.json"
+            get_project_base_directory(), "conf", mapping_file
         )
         if not os.path.exists(fp_mapping):
             logging.error("Cache mapping file not found at %s", fp_mapping)
@@ -198,7 +202,10 @@ def _ensure_cache_index(tenant_id: str, vector_size: int = 1024):
         if "properties" in cache_mapping.get("mappings", {}):
             q_vec_props = cache_mapping["mappings"]["properties"].get("q_vec", {})
             if q_vec_props:
-                q_vec_props["dims"] = vector_size
+                if is_opensearch:
+                    q_vec_props["dimension"] = vector_size
+                else:
+                    q_vec_props["dims"] = vector_size
 
         raw_client = _get_raw_client(conn)
         raw_client.indices.create(
