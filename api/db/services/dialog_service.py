@@ -459,6 +459,31 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
         chat_mdl.bind_tools(toolcall_session, tools)
     bind_models_ts = timer()
 
+    # L2 semantic cache check — do this EARLY, before expensive preprocessing
+    # (SQL retrieval, question refinement, cross-language, keyword extraction).
+    # Uses the raw user question for embedding, which is semantically correct
+    # since L2 uses vector similarity matching.
+    prompt_config = dialog.prompt_config
+    if prompt_config.get("enable_cache", False) and embd_mdl:
+        from api.db.services.cache_service import get_l2_cache
+        try:
+            raw_question = messages[-1]["content"]
+            cache_emb, _ = await thread_pool_exec(embd_mdl.encode_queries, raw_question)
+            cache_threshold = prompt_config.get("cache_similarity_threshold", 0.95)
+            l2_cached = get_l2_cache(dialog.id, cache_emb, dialog.tenant_id, cache_threshold)
+            if l2_cached:
+                l2_cached["audio_binary"] = tts(tts_mdl, l2_cached.get("answer", ""))
+                l2_cached["final"] = True
+                langfuse_task.cancel()
+                try:
+                    await langfuse_task
+                except asyncio.CancelledError:
+                    pass
+                yield l2_cached
+                return
+        except Exception as e:
+            logging.warning("L2 cache check failed, continuing with normal flow: %s", e)
+
     retriever = settings.retriever
     questions = [m["content"] for m in messages if m["role"] == "user"][-3:]
     attachments = kwargs["doc_ids"].split(",") if "doc_ids" in kwargs else []
@@ -474,7 +499,6 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             text_attachments, image_files = split_file_attachments(messages[-1]["files"], raw=True)
         attachments_ = "\n\n".join(text_attachments)
 
-    prompt_config = dialog.prompt_config
     try:
         logging.info(
             "chat start dialog_id=%s tenant_id=%s prompt_config=%s kwargs=%s",
@@ -569,26 +593,6 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
                 logging.warning("meta_data_filter failed, using original attachments: %s", mf_result)
 
     refine_question_ts = timer()
-
-    # L2 semantic cache check
-    if prompt_config.get("enable_cache", False) and embd_mdl:
-        from api.db.services.cache_service import get_l2_cache
-        try:
-            cache_emb, _ = await thread_pool_exec(embd_mdl.encode_queries, " ".join(questions))
-            cache_threshold = prompt_config.get("cache_similarity_threshold", 0.95)
-            l2_cached = get_l2_cache(dialog.id, cache_emb, dialog.tenant_id, cache_threshold)
-            if l2_cached:
-                l2_cached["audio_binary"] = tts(tts_mdl, l2_cached.get("answer", ""))
-                l2_cached["final"] = True
-                langfuse_task.cancel()
-                try:
-                    await langfuse_task
-                except asyncio.CancelledError:
-                    pass
-                yield l2_cached
-                return
-        except Exception as e:
-            logging.warning("L2 cache check failed, continuing with normal flow: %s", e)
 
     thought = ""
     kbinfos = {"total": 0, "chunks": [], "doc_aggs": []}
@@ -837,14 +841,15 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
         cache_result = res
         yield res
 
-    # L2 semantic cache set
+    # L2 semantic cache set — use raw user question (consistent with early L2 lookup)
+    raw_question_for_cache = messages[-1]["content"]
     if prompt_config.get("enable_cache", False) and embd_mdl and cache_result:
         from api.db.services.cache_service import set_l2_cache
         try:
-            cache_emb, _ = await thread_pool_exec(embd_mdl.encode_queries, " ".join(questions))
+            cache_emb, _ = await thread_pool_exec(embd_mdl.encode_queries, raw_question_for_cache)
             cache_ttl = prompt_config.get("cache_ttl", 86400)
             set_l2_cache(
-                dialog.id, dialog.tenant_id, " ".join(questions),
+                dialog.id, dialog.tenant_id, raw_question_for_cache,
                 cache_emb, cache_result, cache_ttl,
             )
         except Exception:
