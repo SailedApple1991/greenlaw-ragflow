@@ -69,6 +69,8 @@ jobs:
           tags: |
             ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}
             ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.latest_tag }}
+          build-args: |
+            ENABLE_PADDLEOCR=0
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
