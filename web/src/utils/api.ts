@@ -328,14 +328,14 @@ export default {
   adminSetSandboxConfig: `${ExternalApi}${api_host}/admin/sandbox/config`,
   adminTestSandboxConnection: `${ExternalApi}${api_host}/admin/sandbox/test`,
 
-  // Cache management
-  adminCacheStats: `${ExternalApi}${api_host}/admin/cache/stats`,
-  adminCacheTenants: `${ExternalApi}${api_host}/admin/cache/tenants`,
+  // Cache management (main API)
+  adminCacheStats: `${api_host}/cache/stats`,
+  adminCacheTenants: `${api_host}/cache/tenants`,
   adminCacheTenantDialogs: (tenantId: string) =>
-    `${ExternalApi}${api_host}/admin/cache/tenants/${tenantId}/dialogs`,
-  adminCacheL2Entries: `${ExternalApi}${api_host}/admin/cache/l2/entries`,
+    `${api_host}/cache/tenants/${tenantId}/dialogs`,
+  adminCacheL2Entries: `${api_host}/cache/l2/entries`,
   adminCacheL2Entry: (tenantId: string, entryId: string) =>
-    `${ExternalApi}${api_host}/admin/cache/l2/entries/${tenantId}/${entryId}`,
+    `${api_host}/cache/l2/entries/${tenantId}/${entryId}`,
   adminCacheL1InvalidateDialog: (dialogId: string) =>
-    `${ExternalApi}${api_host}/admin/cache/l1/dialog/${dialogId}`,
+    `${api_host}/cache/l1/dialog/${dialogId}`,
 };
