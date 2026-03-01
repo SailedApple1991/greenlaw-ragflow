@@ -14,7 +14,6 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Slider } from '@/components/ui/slider';
 import { Textarea } from '@/components/ui/textarea';
 import { useTranslate } from '@/hooks/common-hooks';
 import { useFormContext, useWatch } from 'react-hook-form';
@@ -125,60 +124,49 @@ export default function ChatBasicSetting() {
           <FormField
             control={form.control}
             name={'prompt_config.cache_ttl'}
-            render={({ field }) => {
-              const ttlValue =
-                typeof field.value === 'number' && field.value >= 60
-                  ? field.value
-                  : 86400;
-              return (
-                <FormItem>
-                  <FormLabel tooltip={t('cacheTtlTip')}>
-                    {t('cacheTtl')}
-                  </FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      min={60}
-                      max={604800}
-                      value={ttlValue}
-                      onChange={(e) =>
-                        field.onChange(parseInt(e.target.value, 10) || 86400)
-                      }
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              );
-            }}
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel tooltip={t('cacheTtlTip')}>
+                  {t('cacheTtl')}
+                </FormLabel>
+                <FormControl>
+                  <Input
+                    type="number"
+                    min={60}
+                    max={604800}
+                    value={field.value || 86400}
+                    onChange={(e) =>
+                      field.onChange(parseInt(e.target.value, 10) || 86400)
+                    }
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
           <FormField
             control={form.control}
             name={'prompt_config.cache_similarity_threshold'}
-            render={({ field }) => {
-              const thresholdValue =
-                typeof field.value === 'number' &&
-                field.value >= 0.8 &&
-                field.value <= 1.0
-                  ? field.value
-                  : 0.95;
-              return (
-                <FormItem>
-                  <FormLabel tooltip={t('cacheThresholdTip')}>
-                    {t('cacheThreshold')}: {thresholdValue.toFixed(2)}
-                  </FormLabel>
-                  <FormControl>
-                    <Slider
-                      min={0.8}
-                      max={1.0}
-                      step={0.01}
-                      value={[thresholdValue]}
-                      onValueChange={(vals) => field.onChange(vals[0])}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              );
-            }}
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel tooltip={t('cacheThresholdTip')}>
+                  {t('cacheThreshold')}
+                </FormLabel>
+                <FormControl>
+                  <Input
+                    type="number"
+                    min={0.8}
+                    max={1.0}
+                    step={0.01}
+                    value={field.value || 0.95}
+                    onChange={(e) =>
+                      field.onChange(parseFloat(e.target.value) || 0.95)
+                    }
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
         </>
       )}
