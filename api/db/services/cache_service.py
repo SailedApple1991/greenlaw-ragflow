@@ -26,6 +26,24 @@ from rag.utils.redis_conn import REDIS_CONN
 CACHE_INDEX_PREFIX = "ragflow_cache_"
 
 
+def _get_raw_client(conn=None):
+    """Get the raw ES/OpenSearch client from a docStoreConn.
+
+    ESConnection stores the client as `conn.es`, while OSConnection
+    stores it as `conn.os`.  This helper returns whichever is available.
+    """
+    if conn is None:
+        from common import settings
+        conn = settings.docStoreConn
+    if hasattr(conn, "es"):
+        return conn.es
+    if hasattr(conn, "os"):
+        return conn.os
+    raise AttributeError(
+        f"{type(conn).__name__} has neither 'es' nor 'os' attribute"
+    )
+
+
 def _normalize_question(question: str) -> str:
     """Normalize question for consistent cache key generation.
 
@@ -165,7 +183,6 @@ def _ensure_cache_index(tenant_id: str, vector_size: int = 1024):
     # Elasticsearch / OpenSearch: load dedicated cache mapping
     try:
         from common.file_utils import get_project_base_directory
-        from elasticsearch.client import IndicesClient
 
         fp_mapping = os.path.join(
             get_project_base_directory(), "conf", "cache_es_mapping.json"
@@ -183,10 +200,10 @@ def _ensure_cache_index(tenant_id: str, vector_size: int = 1024):
             if q_vec_props:
                 q_vec_props["dims"] = vector_size
 
-        IndicesClient(conn.es).create(
+        raw_client = _get_raw_client(conn)
+        raw_client.indices.create(
             index=idx_name,
-            settings=cache_mapping.get("settings", {}),
-            mappings=cache_mapping.get("mappings", {}),
+            body=cache_mapping,
         )
     except Exception as e:
         if "resource_already_exists_exception" in str(e).lower():
@@ -341,7 +358,7 @@ def invalidate_dialog_l2_cache(dialog_id: str, tenant_id: str) -> int:
         # Use ES delete_by_query directly to avoid the docStoreConn.delete()
         # API which injects kb_id into conditions (not applicable for cache index)
         try:
-            result = conn.es.delete_by_query(
+            result = _get_raw_client(conn).delete_by_query(
                 index=idx_name,
                 body={"query": {"term": {"dialog_id": dialog_id}}},
                 refresh=True,

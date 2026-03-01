@@ -35,7 +35,7 @@ from api.utils import health_utils
 
 from api.common.exceptions import AdminException, UserAlreadyExistsError, UserNotFoundError
 from rag.utils.redis_conn import REDIS_CONN
-from api.db.services.cache_service import invalidate_dialog_cache, _ensure_cache_index, _cache_index_name, CACHE_INDEX_PREFIX
+from api.db.services.cache_service import invalidate_dialog_cache, _ensure_cache_index, _cache_index_name, _get_raw_client, CACHE_INDEX_PREFIX
 from config import SERVICE_CONFIGS
 
 
@@ -757,7 +757,7 @@ class CacheMgr:
         l2_indices = []
         try:
             from common import settings
-            indices_info = settings.docStoreConn.es.cat.indices(index="ragflow_cache_*", format="json")
+            indices_info = _get_raw_client().cat.indices(index="ragflow_cache_*", format="json")
             for idx_info in indices_info:
                 docs_count = int(idx_info.get("docs.count", 0))
                 l2_total_entries += docs_count
@@ -787,7 +787,7 @@ class CacheMgr:
         result = []
         try:
             from common import settings
-            indices_info = settings.docStoreConn.es.cat.indices(index="ragflow_cache_*", format="json")
+            indices_info = _get_raw_client().cat.indices(index="ragflow_cache_*", format="json")
             for idx_info in indices_info:
                 index_name = idx_info.get("index", "")
                 tenant_id = index_name.replace(CACHE_INDEX_PREFIX, "", 1)
@@ -832,7 +832,7 @@ class CacheMgr:
                     }
                 },
             }
-            res = conn.es.search(index=idx, body=agg_body)
+            res = _get_raw_client(conn).search(index=idx, body=agg_body)
             buckets = res.get("aggregations", {}).get("dialogs", {}).get("buckets", [])
             for bucket in buckets:
                 dialog_id = bucket["key"]
@@ -884,14 +884,14 @@ class CacheMgr:
             if not filters and not must:
                 query = {"match_all": {}}
 
-            res = conn.es.search(
-                index=idx,
-                body={"query": query},
-                from_=(page - 1) * page_size,
-                size=page_size,
-                sort=[{"cached_at": "desc"}],
-                _source_excludes=["q_vec"],
-            )
+            search_body = {
+                "query": query,
+                "from": (page - 1) * page_size,
+                "size": page_size,
+                "sort": [{"cached_at": "desc"}],
+                "_source": {"excludes": ["q_vec"]},
+            }
+            res = _get_raw_client(conn).search(index=idx, body=search_body)
             total = res.get("hits", {}).get("total", {}).get("value", 0)
             # Cache dialog names to avoid repeated lookups
             dialog_name_cache = {}
@@ -928,7 +928,7 @@ class CacheMgr:
 
             conn = settings.docStoreConn
             idx = _cache_index_name(tenant_id)
-            res = conn.es.get(index=idx, id=entry_id, _source_excludes=["q_vec"])
+            res = _get_raw_client(conn).get(index=idx, id=entry_id, _source_excludes=["q_vec"])
             entry = res["_source"]
             entry["id"] = res["_id"]
             return entry
@@ -944,7 +944,7 @@ class CacheMgr:
 
             conn = settings.docStoreConn
             idx = _cache_index_name(tenant_id)
-            conn.es.update(index=idx, id=entry_id, body={"doc": updates}, refresh=True)
+            _get_raw_client(conn).update(index=idx, id=entry_id, body={"doc": updates}, refresh=True)
             return True
         except Exception as e:
             logging.warning("CacheMgr.update_l2_entry error: %s", e)
@@ -981,7 +981,7 @@ class CacheMgr:
                 "cached_at": _time.time(),
                 "ttl": ttl,
             }
-            conn.es.index(index=idx, body=doc, refresh=True)
+            _get_raw_client(conn).index(index=idx, body=doc, refresh=True)
             # Return entry without vector
             result = {k: v for k, v in doc.items() if k != "q_vec"}
             return result
@@ -997,7 +997,7 @@ class CacheMgr:
 
             conn = settings.docStoreConn
             idx = _cache_index_name(tenant_id)
-            res = conn.es.delete_by_query(
+            res = _get_raw_client(conn).delete_by_query(
                 index=idx,
                 body={"query": {"ids": {"values": entry_ids}}},
                 refresh=True,

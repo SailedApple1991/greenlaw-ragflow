@@ -23,6 +23,7 @@ from api.db.services.cache_service import (
     CACHE_INDEX_PREFIX,
     _cache_index_name,
     _ensure_cache_index,
+    _get_raw_client,
     invalidate_dialog_cache,
 )
 from api.db.services.dialog_service import DialogService
@@ -59,7 +60,7 @@ async def get_cache_stats():
         l2_total_entries = 0
         l2_indices = []
         try:
-            indices_info = settings.docStoreConn.es.cat.indices(index="ragflow_cache_*", format="json")
+            indices_info = _get_raw_client().cat.indices(index="ragflow_cache_*", format="json")
             for idx_info in indices_info:
                 docs_count = int(idx_info.get("docs.count", 0))
                 l2_total_entries += docs_count
@@ -85,7 +86,7 @@ async def list_cache_tenants():
     """List tenants that have L2 cache indices."""
     try:
         result = []
-        indices_info = settings.docStoreConn.es.cat.indices(index="ragflow_cache_*", format="json")
+        indices_info = _get_raw_client().cat.indices(index="ragflow_cache_*", format="json")
         for idx_info in indices_info:
             index_name = idx_info.get("index", "")
             tenant_id = index_name.replace(CACHE_INDEX_PREFIX, "", 1)
@@ -122,7 +123,7 @@ async def list_cache_dialogs(tenant_id):
             "size": 0,
             "aggs": {"dialogs": {"terms": {"field": "dialog_id", "size": 10000}}},
         }
-        res = conn.es.search(index=idx, body=agg_body)
+        res = _get_raw_client(conn).search(index=idx, body=agg_body)
         buckets = res.get("aggregations", {}).get("dialogs", {}).get("buckets", [])
         for bucket in buckets:
             dialog_id = bucket["key"]
@@ -181,14 +182,14 @@ async def list_cache_l2_entries():
         if not filters and not must:
             query = {"match_all": {}}
 
-        res = conn.es.search(
-            index=idx,
-            body={"query": query},
-            from_=(page - 1) * page_size,
-            size=page_size,
-            sort=[{"cached_at": "desc"}],
-            _source_excludes=["q_vec"],
-        )
+        search_body = {
+            "query": query,
+            "from": (page - 1) * page_size,
+            "size": page_size,
+            "sort": [{"cached_at": "desc"}],
+            "_source": {"excludes": ["q_vec"]},
+        }
+        res = _get_raw_client(conn).search(index=idx, body=search_body)
         total = res.get("hits", {}).get("total", {}).get("value", 0)
         dialog_name_cache = {}
         for hit in res.get("hits", {}).get("hits", []):
@@ -224,7 +225,7 @@ async def get_cache_l2_entry(tenant_id, entry_id):
     try:
         conn = settings.docStoreConn
         idx = _cache_index_name(tenant_id)
-        res = conn.es.get(index=idx, id=entry_id, _source_excludes=["q_vec"])
+        res = _get_raw_client(conn).get(index=idx, id=entry_id, _source_excludes=["q_vec"],)
         entry = res["_source"]
         entry["id"] = res["_id"]
         return get_json_result(data=entry)
@@ -243,7 +244,7 @@ async def update_cache_l2_entry(tenant_id, entry_id):
 
         conn = settings.docStoreConn
         idx = _cache_index_name(tenant_id)
-        conn.es.update(index=idx, id=entry_id, body={"doc": data}, refresh=True)
+        _get_raw_client(conn).update(index=idx, id=entry_id, body={"doc": data}, refresh=True)
         return get_json_result(data=True)
     except Exception as e:
         return server_error_response(e)
@@ -293,7 +294,7 @@ async def create_cache_l2_entry():
             "cached_at": _time.time(),
             "ttl": ttl,
         }
-        conn.es.index(index=idx, body=doc, refresh=True)
+        _get_raw_client(conn).index(index=idx, body=doc, refresh=True)
         result = {k: v for k, v in doc.items() if k != "q_vec"}
         return get_json_result(data=result)
     except Exception as e:
@@ -317,7 +318,7 @@ async def delete_cache_l2_entries():
 
         conn = settings.docStoreConn
         idx = _cache_index_name(tenant_id)
-        res = conn.es.delete_by_query(
+        res = _get_raw_client(conn).delete_by_query(
             index=idx,
             body={"query": {"ids": {"values": entry_ids}}},
             refresh=True,
