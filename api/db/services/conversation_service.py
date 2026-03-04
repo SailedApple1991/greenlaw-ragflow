@@ -178,7 +178,7 @@ async def async_completion(tenant_id, chat_id, question, name="New session", ses
     # L1 cache check
     prompt_config = dia.prompt_config if hasattr(dia, 'prompt_config') else {}
     enable_cache = prompt_config.get("enable_cache", False)
-    cache_ttl = prompt_config.get("cache_ttl", 86400)
+    cache_ttl = prompt_config.get("cache_ttl", 5184000)  # default 60 days
     question_text = question["content"]
 
     if enable_cache:

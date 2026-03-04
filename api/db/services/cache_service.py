@@ -86,7 +86,7 @@ def get_l1_cache(dialog_id: str, question: str) -> dict | None:
         return None
 
 
-def set_l1_cache(dialog_id: str, question: str, response: dict, ttl: int = 86400) -> bool:
+def set_l1_cache(dialog_id: str, question: str, response: dict, ttl: int = 5184000) -> bool:
     """Store response in L1 cache with TTL. Returns True on success."""
     if not REDIS_CONN.is_alive():
         return False
@@ -96,6 +96,7 @@ def set_l1_cache(dialog_id: str, question: str, response: dict, ttl: int = 86400
             "answer": response.get("answer", ""),
             "reference": response.get("reference", {}),
             "prompt": response.get("prompt", ""),
+            "question_text": question,
             "created_at": time.time(),
         }
         success = REDIS_CONN.set(key, json.dumps(cache_data, ensure_ascii=False), ttl)
@@ -134,6 +135,74 @@ def invalidate_dialog_cache(dialog_id: str, tenant_id: str | None = None) -> int
     if tenant_id:
         count += invalidate_dialog_l2_cache(dialog_id, tenant_id)
 
+    return count
+
+
+def list_l1_entries(dialog_id: str | None = None, page: int = 1, page_size: int = 20) -> dict:
+    """List L1 cache entries with pagination. Returns {entries, total, page, page_size}."""
+    if not REDIS_CONN.is_alive():
+        return {"entries": [], "total": 0, "page": page, "page_size": page_size}
+    try:
+        pattern = f"ragflow:cache:l1:{dialog_id}:*" if dialog_id else "ragflow:cache:l1:*"
+        all_keys = []
+        cursor = "0"
+        while True:
+            cursor, keys = REDIS_CONN.REDIS.scan(cursor=cursor, match=pattern, count=500)
+            all_keys.extend(keys)
+            if int(cursor) == 0:
+                break
+
+        entries = []
+        for key in all_keys:
+            try:
+                data = REDIS_CONN.REDIS.get(key)
+                if data is None:
+                    continue
+                ttl_remaining = REDIS_CONN.REDIS.ttl(key)
+                parsed = json.loads(data)
+                # Parse dialog_id from key: ragflow:cache:l1:{dialog_id}:{hash}
+                parts = key.split(":")
+                entry_dialog_id = parts[3] if len(parts) >= 5 else ""
+                entries.append({
+                    "key": key,
+                    "dialog_id": entry_dialog_id,
+                    "question_text": parsed.get("question_text", ""),
+                    "answer": parsed.get("answer", ""),
+                    "cached_at": parsed.get("created_at", 0),
+                    "ttl_remaining": ttl_remaining if ttl_remaining > 0 else 0,
+                })
+            except Exception:
+                continue
+
+        # Sort by cached_at desc
+        entries.sort(key=lambda e: e.get("cached_at", 0), reverse=True)
+        total = len(entries)
+        start = (page - 1) * page_size
+        end = start + page_size
+        return {"entries": entries[start:end], "total": total, "page": page, "page_size": page_size}
+    except Exception as e:
+        logging.warning("L1 cache list error: %s", e)
+        return {"entries": [], "total": 0, "page": page, "page_size": page_size}
+
+
+def delete_l1_entries(keys: list[str]) -> int:
+    """Delete specific L1 cache entries by key. Returns count deleted."""
+    if not REDIS_CONN.is_alive():
+        return 0
+    count = 0
+    for key in keys:
+        if not key.startswith("ragflow:cache:l1:"):
+            continue
+        try:
+            if REDIS_CONN.delete(key):
+                count += 1
+                # Also remove from invalidation set
+                parts = key.split(":")
+                if len(parts) >= 5:
+                    inv_key = _invalidation_set_key(parts[3])
+                    REDIS_CONN.srem(inv_key, key)
+        except Exception:
+            continue
     return count
 
 
@@ -284,7 +353,7 @@ def get_l2_cache(
         hit = next(iter(fields.values()))
 
         cached_at = float(hit.get("cached_at", 0))
-        ttl = int(hit.get("ttl", 86400))
+        ttl = int(hit.get("ttl", 5184000))  # default 60 days
         if time.time() - cached_at > ttl:
             return None
 
@@ -308,7 +377,7 @@ def set_l2_cache(
     question_text: str,
     question_embedding: list,
     response: dict,
-    ttl: int = 86400,
+    ttl: int = 5184000,  # default 60 days
     vector_size: int = 1024,
 ) -> bool:
     """Store response in L2 semantic cache."""

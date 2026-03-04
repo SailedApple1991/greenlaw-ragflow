@@ -24,7 +24,9 @@ from api.db.services.cache_service import (
     _cache_index_name,
     _ensure_cache_index,
     _get_raw_client,
+    delete_l1_entries,
     invalidate_dialog_cache,
+    list_l1_entries,
 )
 from api.db.services.dialog_service import DialogService
 from api.db.services.user_service import TenantService
@@ -138,6 +140,101 @@ async def list_cache_dialogs(tenant_id):
             result.append({
                 "dialog_id": dialog_id,
                 "dialog_name": dialog_name,
+                "entry_count": entry_count,
+            })
+        return get_json_result(data=result)
+    except Exception as e:
+        return server_error_response(e)
+
+
+@manager.route("/l1/entries", methods=["GET"])  # noqa: F821
+@login_required
+async def list_cache_l1_entries():
+    """List L1 cache entries with pagination and optional dialog filter."""
+    try:
+        dialog_id = request.args.get("dialog_id")
+        page = int(request.args.get("page", 1))
+        page_size = int(request.args.get("page_size", 20))
+
+        result = list_l1_entries(dialog_id=dialog_id, page=page, page_size=page_size)
+
+        # Resolve dialog names
+        dialog_name_cache = {}
+        for entry in result["entries"]:
+            d_id = entry.get("dialog_id", "")
+            if d_id and d_id not in dialog_name_cache:
+                try:
+                    dialogs = DialogService.query(id=d_id)
+                    dialog_name_cache[d_id] = dialogs[0].name if dialogs else d_id
+                except Exception:
+                    dialog_name_cache[d_id] = d_id
+            entry["dialog_name"] = dialog_name_cache.get(d_id, d_id)
+
+        return get_json_result(data=result)
+    except Exception as e:
+        return server_error_response(e)
+
+
+@manager.route("/l1/entries", methods=["DELETE"])  # noqa: F821
+@login_required
+async def delete_cache_l1_entries():
+    """Delete specific L1 cache entries by key."""
+    try:
+        data = await request.json
+        if not data:
+            return get_json_result(data=None, message="Request body is required", code=400)
+
+        keys = data.get("keys", [])
+        if not keys:
+            return get_json_result(data=None, message="keys is required", code=400)
+
+        count = delete_l1_entries(keys)
+        return get_json_result(data={"deleted": count})
+    except Exception as e:
+        return server_error_response(e)
+
+
+@manager.route("/l1/dialogs", methods=["GET"])  # noqa: F821
+@login_required
+async def list_cache_l1_dialogs():
+    """List dialogs that have L1 cache entries."""
+    try:
+        if not REDIS_CONN.is_alive():
+            return get_json_result(data=[])
+
+        dialog_ids = set()
+        cursor = "0"
+        while True:
+            cursor, keys = REDIS_CONN.REDIS.scan(
+                cursor=cursor, match="ragflow:cache:inv:*", count=500
+            )
+            for key in keys:
+                # key format: ragflow:cache:inv:{dialog_id}
+                parts = key.split(":")
+                if len(parts) >= 4:
+                    dialog_ids.add(parts[3])
+            if int(cursor) == 0:
+                break
+
+        result = []
+        for d_id in dialog_ids:
+            d_name = d_id
+            entry_count = 0
+            try:
+                dialogs = DialogService.query(id=d_id)
+                if dialogs:
+                    d_name = dialogs[0].name
+            except Exception:
+                pass
+            # Count entries for this dialog
+            try:
+                members = REDIS_CONN.smembers(f"ragflow:cache:inv:{d_id}")
+                entry_count = len(members) if members else 0
+            except Exception:
+                pass
+            result.append({
+                "dialog_id": d_id,
+                "dialog_name": d_name,
                 "entry_count": entry_count,
             })
         return get_json_result(data=result)
@@ -269,7 +366,7 @@ async def create_cache_l2_entry():
         question_text = data.get("question_text")
         answer = data.get("answer", "")
         reference = data.get("reference", "")
-        ttl = int(data.get("ttl", 86400))
+        ttl = int(data.get("ttl", 5184000))  # default 60 days
 
         if not tenant_id or not dialog_id or not question_text:
             return get_json_result(data=None, message="tenant_id, dialog_id and question_text are required", code=400)
