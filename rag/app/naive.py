@@ -223,7 +223,7 @@ PARSERS = {
     "deepdoc": by_deepdoc,
     "mineru": by_mineru,
     "docling": by_docling,
-    "tcadp": by_tcadp,
+    "tcadp parser": by_tcadp,
     "paddleocr": by_paddleocr,
     "plaintext": by_plaintext,  # default
 }
@@ -830,7 +830,7 @@ def chunk(filename, binary=None, from_page=0, to_page=100000, lang="Chinese", ca
             urls = extract_links_from_pdf(binary)
 
         if isinstance(layout_recognizer, bool):
-            layout_recognizer = "DeepDOC" if layout_recognizer else "Plain Text"
+            layout_recognizer = "DeepDOC" if layout_recognizer else "PlainText"
 
         # Handle special "DeepDOC (PaddleOCR)" selection from frontend
         # This sets both layout_recognize to DeepDOC and ocr_provider to paddleocr
