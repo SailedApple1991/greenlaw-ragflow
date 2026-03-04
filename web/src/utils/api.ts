@@ -338,4 +338,6 @@ export default {
     `${api_host}/cache/l2/entries/${tenantId}/${entryId}`,
   adminCacheL1InvalidateDialog: (dialogId: string) =>
     `${api_host}/cache/l1/dialog/${dialogId}`,
+  adminCacheL1Entries: `${api_host}/cache/l1/entries`,
+  adminCacheL1Dialogs: `${api_host}/cache/l1/dialogs`,
 };

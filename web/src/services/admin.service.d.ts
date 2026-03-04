@@ -239,4 +239,21 @@ declare module AdminService {
     page: number;
     page_size: number;
   };
+
+  export type CacheL1Entry = {
+    key: string;
+    dialog_id: string;
+    dialog_name?: string;
+    question_text: string;
+    answer: string;
+    cached_at: number;
+    ttl_remaining: number;
+  };
+
+  export type CacheL1EntriesResponse = {
+    entries: CacheL1Entry[];
+    total: number;
+    page: number;
+    page_size: number;
+  };
 }

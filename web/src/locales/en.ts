@@ -2630,6 +2630,13 @@ Important structured information may include: names, dates, locations, events, k
       l1Invalidated: 'L1 cache invalidated successfully',
       allDialogs: 'All dialogs',
       allTenants: 'All tenants',
+      l1Entries: 'L1 Entries (Redis)',
+      l2Entries: 'L2 Entries (Semantic)',
+      ttlRemaining: 'TTL Remaining',
+      deleteL1Entry: 'Delete L1 entry',
+      deleteL1EntryConfirmation:
+        'Are you sure you want to delete the selected L1 cache entries?',
+      noQuestionStored: '(question not stored)',
     },
     explore: {
       title: 'Launch',

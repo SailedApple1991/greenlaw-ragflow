@@ -147,6 +147,8 @@ const {
   adminCacheL2Entries,
   adminCacheL2Entry,
   adminCacheL1InvalidateDialog,
+  adminCacheL1Entries,
+  adminCacheL1Dialogs,
 } = api;
 
 type ResponseData<D = NonNullable<unknown>> = {
@@ -395,3 +397,27 @@ export const invalidateCacheL1Dialog = (dialogId: string) =>
   request.delete<ResponseData<{ count: number }>>(
     adminCacheL1InvalidateDialog(dialogId),
   );
+
+export const listCacheL1Entries = (params: {
+  dialogId?: string;
+  page?: number;
+  pageSize?: number;
+}) =>
+  request.get<ResponseData<AdminService.CacheL1EntriesResponse>>(
+    adminCacheL1Entries,
+    {
+      params: {
+        dialog_id: params.dialogId,
+        page: params.page || 1,
+        page_size: params.pageSize || 20,
+      },
+    },
+  );
+
+export const deleteCacheL1Entries = (keys: string[]) =>
+  request.delete<ResponseData<{ deleted: number }>>(adminCacheL1Entries, {
+    data: { keys },
+  });
+
+export const listCacheL1Dialogs = () =>
+  request.get<ResponseData<AdminService.CacheDialog[]>>(adminCacheL1Dialogs);
