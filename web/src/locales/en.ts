@@ -1426,6 +1426,8 @@ Example: Virtual Hosted Style`,
       hint: 'hint',
     },
     fileManager: {
+      uploadFolderTitle: 'Upload folder',
+      folder: 'Folder',
       files: 'Files',
       name: 'Name',
       uploadDate: 'Upload date',
