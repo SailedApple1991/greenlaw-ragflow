@@ -21,7 +21,7 @@ from collections import defaultdict
 from io import BytesIO
 
 from PIL import Image
-from PyPDF2 import PdfReader as pdf2_read
+from pypdf import PdfReader as pdf2_read
 
 from deepdoc.parser import PdfParser, PlainParser
 from deepdoc.parser.ppt_parser import RAGFlowPptParser
