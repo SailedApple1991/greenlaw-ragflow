@@ -1034,7 +1034,6 @@ class API4Conversation(DataBaseModel):
     round = IntegerField(default=0, index=True)
     thumb_up = IntegerField(default=0, index=True)
     errors = TextField(null=True, help_text="errors")
-    version_title = CharField(max_length=255, null=True, help_text="canvas version title when session created", index=False)
 
     class Meta:
         db_table = "api_4_conversation"
@@ -1369,7 +1368,7 @@ def alter_db_rename_column(migrator, table_name, old_column_name, new_column_nam
 
 def migrate_add_unique_email(migrator):
     """Deduplicates user emails and add UNIQUE constraint to email column (idempotent)"""
-    # step 0: check existing index state on user.email and prepare for unique constraint
+    # step 0: check if UNIQUE index on email already exists
     try:
         if settings.DATABASE_TYPE.upper() == "POSTGRES":
             cursor = DB.execute_sql("""
@@ -1378,33 +1377,21 @@ def migrate_add_unique_email(migrator):
                 WHERE tablename = 'user'
                   AND indexname = 'user_email'
             """)
-            result = cursor.fetchone()
-            if result and result[0] > 0:
-                logging.info("UNIQUE index on user.email already exists, skipping migration")
-                return
         else:
-            # Fetch the first index on email: tells us both the name and whether it's unique.
-            # non_unique=0 means unique, non_unique=1 means non-unique.
             cursor = DB.execute_sql("""
-                SELECT index_name, non_unique
+                SELECT COUNT(*)
                 FROM information_schema.statistics
                 WHERE table_schema = DATABASE()
                   AND table_name = 'user'
-                  AND column_name = 'email'
-                LIMIT 1
+                  AND index_name = 'user_email'
+                  AND non_unique = 0
             """)
-            row = cursor.fetchone()
-            if row:
-                index_name, non_unique = row
-                if non_unique == 0:
-                    logging.info("UNIQUE index on user.email already exists, skipping migration")
-                    return
-                # Non-unique index exists (e.g. from old peewee index=True); drop it so
-                # the upcoming ADD UNIQUE INDEX does not hit MySQL error 1061 "Duplicate key name".
-                DB.execute_sql(f"ALTER TABLE `user` DROP INDEX `{index_name}`")
-                logging.info(f"Dropped non-unique index '{index_name}' on user.email before adding unique index")
+        result = cursor.fetchone()
+        if result and result[0] > 0:
+            logging.info("UNIQUE index on user.email already exists, skipping migration")
+            return
     except Exception as ex:
-        logging.warning(f"Failed to check/prepare email index on user table: {ex}, continuing with migration")
+        logging.warning("Failed to check if UNIQUE index exists on user.email: %s, continuing with migration", ex)
 
     # step 1: rename duplicate rows so the UNIQUE constraint can be applied
     try:
@@ -1645,7 +1632,6 @@ def migrate_db():
     alter_db_add_column(migrator, "memory", "tenant_embd_id", IntegerField(null=True, help_text="id in tenant_llm", index=True))
     alter_db_add_column(migrator, "memory", "tenant_llm_id", IntegerField(null=True, help_text="id in tenant_llm", index=True))
     alter_db_add_column(migrator, "user_canvas_version", "release", BooleanField(null=False, help_text="is released", default=False, index=True))
-    alter_db_add_column(migrator, "api_4_conversation", "version_title", CharField(max_length=255, null=True, help_text="canvas version title when session created", index=False))
     logging.disable(logging.NOTSET)
     # this is after re-enabling logging to allow logging changed user emails
     migrate_add_unique_email(migrator)
