@@ -2167,7 +2167,7 @@ This process aggregates variables from multiple branches into a single variable 
       createFromBlank: 'Create from blank',
       createFromTemplate: 'Create from template',
       importJsonFile: 'Import JSON file',
-      ceateAgent: 'Agent flow',
+      ceateAgent: 'Workflow',
       createPipeline: 'Ingestion pipeline',
       chooseAgentType: 'Choose agent type',
       parser: 'Parser',
