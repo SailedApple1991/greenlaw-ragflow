@@ -4,7 +4,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { DatasetMetadata } from '@/constants/chat';
 import { useSetModalState } from '@/hooks/common-hooks';
-import { useFetchChat, useUpdateChat } from '@/hooks/use-chat-request';
+import { useFetchDialog, useSetDialog } from '@/hooks/use-chat-request';
 import { cn } from '@/lib/utils';
 import {
   removeUselessFieldsFromValues,
@@ -28,8 +28,8 @@ type ChatSettingsProps = { hasSingleChatBox: boolean };
 
 export function ChatSettings({ hasSingleChatBox }: ChatSettingsProps) {
   const formSchema = useChatSettingSchema();
-  const { data } = useFetchChat();
-  const { updateChat, loading } = useUpdateChat();
+  const { data } = useFetchDialog();
+  const { setDialog, loading } = useSetDialog();
   const { id } = useParams();
   const { t } = useTranslation();
 
@@ -45,7 +45,7 @@ export function ChatSettings({ hasSingleChatBox }: ChatSettingsProps) {
       name: '',
       icon: '',
       description: '',
-      dataset_ids: [],
+      kb_ids: [],
       prompt_config: {
         quote: true,
         keyword: false,
@@ -75,32 +75,22 @@ export function ChatSettings({ hasSingleChatBox }: ChatSettingsProps) {
       'llm_setting.',
     );
 
-    updateChat({
-      chatId: id!,
-      params: {
-        ...omit(data, [
-          'operator_permission',
-          'tenant_id',
-          'created_by',
-          'create_time',
-          'create_date',
-          'update_time',
-          'update_date',
-          'id',
-        ]),
-        ...nextValues,
-      },
+    setDialog({
+      ...omit(data, 'operator_permission'),
+      ...nextValues,
+      dialog_id: id,
     });
   }
 
   function onInvalid(errors: any) {
-    void errors;
+    console.log('Form validation failed:', errors);
   }
 
   useEffect(() => {
     const llmSettingEnabledValues = setLLMSettingEnabledValues(
       data.llm_setting,
     );
+
     const nextData = {
       ...data,
       ...llmSettingEnabledValues,
@@ -130,58 +120,54 @@ export function ChatSettings({ hasSingleChatBox }: ChatSettingsProps) {
       <section
         data-testid="chat-detail-settings"
         className={cn(
-          'transition-[width] ease-out duration-300 flex-shrink-0 flex flex-col overflow-hidden',
+          'transition-[width] ease-out duration-300 flex-shrink-0 flex flex-col',
           settingVisible ? 'w-[440px]' : 'w-0',
         )}
       >
-        {settingVisible && (
-          <>
-            <div className="p-5 pb-2 flex justify-between items-center text-base">
-              {t('chat.chatSetting')}
+        <div className="p-5 pb-2 flex justify-between items-center text-base">
+          {t('chat.chatSetting')}
 
+          <Button
+            variant="transparent"
+            size="icon-sm"
+            className="border-0"
+            onClick={switchSettingVisible}
+            data-testid="chat-detail-settings-close"
+          >
+            <LucidePanelRightClose
+              className="size-4 cursor-pointer"
+              onClick={switchSettingVisible}
+            />
+          </Button>
+        </div>
+
+        <Form {...form}>
+          <form
+            onSubmit={form.handleSubmit(onSubmit, onInvalid)}
+            className="flex-1 flex flex-col min-h-0"
+          >
+            <ScrollArea>
+              <section className="p-5 space-y-6 overflow-auto flex-1 min-h-0">
+                <ChatBasicSetting></ChatBasicSetting>
+                <Separator />
+                <ChatPromptEngine></ChatPromptEngine>
+                <Separator />
+                <ChatModelSettings></ChatModelSettings>
+              </section>
+            </ScrollArea>
+
+            <div className="p-5 pt-4 space-x-5 text-right">
               <Button
-                variant="transparent"
-                size="icon-sm"
-                className="border-0"
+                variant={'outline'}
                 onClick={switchSettingVisible}
-                data-testid="chat-detail-settings-close"
+                data-testid="chat-detail-settings-cancel"
               >
-                <LucidePanelRightClose
-                  className="size-4 cursor-pointer"
-                  onClick={switchSettingVisible}
-                />
+                {t('chat.cancel')}
               </Button>
+              <SavingButton loading={loading}></SavingButton>
             </div>
-
-            <Form {...form}>
-              <form
-                onSubmit={form.handleSubmit(onSubmit, onInvalid)}
-                className="flex-1 flex flex-col min-h-0"
-              >
-                <ScrollArea>
-                  <section className="p-5 space-y-6 overflow-auto flex-1 min-h-0">
-                    <ChatBasicSetting></ChatBasicSetting>
-                    <Separator />
-                    <ChatPromptEngine></ChatPromptEngine>
-                    <Separator />
-                    <ChatModelSettings></ChatModelSettings>
-                  </section>
-                </ScrollArea>
-
-                <div className="p-5 pt-4 space-x-5 text-right">
-                  <Button
-                    variant={'outline'}
-                    onClick={switchSettingVisible}
-                    data-testid="chat-detail-settings-cancel"
-                  >
-                    {t('chat.cancel')}
-                  </Button>
-                  <SavingButton loading={loading}></SavingButton>
-                </div>
-              </form>
-            </Form>
-          </>
-        )}
+          </form>
+        </Form>
       </section>
     </>
   );
