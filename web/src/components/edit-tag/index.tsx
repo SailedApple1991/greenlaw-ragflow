@@ -59,7 +59,7 @@ const EditTag = React.forwardRef<HTMLDivElement, EditTagsProps>(
           <HoverCardTrigger asChild>
             <div className="w-fit flex items-center justify-center gap-2 border border-border-button px-2 py-1 rounded-sm bg-bg-card">
               <div className="flex gap-2 items-center">
-                <div className="max-w-80 overflow-hidden text-ellipsis">
+                <div className="max-w-80 whitespace-nowrap overflow-hidden text-ellipsis">
                   {tag}
                 </div>
                 {!disabled && (
