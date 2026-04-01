@@ -7,7 +7,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { SearchInput } from '@/components/ui/input';
 import { useSetModalState } from '@/hooks/common-hooks';
 import {
-  useFetchDialog,
+  useFetchChat,
   useGetChatSearchParams,
   useRemoveConversation,
 } from '@/hooks/use-chat-request';
@@ -39,7 +39,7 @@ export function Sessions({ handleConversationCardClick }: SessionProps) {
     handleInputChange,
     searchString,
   } = useSelectDerivedConversationList();
-  const { data } = useFetchDialog();
+  const { data } = useFetchChat();
   const { visible, switchVisible } = useSetModalState(true);
   const { removeConversation } = useRemoveConversation();
 
