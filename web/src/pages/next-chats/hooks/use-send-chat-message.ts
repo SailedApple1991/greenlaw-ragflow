@@ -71,9 +71,8 @@ export const useSendMessage = (controller: AbortController) => {
   const { handleUploadFile, isUploading, removeFile, files, clearFiles } =
     useUploadFile();
 
-  const { send, answer, done } = useSendMessageWithSse(
-    api.completeConversation,
-  );
+  const { id: chatId } = useParams();
+  const { send, answer, done } = useSendMessageWithSse();
   const {
     scrollRef,
     messageContainerRef,
@@ -98,9 +97,10 @@ export const useSendMessage = (controller: AbortController) => {
       currentConversationId?: string;
       messages?: IMessage[];
     } & NextMessageInputOnPressEnterParameter) => {
+      const sessionId = currentConversationId ?? conversationId;
       const res = await send(
+        api.completionUrl(chatId!, sessionId),
         {
-          conversation_id: currentConversationId ?? conversationId,
           messages: [
             ...(Array.isArray(messages) && messages?.length > 0
               ? messages
@@ -123,6 +123,7 @@ export const useSendMessage = (controller: AbortController) => {
     [
       derivedMessages,
       conversationId,
+      chatId,
       removeLatestMessage,
       setValue,
       send,

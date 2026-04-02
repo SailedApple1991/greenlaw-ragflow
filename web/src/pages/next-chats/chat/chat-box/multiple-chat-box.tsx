@@ -181,7 +181,7 @@ const ChatCard = forwardRef(function ChatCard(
                   avatarDialog={currentDialog.icon}
                   reference={buildMessageItemReference(
                     {
-                      message: derivedMessages,
+                      messages: derivedMessages,
                       reference: conversation.reference,
                     },
                     message,
