@@ -1,5 +1,6 @@
 import { useHandleFilterSubmit } from '@/components/list-filter-bar/use-handle-filter-submit';
 import message from '@/components/ui/message';
+import { ParseType } from '@/constants/knowledge';
 import { ResponsePostType } from '@/interfaces/database/base';
 import {
   IKnowledge,
@@ -184,7 +185,18 @@ export const useCreateKnowledge = () => {
     mutateAsync,
   } = useMutation({
     mutationKey: [KnowledgeApiAction.CreateKnowledge],
-    mutationFn: async (params: { id?: string; name: string }) => {
+    mutationFn: async (params: {
+      id?: string;
+      name: string;
+      embedding_model?: string;
+      chunk_method?: string;
+      parseType?: ParseType;
+      pipeline_id?: string | null;
+      ext?: {
+        language?: string;
+        [key: string]: any;
+      };
+    }) => {
       const { data = {} } = await kbService.createKb(params);
       if (data.code === 0) {
         message.success(
