@@ -21,9 +21,10 @@ import re
 import time
 import uuid
 
-from rag.utils.redis_conn import REDIS_CONN
-
 CACHE_INDEX_PREFIX = "ragflow_cache_"
+
+# S3/MinIO bucket used for L1 cache objects
+_L1_BUCKET = "ragflow_cache_l1"
 
 
 def _get_raw_client(conn=None):
@@ -45,39 +46,42 @@ def _get_raw_client(conn=None):
 
 
 def _normalize_question(question: str) -> str:
-    """Normalize question for consistent cache key generation.
-
-    Strips whitespace, lowercases, and collapses multiple spaces.
-    Punctuation differences (e.g. "What is RAG?" vs "What is RAG") will
-    produce different keys — this is intentional for L1 exact-match.
-    """
+    """Normalize question for consistent cache key generation."""
     q = question.strip().lower()
     q = re.sub(r'\s+', ' ', q)
     return q
 
 
-def _cache_key(dialog_id: str, question: str) -> str:
-    """Generate L1 cache key from dialog_id and normalized question."""
+def _cache_hash(question: str) -> str:
+    """Generate SHA-256 hash from normalized question."""
     normalized = _normalize_question(question)
-    h = hashlib.sha256(normalized.encode('utf-8')).hexdigest()
-    return f"ragflow:cache:l1:{dialog_id}:{h}"
+    return hashlib.sha256(normalized.encode('utf-8')).hexdigest()
 
 
-def _invalidation_set_key(dialog_id: str) -> str:
-    """Key for the set of all cache keys belonging to a dialog."""
-    return f"ragflow:cache:inv:{dialog_id}"
+def _s3_path(dialog_id: str, question: str) -> str:
+    """S3 object path for an L1 cache entry: {dialog_id}/{hash}.json"""
+    return f"{dialog_id}/{_cache_hash(question)}.json"
+
+
+def _get_storage():
+    """Return the STORAGE_IMPL singleton."""
+    from common import settings
+    return settings.STORAGE_IMPL
 
 
 def get_l1_cache(dialog_id: str, question: str) -> dict | None:
-    """Look up L1 exact-match cache. Returns cached response dict or None."""
-    if not REDIS_CONN.is_alive():
-        return None
+    """Look up L1 exact-match cache from S3. Returns cached response dict or None."""
     try:
-        key = _cache_key(dialog_id, question)
-        data = REDIS_CONN.get(key)
+        storage = _get_storage()
+        data = storage.get(_L1_BUCKET, _s3_path(dialog_id, question))
         if data is None:
             return None
         result = json.loads(data)
+        # Check TTL expiry
+        cached_at = float(result.get("created_at", 0))
+        ttl = int(result.get("ttl", 5184000))
+        if time.time() - cached_at > ttl:
+            return None
         result["cached"] = True
         logging.info("L1 cache hit for dialog=%s question='%s'", dialog_id, question[:50])
         return result
@@ -87,49 +91,93 @@ def get_l1_cache(dialog_id: str, question: str) -> dict | None:
 
 
 def set_l1_cache(dialog_id: str, question: str, response: dict, ttl: int = 5184000) -> bool:
-    """Store response in L1 cache with TTL. Returns True on success."""
-    if not REDIS_CONN.is_alive():
-        return False
+    """Store response in L1 cache (S3) with TTL metadata. Returns True on success."""
     try:
-        key = _cache_key(dialog_id, question)
+        storage = _get_storage()
         cache_data = {
             "answer": response.get("answer", ""),
             "reference": response.get("reference", {}),
             "prompt": response.get("prompt", ""),
             "question_text": question,
             "created_at": time.time(),
+            "ttl": ttl,
         }
-        success = REDIS_CONN.set(key, json.dumps(cache_data, ensure_ascii=False), ttl)
-        if success:
-            inv_key = _invalidation_set_key(dialog_id)
-            REDIS_CONN.sadd(inv_key, key)
-            # Keep invalidation set alive at least as long as the newest entry
-            try:
-                REDIS_CONN.REDIS.expire(inv_key, ttl)
-            except Exception:
-                pass
-        return bool(success)
+        json_bytes = json.dumps(cache_data, ensure_ascii=False).encode("utf-8")
+        storage.put(_L1_BUCKET, _s3_path(dialog_id, question), json_bytes)
+        return True
     except Exception as e:
         logging.warning("L1 cache set error: %s", e)
         return False
 
 
+def _list_s3_objects(prefix: str) -> list[str]:
+    """List object keys under *prefix* inside the L1 cache bucket.
+
+    Supports both MinIO (minio.Minio) and boto3 S3 clients.
+    """
+    raw = _get_storage()
+    # Unwrap EncryptedStorageWrapper if present
+    if hasattr(raw, "storage_impl"):
+        raw = raw.storage_impl
+
+    physical_bucket = getattr(raw, "bucket", None) or _L1_BUCKET
+    prefix_path = getattr(raw, "prefix_path", None)
+
+    if prefix_path:
+        full_prefix = f"{prefix_path}/{_L1_BUCKET}/{prefix}" if raw.bucket else f"{prefix_path}/{prefix}"
+        strip_prefix = f"{prefix_path}/{_L1_BUCKET}/" if raw.bucket else f"{prefix_path}/"
+    elif raw.bucket:
+        full_prefix = f"{_L1_BUCKET}/{prefix}"
+        strip_prefix = f"{_L1_BUCKET}/"
+    else:
+        full_prefix = prefix
+        strip_prefix = ""
+
+    result = []
+    try:
+        conn = raw.conn
+        if conn is None:
+            return result
+
+        # MinIO client — has list_objects
+        if hasattr(conn, "list_objects"):
+            for obj in conn.list_objects(physical_bucket, prefix=full_prefix, recursive=True):
+                name = obj.object_name
+                if strip_prefix and name.startswith(strip_prefix):
+                    name = name[len(strip_prefix):]
+                result.append(name)
+        # boto3 S3 client — stored as conn[0]
+        elif isinstance(conn, list) and len(conn) > 0:
+            s3_client = conn[0]
+            paginator = s3_client.get_paginator("list_objects_v2")
+            for page in paginator.paginate(Bucket=physical_bucket, Prefix=full_prefix):
+                for obj in page.get("Contents", []):
+                    name = obj["Key"]
+                    if strip_prefix and name.startswith(strip_prefix):
+                        name = name[len(strip_prefix):]
+                    result.append(name)
+    except Exception:
+        logging.exception("Failed to list S3 objects with prefix=%s", prefix)
+    return result
+
+
 def invalidate_dialog_cache(dialog_id: str, tenant_id: str | None = None) -> int:
     """Delete all L1 (and optionally L2) cache entries for a dialog."""
     count = 0
-    # L1 invalidation
-    if REDIS_CONN.is_alive():
-        try:
-            inv_key = _invalidation_set_key(dialog_id)
-            members = REDIS_CONN.smembers(inv_key)
-            if members:
-                for key in members:
-                    if REDIS_CONN.delete(key):
-                        count += 1
-                REDIS_CONN.delete(inv_key)
-                logging.info("Invalidated %d L1 cache entries for dialog=%s", count, dialog_id)
-        except Exception as e:
-            logging.warning("L1 cache invalidation error: %s", e)
+    # L1 invalidation — list and delete all objects under dialog prefix
+    try:
+        storage = _get_storage()
+        keys = _list_s3_objects(f"{dialog_id}/")
+        for key in keys:
+            try:
+                storage.rm(_L1_BUCKET, key)
+                count += 1
+            except Exception:
+                continue
+        if count > 0:
+            logging.info("Invalidated %d L1 cache entries for dialog=%s", count, dialog_id)
+    except Exception as e:
+        logging.warning("L1 cache invalidation error: %s", e)
 
     # L2 invalidation
     if tenant_id:
@@ -140,36 +188,31 @@ def invalidate_dialog_cache(dialog_id: str, tenant_id: str | None = None) -> int
 
 def list_l1_entries(dialog_id: str | None = None, page: int = 1, page_size: int = 20) -> dict:
     """List L1 cache entries with pagination. Returns {entries, total, page, page_size}."""
-    if not REDIS_CONN.is_alive():
-        return {"entries": [], "total": 0, "page": page, "page_size": page_size}
     try:
-        pattern = f"ragflow:cache:l1:{dialog_id}:*" if dialog_id else "ragflow:cache:l1:*"
-        all_keys = []
-        cursor = "0"
-        while True:
-            cursor, keys = REDIS_CONN.REDIS.scan(cursor=cursor, match=pattern, count=500)
-            all_keys.extend(keys)
-            if int(cursor) == 0:
-                break
+        storage = _get_storage()
+        prefix = f"{dialog_id}/" if dialog_id else ""
+        all_keys = _list_s3_objects(prefix)
 
         entries = []
         for key in all_keys:
             try:
-                data = REDIS_CONN.REDIS.get(key)
+                data = storage.get(_L1_BUCKET, key)
                 if data is None:
                     continue
-                ttl_remaining = REDIS_CONN.REDIS.ttl(key)
                 parsed = json.loads(data)
-                # Parse dialog_id from key: ragflow:cache:l1:{dialog_id}:{hash}
-                parts = key.split(":")
-                entry_dialog_id = parts[3] if len(parts) >= 5 else ""
+                cached_at = float(parsed.get("created_at", 0))
+                ttl = int(parsed.get("ttl", 5184000))
+                ttl_remaining = max(0, int(cached_at + ttl - time.time()))
+                # Parse dialog_id from key path: {dialog_id}/{hash}.json
+                parts = key.split("/")
+                entry_dialog_id = parts[0] if len(parts) >= 2 else ""
                 entries.append({
                     "key": key,
                     "dialog_id": entry_dialog_id,
                     "question_text": parsed.get("question_text", ""),
                     "answer": parsed.get("answer", ""),
-                    "cached_at": parsed.get("created_at", 0),
-                    "ttl_remaining": ttl_remaining if ttl_remaining > 0 else 0,
+                    "cached_at": cached_at,
+                    "ttl_remaining": ttl_remaining,
                 })
             except Exception:
                 continue
@@ -186,21 +229,18 @@ def list_l1_entries(dialog_id: str | None = None, page: int = 1, page_size: int 
 
 
 def delete_l1_entries(keys: list[str]) -> int:
-    """Delete specific L1 cache entries by key. Returns count deleted."""
-    if not REDIS_CONN.is_alive():
+    """Delete specific L1 cache entries by S3 object path. Returns count deleted."""
+    try:
+        storage = _get_storage()
+    except Exception:
         return 0
     count = 0
     for key in keys:
-        if not key.startswith("ragflow:cache:l1:"):
+        if "/" not in key or not key.endswith(".json"):
             continue
         try:
-            if REDIS_CONN.delete(key):
-                count += 1
-                # Also remove from invalidation set
-                parts = key.split(":")
-                if len(parts) >= 5:
-                    inv_key = _invalidation_set_key(parts[3])
-                    REDIS_CONN.srem(inv_key, key)
+            storage.rm(_L1_BUCKET, key)
+            count += 1
         except Exception:
             continue
     return count
