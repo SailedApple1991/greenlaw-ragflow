@@ -24,13 +24,13 @@ from api.db.services.cache_service import (
     _cache_index_name,
     _ensure_cache_index,
     _get_raw_client,
+    _list_s3_objects,
     delete_l1_entries,
     invalidate_dialog_cache,
     list_l1_entries,
 )
 from api.db.services.dialog_service import DialogService
 from api.db.services.user_service import TenantService
-from rag.utils.redis_conn import REDIS_CONN
 from common import settings
 
 
@@ -39,25 +39,18 @@ from common import settings
 async def get_cache_stats():
     """Get L1/L2 cache statistics."""
     try:
-        redis_alive = REDIS_CONN.is_alive()
+        # L1 stats from S3
         l1_total_keys = 0
-        l1_dialog_count = 0
-        if redis_alive:
-            try:
-                cursor = "0"
-                while True:
-                    cursor, keys = REDIS_CONN.REDIS.scan(cursor=cursor, match="ragflow:cache:inv:*", count=500)
-                    l1_dialog_count += len(keys)
-                    if int(cursor) == 0:
-                        break
-                cursor = "0"
-                while True:
-                    cursor, keys = REDIS_CONN.REDIS.scan(cursor=cursor, match="ragflow:cache:l1:*", count=500)
-                    l1_total_keys += len(keys)
-                    if int(cursor) == 0:
-                        break
-            except Exception as e:
-                logging.warning("cache stats L1 error: %s", e)
+        l1_dialog_ids = set()
+        try:
+            all_keys = _list_s3_objects("")
+            l1_total_keys = len(all_keys)
+            for key in all_keys:
+                parts = key.split("/")
+                if len(parts) >= 2:
+                    l1_dialog_ids.add(parts[0])
+        except Exception as e:
+            logging.warning("cache stats L1 error: %s", e)
 
         l2_total_entries = 0
         l2_indices = []
@@ -75,7 +68,7 @@ async def get_cache_stats():
             logging.warning("cache stats L2 error: %s", e)
 
         return get_json_result(data={
-            "l1": {"total_keys": l1_total_keys, "dialog_count": l1_dialog_count, "redis_alive": redis_alive},
+            "l1": {"total_keys": l1_total_keys, "dialog_count": len(l1_dialog_ids), "storage": "s3"},
             "l2": {"total_entries": l2_total_entries, "indices": l2_indices},
         })
     except Exception as e:
@@ -199,37 +192,22 @@ async def delete_cache_l1_entries():
 async def list_cache_l1_dialogs():
     """List dialogs that have L1 cache entries."""
     try:
-        if not REDIS_CONN.is_alive():
-            return get_json_result(data=[])
-
-        dialog_ids = set()
-        cursor = "0"
-        while True:
-            cursor, keys = REDIS_CONN.REDIS.scan(
-                cursor=cursor, match="ragflow:cache:inv:*", count=500
-            )
-            for key in keys:
-                # key format: ragflow:cache:inv:{dialog_id}
-                parts = key.split(":")
-                if len(parts) >= 4:
-                    dialog_ids.add(parts[3])
-            if int(cursor) == 0:
-                break
+        # List dialog IDs from S3 cache objects
+        all_keys = _list_s3_objects("")
+        dialog_counts = {}
+        for key in all_keys:
+            parts = key.split("/")
+            if len(parts) >= 2:
+                d_id = parts[0]
+                dialog_counts[d_id] = dialog_counts.get(d_id, 0) + 1
 
         result = []
-        for d_id in dialog_ids:
+        for d_id, entry_count in dialog_counts.items():
             d_name = d_id
-            entry_count = 0
             try:
                 dialogs = DialogService.query(id=d_id)
                 if dialogs:
                     d_name = dialogs[0].name
-            except Exception:
-                pass
-            # Count entries for this dialog
-            try:
-                members = REDIS_CONN.smembers(f"ragflow:cache:inv:{d_id}")
-                entry_count = len(members) if members else 0
             except Exception:
                 pass
             result.append({
