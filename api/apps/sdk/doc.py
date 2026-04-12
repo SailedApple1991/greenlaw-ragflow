@@ -16,16 +16,18 @@
 import datetime
 import json
 import logging
+import pathlib
 import re
 from io import BytesIO
 
 import xxhash
 from quart import request, send_file
 from peewee import OperationalError
-from pydantic import BaseModel, Field, validator, ValidationError
+from pydantic import BaseModel, Field, validator
 
 from api.constants import FILE_NAME_LEN_LIMIT
-from api.db.db_models import APIToken, Document, File, Task
+from api.db import FileType
+from api.db.db_models import APIToken, File, Task
 from api.db.services.document_service import DocumentService
 from api.db.services.doc_metadata_service import DocMetadataService
 from api.db.services.file2document_service import File2DocumentService
@@ -34,20 +36,16 @@ from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.llm_service import LLMBundle
 from api.db.services.tenant_llm_service import TenantLLMService
 from api.db.services.task_service import TaskService, queue_tasks, cancel_all_task_of
-from api.utils import validation_utils
+from common.metadata_utils import meta_filter, convert_conditions
 from api.utils.api_utils import check_duplicate_ids, construct_json_result, get_error_data_result, get_parser_config, get_result, server_error_response, token_required, \
     get_request_json
-from api.utils.image_utils import store_chunk_image
-from api.utils.validation_utils import format_validation_error_message, UpdateDocumentReq
-from common import settings
-from common.constants import RetCode, LLMType, ParserType, TaskStatus, FileSource
-from common.metadata_utils import meta_filter, convert_conditions
-from common.misc_utils import thread_pool_exec
-from common.string_utils import remove_redundant_spaces
 from rag.app.qa import beAdoc, rmPrefix
 from rag.app.tag import label_question
 from rag.nlp import rag_tokenizer, search
 from rag.prompts.generator import cross_languages, keyword_extraction
+from common.string_utils import remove_redundant_spaces
+from common.constants import RetCode, LLMType, ParserType, TaskStatus, FileSource
+from common import settings
 
 MAXIMUM_OF_UPLOADING_FILES = 256
 
@@ -184,60 +182,6 @@ async def upload(dataset_id, tenant_id):
     return get_result(data=renamed_doc_list)
 
 
-def _update_document_name_only(document_id, req_doc_name):
-    """Update document name only (without validation)."""
-    if not DocumentService.update_by_id(document_id, {"name": req_doc_name}):
-        return get_error_data_result(message="Database error (Document rename)!")
-
-    informs = File2DocumentService.get_by_document_id(document_id)
-    if informs:
-        e, file = FileService.get_by_id(informs[0].file_id)
-        FileService.update_by_id(file.id, {"name": req_doc_name})
-    return None
-
-def _update_chunk_method_only(req, doc, dataset_id, tenant_id):
-    """Update chunk method only (without validation)."""
-    if doc.parser_id.lower() != req["chunk_method"].lower():
-        # if chunk method changed
-        e = DocumentService.update_by_id(
-            doc.id,
-            {
-                "parser_id": req["chunk_method"],
-                "progress": 0,
-                "progress_msg": "",
-                "run": TaskStatus.UNSTART.value,
-            },
-        )
-        if not e:
-            return get_error_data_result(message="Document not found!")
-    if not req.get("parser_config"):
-        req["parser_config"] = get_parser_config(req["chunk_method"], req.get("parser_config"))
-        DocumentService.update_parser_config(doc.id, req["parser_config"])
-    if doc.token_num > 0:
-        e = DocumentService.increment_chunk_num(
-            doc.id,
-            doc.kb_id,
-            doc.token_num * -1,
-            doc.chunk_num * -1,
-            doc.process_duration * -1,
-        )
-        if not e:
-            return get_error_data_result(message="Document not found!")
-        settings.docStoreConn.delete({"doc_id": doc.id}, search.index_name(tenant_id), dataset_id)
-    return None
-
-def _update_document_status_only(status:int, doc, kb):
-    """Update document status only (without validation)."""
-    if doc.status is None or (int(doc.status) != status):
-        try:
-            if not DocumentService.update_by_id(doc.id, {"status": str(status)}):
-                return get_error_data_result(message="Database error (Document update)!")
-            settings.docStoreConn.update({"doc_id": doc.id}, {"available_int": status}, search.index_name(kb.tenant_id), doc.kb_id)
-        except Exception as e:
-            return server_error_response(e)
-    return None
-
-
 @manager.route("/datasets/<dataset_id>/documents/<document_id>", methods=["PUT"])  # noqa: F821
 @token_required
 async def update_doc(tenant_id, dataset_id, document_id):
@@ -290,55 +234,99 @@ async def update_doc(tenant_id, dataset_id, document_id):
           type: object
     """
     req = await get_request_json()
-    
-    # Verify ownership and existence of dataset and document
     if not KnowledgebaseService.query(id=dataset_id, tenant_id=tenant_id):
         return get_error_data_result(message="You don't own the dataset.")
     e, kb = KnowledgebaseService.get_by_id(dataset_id)
     if not e:
         return get_error_data_result(message="Can't find this dataset!")
-
-    # Prepare data for validation
-    docs = DocumentService.query(kb_id=dataset_id, id=document_id)
-    if not docs:
+    doc = DocumentService.query(kb_id=dataset_id, id=document_id)
+    if not doc:
         return get_error_data_result(message="The dataset doesn't own the document.")
+    doc = doc[0]
+    if "chunk_count" in req:
+        if req["chunk_count"] != doc.chunk_num:
+            return get_error_data_result(message="Can't change `chunk_count`.")
+    if "token_count" in req:
+        if req["token_count"] != doc.token_num:
+            return get_error_data_result(message="Can't change `token_count`.")
+    if "progress" in req:
+        if req["progress"] != doc.progress:
+            return get_error_data_result(message="Can't change `progress`.")
 
-    # Validate document update request parameters
-    try:
-        update_doc_req = UpdateDocumentReq(**req)
-    except ValidationError as e:
-        return get_error_data_result(message=format_validation_error_message(e), code=RetCode.DATA_ERROR)
-
-    doc = docs[0]
-
-    # further check with inner status (from DB)
-    error_msg, error_code = _validate_document_update_fields(update_doc_req, doc, req)
-    if error_msg:
-        return get_error_data_result(message=error_msg, code=error_code)
-
-    # All validations passed, now perform all updates
-    # meta_fields provided, then update it
-    if update_doc_req.meta_fields:
-        if not DocMetadataService.update_document_metadata(document_id, update_doc_req.meta_fields):
+    if "meta_fields" in req:
+        if not isinstance(req["meta_fields"], dict):
+            return get_error_data_result(message="meta_fields must be a dictionary")
+        if not DocMetadataService.update_document_metadata(document_id, req["meta_fields"]):
             return get_error_data_result(message="Failed to update metadata")
-    # doc name provided from request and diff with existing value, update
+
     if "name" in req and req["name"] != doc.name:
-        if error := _update_document_name_only(document_id, req["name"]):
-            return error
+        if len(req["name"].encode("utf-8")) > FILE_NAME_LEN_LIMIT:
+            return get_result(
+                message=f"File name must be {FILE_NAME_LEN_LIMIT} bytes or less.",
+                code=RetCode.ARGUMENT_ERROR,
+            )
+        if pathlib.Path(req["name"].lower()).suffix != pathlib.Path(doc.name.lower()).suffix:
+            return get_result(
+                message="The extension of file can't be changed",
+                code=RetCode.ARGUMENT_ERROR,
+            )
+        for d in DocumentService.query(name=req["name"], kb_id=doc.kb_id):
+            if d.name == req["name"]:
+                return get_error_data_result(message="Duplicated document name in the same dataset.")
+        if not DocumentService.update_by_id(document_id, {"name": req["name"]}):
+            return get_error_data_result(message="Database error (Document rename)!")
 
-    # parser config provided (already validated in UpdateDocumentReq), update it
-    if update_doc_req.parser_config:
+        informs = File2DocumentService.get_by_document_id(document_id)
+        if informs:
+            e, file = FileService.get_by_id(informs[0].file_id)
+            FileService.update_by_id(file.id, {"name": req["name"]})
+
+    if "parser_config" in req:
         DocumentService.update_parser_config(doc.id, req["parser_config"])
+    if "chunk_method" in req:
+        valid_chunk_method = {"naive", "manual", "qa", "table", "paper", "book", "laws", "presentation", "picture", "one", "knowledge_graph", "email", "tag"}
+        if req.get("chunk_method") not in valid_chunk_method:
+            return get_error_data_result(f"`chunk_method` {req['chunk_method']} doesn't exist")
 
-    # chunk method provided - the update method will check if it's different with existing one
-    if update_doc_req.chunk_method:
-        if error := _update_chunk_method_only(req, doc, dataset_id, tenant_id):
-            return error
+        if doc.type == FileType.VISUAL or re.search(r"\.(ppt|pptx|pages)$", doc.name):
+            return get_error_data_result(message="Not supported yet!")
 
-    if "enabled" in req: # already checked in UpdateDocumentReq - it's int if it's present
-        # "enabled" flag provided, the update method will check if it's changed and then update if so
-        if error := _update_document_status_only(int(req["enabled"]), doc, kb):
-            return error
+        if doc.parser_id.lower() != req["chunk_method"].lower():
+            e = DocumentService.update_by_id(
+                doc.id,
+                {
+                    "parser_id": req["chunk_method"],
+                    "progress": 0,
+                    "progress_msg": "",
+                    "run": TaskStatus.UNSTART.value,
+                },
+            )
+            if not e:
+                return get_error_data_result(message="Document not found!")
+        if not req.get("parser_config"):
+            req["parser_config"] = get_parser_config(req["chunk_method"], req.get("parser_config"))
+            DocumentService.update_parser_config(doc.id, req["parser_config"])
+        if doc.token_num > 0:
+            e = DocumentService.increment_chunk_num(
+                doc.id,
+                doc.kb_id,
+                doc.token_num * -1,
+                doc.chunk_num * -1,
+                doc.process_duration * -1,
+            )
+            if not e:
+                return get_error_data_result(message="Document not found!")
+            settings.docStoreConn.delete({"doc_id": doc.id}, search.index_name(tenant_id), dataset_id)
+
+    if "enabled" in req:
+        status = int(req["enabled"])
+        if doc.status != req["enabled"]:
+            try:
+                if not DocumentService.update_by_id(doc.id, {"status": str(status)}):
+                    return get_error_data_result(message="Database error (Document update)!")
+                settings.docStoreConn.update({"doc_id": doc.id}, {"available_int": status}, search.index_name(kb.tenant_id), doc.kb_id)
+            except Exception as e:
+                return server_error_response(e)
 
     try:
         ok, doc = DocumentService.get_by_id(doc.id)
@@ -370,27 +358,6 @@ async def update_doc(tenant_id, dataset_id, document_id):
 
     return get_result(data=renamed_doc)
 
-def _validate_document_update_fields(update_doc_req:UpdateDocumentReq, doc, req):
-    """Validate document update fields in a single method."""
-    # Validate immutable fields
-    error_msg, error_code = validation_utils.validate_immutable_fields(update_doc_req, doc)
-    if error_msg:
-        return error_msg, error_code
-
-    # Validate document name if present
-    if "name" in req and req["name"] != doc.name:
-        docs_from_name = DocumentService.query(name=req["name"], kb_id=doc.kb_id)
-        error_msg, error_code = validation_utils.validate_document_name(req["name"], doc, docs_from_name)
-        if error_msg:
-            return error_msg, error_code
-
-    # Validate chunk method if present
-    if "chunk_method" in req:
-        error_msg, error_code = validation_utils.validate_chunk_method(doc, req["chunk_method"])
-        if error_msg:
-            return error_msg, error_code
-
-    return None, None
 
 @manager.route("/datasets/<dataset_id>/documents/<document_id>", methods=["GET"])  # noqa: F821
 @token_required
@@ -899,18 +866,10 @@ async def parse(tenant_id, dataset_id):
             continue
         if not doc:
             return get_error_data_result(message=f"You don't own the document {id}.")
-        info = {"run": "1", "progress": 0, "progress_msg": "", "chunk_num": 0, "token_num": 0}
-        if (
-            DocumentService.filter_update(
-                [
-                    Document.id == id,
-                    ((Document.run.is_null(True)) | (Document.run != TaskStatus.RUNNING.value)),
-                ],
-                info,
-            )
-            == 0
-        ):
+        if doc[0].run == TaskStatus.RUNNING.value:
             return get_error_data_result("Can't parse document that is currently being processed")
+        info = {"run": "1", "progress": 0, "progress_msg": "", "chunk_num": 0, "token_num": 0}
+        DocumentService.update_by_id(id, info)
         settings.docStoreConn.delete({"doc_id": id}, search.index_name(tenant_id), dataset_id)
         TaskService.filter_delete([Task.doc_id == id])
         e, doc = DocumentService.get_by_id(id)
@@ -987,8 +946,8 @@ async def stop_parsing(tenant_id, dataset_id):
         doc = DocumentService.query(id=id, kb_id=dataset_id)
         if not doc:
             return get_error_data_result(message=f"You don't own the document {id}.")
-        if int(doc[0].progress) == 1 or doc[0].progress == 0:
-            return get_error_data_result("Can't stop parsing document with progress at 0 or 1")
+        if doc[0].run != TaskStatus.RUNNING.value :
+            return get_error_data_result("Can't stop parsing document that has not started or already completed")
         # Send cancellation signal via Redis to stop background task
         cancel_all_task_of(id)
         info = {"run": "2", "progress": 0, "chunk_num": 0}

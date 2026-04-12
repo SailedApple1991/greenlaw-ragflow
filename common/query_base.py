@@ -32,9 +32,7 @@ class QueryBase(ABC):
 
     @staticmethod
     def sub_special_char(line):
-        # Strip single quotes first to avoid Infinity's lexer treating them as string delimiters,
-        # then escape remaining Infinity/Lucene special characters.
-        return re.sub(r"([:\{\}/\[\]\-\*\"\(\)\|\+~\^])", r"\\\1", line.replace("'", "")).strip()
+        return re.sub(r"([:\{\}/\[\]\-\*\?\"\(\)\|\+~\^])", r"\\\1", line).strip()
 
     @staticmethod
     def rmWWW(txt):

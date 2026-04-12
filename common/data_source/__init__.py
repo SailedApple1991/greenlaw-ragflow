@@ -37,6 +37,7 @@ from .sharepoint_connector import SharePointConnector
 from .teams_connector import TeamsConnector
 from .moodle_connector import MoodleConnector
 from .airtable_connector import AirtableConnector
+from .dingtalk_ai_table_connector import DingTalkAITableConnector
 from .asana_connector import AsanaConnector
 from .imap_connector import ImapConnector
 from .zendesk_connector import ZendeskConnector
@@ -85,4 +86,5 @@ __all__ = [
     "SeaFileConnector",
     "RDBMSConnector",
     "WebDAVConnector",
+    "DingTalkAITableConnector",
 ]

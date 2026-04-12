@@ -16,7 +16,7 @@ interface EditTagsProps {
 }
 
 const EditTag = React.forwardRef<HTMLDivElement, EditTagsProps>(
-  ({ value = [], onChange, disabled }: EditTagsProps) => {
+  function EditTag({ value = [], onChange, disabled }, ref) {
     const [inputVisible, setInputVisible] = useState(false);
     const [inputValue, setInputValue] = useState('');
     const inputRef = useRef<HTMLInputElement>(null);
@@ -59,7 +59,7 @@ const EditTag = React.forwardRef<HTMLDivElement, EditTagsProps>(
           <HoverCardTrigger asChild>
             <div className="w-fit flex items-center justify-center gap-2 border border-border-button px-2 py-1 rounded-sm bg-bg-card">
               <div className="flex gap-2 items-center">
-                <div className="max-w-80 overflow-hidden text-ellipsis">
+                <div className="max-w-80 whitespace-nowrap overflow-hidden text-ellipsis">
                   {tag}
                 </div>
                 {!disabled && (
@@ -82,7 +82,7 @@ const EditTag = React.forwardRef<HTMLDivElement, EditTagsProps>(
     const tagChild = value?.map(forMap);
 
     return (
-      <div>
+      <div ref={ref}>
         {inputVisible && (
           <Input
             ref={inputRef}

@@ -7,7 +7,7 @@ ARG NEED_MIRROR=0
 
 WORKDIR /ragflow
 
-# Copy models downloaded via download_deps.py
+# copy models downloaded via download_deps.py
 RUN mkdir -p /ragflow/rag/res/deepdoc /root/.ragflow
 RUN --mount=type=bind,from=infiniflow/ragflow_deps:latest,source=/huggingface.co,target=/huggingface.co \
     tar --exclude='.*' -cf - \
@@ -42,7 +42,6 @@ RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
     echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache && \
     chmod 1777 /tmp && \
     apt update && \
-    apt install -y build-essential && \
     apt install -y libglib2.0-0 libglx-mesa0 libgl1 && \
     apt install -y pkg-config libicu-dev libgdiplus && \
     apt install -y default-jdk && \
@@ -55,6 +54,16 @@ RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
     apt install -y texlive && \
     apt install -y fonts-freefont-ttf fonts-noto-cjk && \
     apt install -y postgresql-client
+
+# Download resource from GitHub to /usr/share/infinity
+RUN mkdir -p /usr/share/infinity/resource && \
+    if [ "$NEED_MIRROR" == "1" ]; then \
+        git clone --depth 1 --single-branch https://gitee.com/infiniflow/resource /tmp/resource; \
+    else \
+        git clone --depth 1 --single-branch https://github.com/infiniflow/resource.git /tmp/resource; \
+    fi && \
+    cp -r /tmp/resource/* /usr/share/infinity/resource && \
+    rm -rf /tmp/resource
 
 ARG NGINX_VERSION=1.29.5-1~noble
 RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
@@ -87,26 +96,10 @@ ENV PATH=/root/.local/bin:$PATH
 # nodejs 12.22 on Ubuntu 22.04 is too old
 RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
     curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
-    apt purge -y nodejs npm cargo && \
+    apt purge -y nodejs npm && \
     apt autoremove -y && \
     apt update && \
     apt install -y nodejs
-
-# A modern version of cargo is needed for the latest version of the Rust compiler.
-RUN apt update && apt install -y curl build-essential \
-    && if [ "$NEED_MIRROR" == "1" ]; then \
-         # Use TUNA mirrors for rustup/rust dist files \
-         export RUSTUP_DIST_SERVER="https://mirrors.tuna.tsinghua.edu.cn/rustup"; \
-         export RUSTUP_UPDATE_ROOT="https://mirrors.tuna.tsinghua.edu.cn/rustup/rustup"; \
-         echo "Using TUNA mirrors for Rustup."; \
-       fi; \
-    # Force curl to use HTTP/1.1 \
-    curl --proto '=https' --tlsv1.2 --http1.1 -sSf https://sh.rustup.rs | bash -s -- -y --profile minimal \
-    && echo 'export PATH="/root/.cargo/bin:${PATH}"' >> /root/.bashrc
-
-ENV PATH="/root/.cargo/bin:${PATH}"
-
-RUN cargo --version && rustc --version
 
 # Add msssql ODBC driver
 # macOS ARM64 environment, install msodbcsql18.
@@ -124,6 +117,8 @@ RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
         ACCEPT_EULA=Y apt install -y unixodbc-dev msodbcsql17; \
     fi || \
     { echo "Failed to install ODBC driver"; exit 1; }
+
+
 
 # Add dependencies of selenium
 RUN --mount=type=bind,from=infiniflow/ragflow_deps:latest,source=/chrome-linux64-121-0-6167-85,target=/chrome-linux64.zip \
@@ -201,26 +196,11 @@ COPY pyproject.toml uv.lock ./
 COPY mcp mcp
 COPY common common
 COPY memory memory
+COPY bin bin
 
 COPY docker/service_conf.yaml.template ./conf/service_conf.yaml.template
 COPY docker/entrypoint.sh ./
 RUN chmod +x ./entrypoint*.sh
-
-# Install PaddleOCR into the virtual environment
-ARG ENABLE_PADDLEOCR="1"
-RUN if [ "$ENABLE_PADDLEOCR" = "1" ]; then \
-        uv pip install --no-cache \
-            "paddlepaddle==3.2.2" \
-            -i https://www.paddlepaddle.org.cn/packages/stable/cpu/ && \
-        uv pip install --no-cache \
-            "paddleocr>=2.7.0" && \
-        # Install PaddleX high-performance inference dependencies for CPU
-        paddleocr install_hpi_deps cpu && \
-        # Fix langchain compatibility: patch PaddleX to use new langchain API
-        SITE_PKG=$(python -c "import site; print(site.getsitepackages()[0])") && \
-        sed -i 's/from langchain.docstore.document/from langchain_community.docstore.document/g' $SITE_PKG/paddlex/inference/pipelines/components/retriever/base.py && \
-        sed -i 's/from langchain.text_splitter/from langchain_text_splitters/g' $SITE_PKG/paddlex/inference/pipelines/components/retriever/base.py; \
-    fi
 
 # Copy compiled web pages
 COPY --from=builder /ragflow/web/dist /ragflow/web/dist

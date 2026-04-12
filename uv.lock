@@ -350,6 +350,23 @@ wheels = [
 ]
 
 [[package]]
+name = "alibabacloud-dingtalk"
+version = "2.2.38"
+source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }
+dependencies = [
+    { name = "alibabacloud-endpoint-util" },
+    { name = "alibabacloud-gateway-dingtalk" },
+    { name = "alibabacloud-gateway-spi" },
+    { name = "alibabacloud-openapi-util" },
+    { name = "alibabacloud-tea-openapi" },
+    { name = "alibabacloud-tea-util" },
+]
+sdist = { url = "https://pypi.tuna.tsinghua.edu.cn/packages/1c/95/ad71f7cb1a2814d17f3a731b37c27eb71df0895daa912e2436d2f0dd06d4/alibabacloud_dingtalk-2.2.38.tar.gz", hash = "sha256:39cba6ff3accf0a5c7fe7de651a65a5a784c4ef63e442750fd822c19864ed6f1", size = 1954698, upload-time = "2026-01-08T11:38:04.913Z" }
+wheels = [
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/a6/77/f6679f78becf73bfbf3468367ffa6fe694120e0cd677eacbc454dbb379a1/alibabacloud_dingtalk-2.2.38-py3-none-any.whl", hash = "sha256:c3dfc918c45f49fe61469230c0808fd6f316341594a2895564511b5542f50019", size = 2074155, upload-time = "2026-01-08T11:38:03.395Z" },
+]
+
+[[package]]
 name = "alibabacloud-endpoint-util"
 version = "0.0.4"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
@@ -364,6 +381,16 @@ dependencies = [
     { name = "alibabacloud-tea-util" },
 ]
 sdist = { url = "https://mirrors.aliyun.com/pypi/packages/d2/40/751d8bdf133d7fcf053f10c98e8e506810e7bee06458a02eaaa14d30ac26/alibabacloud_gateway_dingtalk-1.0.2.tar.gz", hash = "sha256:acea8b0b1d11e0394913f0b0899ddd19c0bfceab716060449b57fcc250ceb300" }
+
+[[package]]
+name = "alibabacloud-gateway-dingtalk"
+version = "1.0.2"
+source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }
+dependencies = [
+    { name = "alibabacloud-gateway-spi" },
+    { name = "alibabacloud-tea-util" },
+]
+sdist = { url = "https://pypi.tuna.tsinghua.edu.cn/packages/d2/40/751d8bdf133d7fcf053f10c98e8e506810e7bee06458a02eaaa14d30ac26/alibabacloud_gateway_dingtalk-1.0.2.tar.gz", hash = "sha256:acea8b0b1d11e0394913f0b0899ddd19c0bfceab716060449b57fcc250ceb300", size = 2938, upload-time = "2023-04-25T09:48:42.249Z" }
 
 [[package]]
 name = "alibabacloud-gateway-spi"

@@ -54,7 +54,7 @@ export default function AgentTemplates() {
 
   const handleOk = useCallback(
     async (payload: any) => {
-      let dsl = template?.dsl;
+      const dsl = template?.dsl;
       const canvasCategory = template?.canvas_category;
 
       const ret = await setAgent({
