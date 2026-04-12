@@ -9,7 +9,6 @@ import { useGetChatSearchParams } from '@/hooks/use-chat-request';
 import { IMessage } from '@/interfaces/database/chat';
 import api from '@/utils/api';
 import { useCallback, useEffect } from 'react';
-import { useParams } from 'react-router';
 import { v4 as uuid } from 'uuid';
 import { CreateConversationBeforeSendMessageReturnType } from './use-chat-url';
 import { useUploadFile } from './use-upload-file';
@@ -30,9 +29,10 @@ export function useSendSingleMessage({
 } & Pick<ReturnType<typeof useHandleMessageInputChange>, 'value' | 'setValue'> &
   Pick<ReturnType<typeof useUploadFile>, 'files' | 'clearFiles'>) {
   const { conversationId } = useGetChatSearchParams();
-  const { id: chatId } = useParams();
 
-  const { send, answer, done } = useSendMessageWithSse();
+  const { send, answer, done } = useSendMessageWithSse(
+    api.completeConversation,
+  );
 
   const {
     scrollRef,
@@ -65,10 +65,9 @@ export function useSendSingleMessage({
       currentConversationId?: string;
       messages?: IMessage[];
     } & NextMessageInputOnPressEnterParameter) => {
-      const sessionId = currentConversationId ?? conversationId;
       const res = await send(
-        api.completionUrl(chatId!, sessionId),
         {
+          conversation_id: currentConversationId ?? conversationId,
           messages: [
             ...(Array.isArray(messages) && messages?.length > 0
               ? messages
