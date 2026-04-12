@@ -30,8 +30,9 @@ const VoiceVisualizer = ({ isRecording }: { isRecording: boolean }) => {
       streamRef.current = stream;
 
       // Create audio context and analyzer
-      const audioContext = new (window.AudioContext ||
-        (window as any).webkitAudioContext)();
+      const audioContext = new (
+        window.AudioContext || (window as any).webkitAudioContext
+      )();
       audioContextRef.current = audioContext;
 
       const analyser = audioContext.createAnalyser();
@@ -237,7 +238,7 @@ export const AudioButton = ({
       formData.append('file', audioFile);
       formData.append('stream', 'false');
 
-      const response = await fetch(api.sequence2txt, {
+      const response = await fetch(api.chatsTranscriptions, {
         method: 'POST',
         headers: {
           [Authorization]: getAuthorization(),
