@@ -1,0 +1,110 @@
+{
+  "title": "铝行业 GHG 排放计算规则总览",
+  "source": "Aluminium Sector GHG Workbook v2.1.0 (IAI / WRI GHG Protocol)",
+  "total_formula": "Total CO2e = Wkst1 + Wkst2 + Wkst3 + Wkst4 + Wkst5 + Wkst6 + Wkst7 + Wkst8 + Wkst9",
+  "worksheets": {
+    "wkst1_prebake_co2": {
+      "name": "Prebake CO2",
+      "partA_electrolysis": {
+        "formula": "D = A × (B - S - Ash) × (44/12)",
+        "params": {
+          "A": "铝产量 (t Al)",
+          "B": "净阳极消耗 (t anode/t Al)",
+          "S": "硫含量 (weight %)",
+          "Ash": "灰分 (weight %)"
+        },
+        "example": {"A": 1000, "B": 0.42, "S": 0.02, "Ash": 0.004, "result": 1503.04}
+      },
+      "partB_baking_furnace": {
+        "formula": "H = [(A1/A2 - 1) × B - C × A1/A2 - D] × (44/12) × B + E × (44/12 × (1 - F - G))",
+        "params": {
+          "A1": "生阳极重量 (t)",
+          "A2": "烘焙阳极重量 (t)",
+          "weight_loss_factor": "默认 1.055",
+          "B": "烘焙阳极产量 (t)",
+          "C": "氢含量 (weight %)",
+          "D": "回收废焦油 (t)",
+          "E": "填充焦消耗 (t coke/t BA)",
+          "F": "填充焦硫含量 (%)",
+          "G": "填充焦灰分 (%)"
+        },
+        "example": {"weight_loss_factor": 1.055, "B": 475, "loaded_green": 501, "result": 111.098}
+      }
+    },
+    "wkst2_soderberg_co2": {
+      "name": "Søderberg CO2",
+      "formula": "D = A × [B × (44/12) × (1 - S - Ash) + E × (44/12) × (1 - F_S - F_Ash)]",
+      "params": {
+        "A": "铝产量 (t Al)",
+        "B": "净阳极糊消耗 (t paste/t Al)",
+        "E": "焦油沥青 (t pitch/t Al)"
+      }
+    },
+    "wkst3_alternative_co2": {
+      "name": "Alternative CO2",
+      "formula": "CO2 = Σ[材料消耗 × 碳含量 × (44/12)] - 副产品碳",
+      "inputs": ["石油焦", "焦油沥青", "回收阳极残", "各材料碳含量"]
+    },
+    "wkst4_default_co2": {
+      "name": "Default CO2 (Tier 1)",
+      "formula": "CO2 = 铝产量 × 排放因子",
+      "factors": {
+        "Soderberg": 1.7,
+        "Prebake": 1.6
+      },
+      "unit": "t CO2 / t Al"
+    },
+    "wkst5_coke_calcination": {
+      "name": "Coke Calcination CO2",
+      "formula": "CO2 = 生焦消耗 × (生焦碳含量 - 煅烧焦碳含量) × (44/12) + 焦炭粉尘 × 碳含量 × (44/12)"
+    },
+    "wkst6_soda_ash": {
+      "name": "Soda Ash CO2",
+      "formula": "CO2 = 纯碱消耗 (t) × 0.415",
+      "factor": "0.415 t CO2 / t Na2CO3"
+    },
+    "wkst7_lime_production": {
+      "name": "Lime Production CO2",
+      "formula": "CO2 = CaCO3 × (44/100) + MgCO3 × (44/84)"
+    },
+    "wkst8_pfc_emissions": {
+      "name": "PFC Emissions",
+      "slope_method": {
+        "formula": "R_CF4 = AEM × S_CF4; R_C2F6 = R_CF4 × F; CO2e = (CF4×6500 + C2F6×9200)/1000",
+        "tier2_coefficients": {
+          "CWPB": {"CF4_slope": 0.143, "C2F6_CF4_fraction": 0.121},
+          "SWPB": {"CF4_slope": 0.272, "C2F6_CF4_fraction": 0.252},
+          "VSS": {"CF4_slope": 0.092, "C2F6_CF4_fraction": 0.053},
+          "HSS": {"CF4_slope": 0.099, "C2F6_CF4_fraction": 0.085}
+        }
+      },
+      "overvoltage_method": {
+        "formula": "R_CF4 = (AEO/CE) × OVC",
+        "tier2_coefficients": {
+          "CWPB_algebraic": {"OVC": 1.16, "C2F6_CF4_fraction": 0.121},
+          "CWPB_positive": {"OVC": 3.65, "C2F6_CF4_fraction": 0.252}
+        }
+      },
+      "GWP": {"CF4": 6500, "C2F6": 9200}
+    },
+    "wkst9_default_pfc": {
+      "name": "Default PFC (Tier 1)",
+      "formula": "CO2e = CF4 × 6500 + C2F6 × 9200",
+      "factors": {
+        "CWPB": {"CF4_kg_per_t": 0.4, "C2F6_kg_per_t": 0.04},
+        "SWPB": {"CF4_kg_per_t": 1.6, "C2F6_kg_per_t": 0.4},
+        "VSS": {"CF4_kg_per_t": 0.8, "C2F6_kg_per_t": 0.04},
+        "HSS": {"CF4_kg_per_t": 0.4, "C2F6_kg_per_t": 0.03}
+      }
+    }
+  },
+  "data_structure": {
+    "potlines": "最多 3 条电解槽线",
+    "periods": "每条线最多 4 个时间段",
+    "tiers": {
+      "tier1": "默认排放因子 (Wkst 4, 9)",
+      "tier2": "行业平均系数 + 工厂数据 (Wkst 1-3, 5-8)",
+      "tier3": "工厂实测系数 (Wkst 8 site-specific)"
+    }
+  }
+}
