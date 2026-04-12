@@ -9,6 +9,8 @@ services:
   ragflow:
     image: ${RAGFLOW_IMAGE:-infiniflow/ragflow:dev}
     container_name: ragflow-server
+    command:
+      - --enable-adminserver
     depends_on:
       - redis
     mem_limit: 13g
