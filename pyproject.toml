@@ -144,8 +144,7 @@ dependencies = [
     #    "trio>=0.17.0,<0.29.0",
     #    "debugpy>=1.8.13",
     #    "click>=8.1.8",
-    #    "litellm>=1.74.15.post1",
-    #    "lark>=1.2.2",
+    "litellm~=1.82.0,!=1.82.7,!=1.82.8",
     #    "pip>=25.2",
     #    "imageio-ffmpeg>=0.6.0",
     #    "cryptography==46.0.3",
@@ -173,6 +172,13 @@ test = [
     "requests-toolbelt>=1.0.0",
     "pycryptodomex==3.20.0",
     "codecov>=2.1.13",
+]
+
+[tool.uv]
+constraint-dependencies = [
+    # CVE-2026-30922: Denial of Service via unbounded recursion in ASN.1 decoding (CVSS 7.5 HIGH)
+    # pyasn1 < 0.6.3 is vulnerable; pulled in transitively via google-auth / rsa / pyasn1-modules
+    "pyasn1>=0.6.3",
 ]
 
 [[tool.uv.index]]
