@@ -2,7 +2,7 @@ import { FormFieldType } from '@/components/dynamic-form';
 import { IconFontFill } from '@/components/icon-font';
 import SvgIcon from '@/components/svg-icon';
 import { t, TFunction } from 'i18next';
-import { Mail } from 'lucide-react';
+import { Mail, Rss } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import BoxTokenField from '../component/box-token-field';
@@ -14,6 +14,7 @@ import { confluenceConstant } from './confluence-constant';
 import { S3Constant } from './s3-constant';
 
 export enum DataSourceKey {
+  RSS = 'rss',
   CONFLUENCE = 'confluence',
   S3 = 's3',
   NOTION = 'notion',
@@ -45,6 +46,11 @@ export enum DataSourceKey {
 
 export const generateDataSourceInfo = (t: TFunction) => {
   return {
+    [DataSourceKey.RSS]: {
+      name: 'RSS',
+      description: t(`setting.${DataSourceKey.RSS}Description`),
+      icon: <Rss className="text-text-primary" size={22} />,
+    },
     [DataSourceKey.GOOGLE_CLOUD_STORAGE]: {
       name: 'Google Cloud Storage',
       description: t(
@@ -215,6 +221,25 @@ export const DataSourceFormBaseFields = [
   },
 ];
 export const DataSourceFormFields = {
+  [DataSourceKey.RSS]: [
+    {
+      label: 'Feed URL',
+      name: 'config.feed_url',
+      type: FormFieldType.Text,
+      required: true,
+      placeholder: 'https://example.com/feed.xml',
+    },
+    {
+      label: 'Batch Size',
+      name: 'config.batch_size',
+      type: FormFieldType.Number,
+      required: false,
+      validation: {
+        min: 1,
+        message: 'Batch Size must be at least 1',
+      },
+    },
+  ],
   [DataSourceKey.GOOGLE_CLOUD_STORAGE]: [
     {
       label: 'GCS Access Key ID',
@@ -970,6 +995,14 @@ export const DataSourceFormFields = {
 };
 
 export const DataSourceFormDefaultValues = {
+  [DataSourceKey.RSS]: {
+    name: '',
+    source: DataSourceKey.RSS,
+    config: {
+      feed_url: '',
+      batch_size: 2,
+    },
+  },
   [DataSourceKey.S3]: {
     name: '',
     source: DataSourceKey.S3,

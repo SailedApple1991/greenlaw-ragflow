@@ -185,7 +185,7 @@ class MindMapExtractor(Extractor):
         }
         text = perform_variable_replacements(self._mind_map_prompt, variables=variables)
         async with chat_limiter:
-            response = await self._chat(text, [{"role": "user", "content": "Output:"}], {})
+            response = await self._async_chat(text, [{"role": "user", "content": "Output:"}], {})
         response = re.sub(r"```[^\n]*", "", response)
         logging.debug(response)
         logging.debug(self._todict(markdown_to_json.dictify(response)))
