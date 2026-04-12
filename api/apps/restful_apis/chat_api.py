@@ -430,6 +430,9 @@ async def update_chat(chat_id):
         if not DialogService.update_by_id(chat_id, req):
             return get_data_error_result(message="Chat not found!")
 
+        from api.db.services.cache_service import invalidate_dialog_cache
+        invalidate_dialog_cache(chat_id, current_user.id)
+
         ok, chat = DialogService.get_by_id(chat_id)
         if not ok:
             return get_data_error_result(message="Failed to retrieve updated chat.")
@@ -523,6 +526,9 @@ async def patch_chat(chat_id):
 
         if not DialogService.update_by_id(chat_id, req):
             return get_data_error_result(message="Failed to update chat.")
+
+        from api.db.services.cache_service import invalidate_dialog_cache
+        invalidate_dialog_cache(chat_id, current_user.id)
 
         ok, chat = DialogService.get_by_id(chat_id)
         if not ok:
