@@ -60,6 +60,56 @@ LENGTH_NOTIFICATION_CN = "······\n由于大模型的上下文窗口大小�
 LENGTH_NOTIFICATION_EN = "...\nThe answer is truncated by your chosen LLM due to its limitation on context length."
 
 
+def _apply_model_family_policies(
+    model_name: str,
+    *,
+    backend: str,
+    provider: SupportedLiteLLMProvider | str | None = None,
+    gen_conf: dict | None = None,
+    request_kwargs: dict | None = None,
+):
+    model_name_lower = (model_name or "").lower()
+    sanitized_gen_conf = deepcopy(gen_conf) if gen_conf else {}
+    sanitized_kwargs = dict(request_kwargs) if request_kwargs else {}
+
+    # Qwen3 family disables thinking by extra_body on non-stream chat requests.
+    if "qwen3" in model_name_lower:
+        sanitized_kwargs["extra_body"] = {"enable_thinking": False}
+
+    if backend == "base":
+        return sanitized_gen_conf, sanitized_kwargs
+
+    if backend == "litellm":
+        if provider in {SupportedLiteLLMProvider.OpenAI, SupportedLiteLLMProvider.Azure_OpenAI} and "gpt-5" in model_name_lower:
+            for key in ("temperature", "top_p", "logprobs", "top_logprobs"):
+                sanitized_gen_conf.pop(key, None)
+                sanitized_kwargs.pop(key, None)
+
+        if provider == SupportedLiteLLMProvider.HunYuan:
+            for key in ("presence_penalty", "frequency_penalty"):
+                sanitized_gen_conf.pop(key, None)
+        elif "kimi-k2.5" in model_name_lower:
+            reasoning = sanitized_gen_conf.pop("reasoning", None)
+            thinking = {"type": "enabled"}
+            if reasoning is not None:
+                thinking = {"type": "enabled"} if reasoning else {"type": "disabled"}
+            elif not isinstance(thinking, dict) or thinking.get("type") not in {"enabled", "disabled"}:
+                thinking = {"type": "disabled"}
+            sanitized_gen_conf["thinking"] = thinking
+
+            thinking_enabled = thinking.get("type") == "enabled"
+            sanitized_gen_conf["temperature"] = 1.0 if thinking_enabled else 0.6
+            sanitized_gen_conf["top_p"] = 0.95
+            sanitized_gen_conf["n"] = 1
+            sanitized_gen_conf["presence_penalty"] = 0.0
+            sanitized_gen_conf["frequency_penalty"] = 0.0
+
+        return sanitized_gen_conf, sanitized_kwargs
+
+    return sanitized_gen_conf, sanitized_kwargs
+
+
+
 class Base(ABC):
     def __init__(self, key, model_name, base_url, **kwargs):
         timeout = int(os.environ.get("LLM_TIMEOUT_SECONDS", 600))
@@ -99,11 +149,11 @@ class Base(ABC):
         return LLMErrorCode.ERROR_GENERIC
 
     def _clean_conf(self, gen_conf):
-        model_name_lower = (self.model_name or "").lower()
-        # gpt-5 and gpt-5.1 endpoints have inconsistent parameter support, clear custom generation params to prevent unexpected issues
-        if "gpt-5" in model_name_lower:
-            gen_conf = {}
-            return gen_conf
+        gen_conf, _ = _apply_model_family_policies(
+            self.model_name,
+            backend="base",
+            gen_conf=gen_conf,
+        )
 
         if "max_tokens" in gen_conf:
             del gen_conf["max_tokens"]
@@ -149,12 +199,13 @@ class Base(ABC):
                 continue
             if not resp.choices[0].delta.content:
                 resp.choices[0].delta.content = ""
-            if kwargs.get("with_reasoning", True) and hasattr(resp.choices[0].delta, "reasoning_content") and resp.choices[0].delta.reasoning_content:
+            _reasoning = getattr(resp.choices[0].delta, "reasoning_content", None) or getattr(resp.choices[0].delta, "reasoning", None)
+            if kwargs.get("with_reasoning", True) and _reasoning:
                 ans = ""
                 if not reasoning_start:
                     reasoning_start = True
                     ans = "<think>"
-                ans += resp.choices[0].delta.reasoning_content + "</think>"
+                ans += _reasoning + "</think>"
             else:
                 reasoning_start = False
                 ans = resp.choices[0].delta.content
@@ -294,8 +345,9 @@ class Base(ABC):
                         raise Exception(f"500 response structure error. Response: {response}")
 
                     if not hasattr(response.choices[0].message, "tool_calls") or not response.choices[0].message.tool_calls:
-                        if hasattr(response.choices[0].message, "reasoning_content") and response.choices[0].message.reasoning_content:
-                            ans += "<think>" + response.choices[0].message.reasoning_content + "</think>"
+                        _reasoning = getattr(response.choices[0].message, "reasoning_content", None) or getattr(response.choices[0].message, "reasoning", None)
+                        if _reasoning:
+                            ans += "<think>" + _reasoning + "</think>"
 
                         ans += response.choices[0].message.content
                         if response.choices[0].finish_reason == "length":
@@ -370,12 +422,13 @@ class Base(ABC):
                         if not hasattr(delta, "content") or delta.content is None:
                             delta.content = ""
 
-                        if hasattr(delta, "reasoning_content") and delta.reasoning_content:
+                        _reasoning = getattr(delta, "reasoning_content", None) or getattr(delta, "reasoning", None)
+                        if _reasoning:
                             ans = ""
                             if not reasoning_start:
                                 reasoning_start = True
                                 ans = "<think>"
-                            ans += delta.reasoning_content + "</think>"
+                            ans += _reasoning + "</think>"
                             yield ans
                         else:
                             reasoning_start = False
@@ -1271,12 +1324,13 @@ class LiteLLMBase(ABC):
                     if not hasattr(delta, "content") or delta.content is None:
                         delta.content = ""
 
-                    if kwargs.get("with_reasoning", True) and hasattr(delta, "reasoning_content") and delta.reasoning_content:
+                    _reasoning = getattr(delta, "reasoning_content", None) or getattr(delta, "reasoning", None)
+                    if kwargs.get("with_reasoning", True) and _reasoning:
                         ans = ""
                         if not reasoning_start:
                             reasoning_start = True
                             ans = "<think>"
-                        ans += delta.reasoning_content + "</think>"
+                        ans += _reasoning + "</think>"
                     else:
                         reasoning_start = False
                         ans = delta.content
@@ -1396,8 +1450,9 @@ class LiteLLMBase(ABC):
                     message = response.choices[0].message
 
                     if not hasattr(message, "tool_calls") or not message.tool_calls:
-                        if hasattr(message, "reasoning_content") and message.reasoning_content:
-                            ans += f"<think>{message.reasoning_content}</think>"
+                        _reasoning = getattr(message, "reasoning_content", None) or getattr(message, "reasoning", None)
+                        if _reasoning:
+                            ans += f"<think>{_reasoning}</think>"
                         ans += message.content or ""
                         if response.choices[0].finish_reason == "length":
                             ans = self._length_stop(ans)
@@ -1477,12 +1532,13 @@ class LiteLLMBase(ABC):
                         if not hasattr(delta, "content") or delta.content is None:
                             delta.content = ""
 
-                        if hasattr(delta, "reasoning_content") and delta.reasoning_content:
+                        _reasoning = getattr(delta, "reasoning_content", None) or getattr(delta, "reasoning", None)
+                        if _reasoning:
                             ans = ""
                             if not reasoning_start:
                                 reasoning_start = True
                                 ans = "<think>"
-                            ans += delta.reasoning_content + "</think>"
+                            ans += _reasoning + "</think>"
                             yield ans
                         else:
                             reasoning_start = False

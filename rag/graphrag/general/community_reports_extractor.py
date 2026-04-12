@@ -1,6 +1,7 @@
 # Copyright (c) 2024 Microsoft Corporation.
 # Licensed under the MIT License
 
+
 """
 Reference:
  - [graphrag](https://github.com/microsoft/graphrag)
@@ -18,7 +19,6 @@ import pandas as pd
 
 from api.db.services.task_service import has_canceled
 from common.exceptions import TaskCanceledException
-from common.connection_utils import timeout
 from rag.graphrag.general import leiden
 from rag.graphrag.general.community_report_prompt import COMMUNITY_REPORT_PROMPT
 from rag.graphrag.general.extractor import Extractor
@@ -63,7 +63,6 @@ class CommunityReportsExtractor(Extractor):
         res_str = []
         res_dict = []
         over, token_count = 0, 0
-        @timeout(120)
         async def extract_community_report(community):
             nonlocal res_str, res_dict, over, token_count
             if task_id:
@@ -102,12 +101,12 @@ class CommunityReportsExtractor(Extractor):
             async with chat_limiter:
                 try:
                     timeout = 180 if enable_timeout_assertion else 1000000000
-                    response = await asyncio.wait_for(self._chat(text, [{"role": "user", "content": "Output:"}], {}, task_id), timeout=timeout)
+                    response = await asyncio.wait_for(self._async_chat(text, [{"role": "user", "content": "Output:"}], {}, task_id), timeout=timeout)
                 except asyncio.TimeoutError:
-                    logging.warning("extract_community_report._chat timeout, skipping...")
+                    logging.warning("extract_community_report._async_chat timeout, skipping...")
                     return
                 except Exception as e:
-                    logging.error(f"extract_community_report._chat failed: {e}")
+                    logging.error(f"extract_community_report._async_chat failed: {e}")
                     return
             token_count += num_tokens_from_string(text + response)
             response = re.sub(r"^[^\{]*", "", response)

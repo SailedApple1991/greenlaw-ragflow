@@ -13,7 +13,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { DocumentParserType } from '@/constants/knowledge';
+import { DocumentParserType, ParseType } from '@/constants/knowledge';
 import { useFetchKnowledgeBaseConfiguration } from '@/hooks/use-knowledge-request';
 import { IModalProps } from '@/interfaces/common';
 import { IParserConfig } from '@/interfaces/database/document';
@@ -103,7 +103,7 @@ export function ChunkMethodDialog({
 
   const FormSchema = z
     .object({
-      parseType: z.number(),
+      parseType: z.nativeEnum(ParseType),
       parser_id: z
         .string()
         .min(1, {
@@ -157,7 +157,7 @@ export function ChunkMethodDialog({
       }),
     })
     .superRefine((data, ctx) => {
-      if (data.parseType === 2 && !data.pipeline_id) {
+      if (data.parseType === ParseType.Pipeline && !data.pipeline_id) {
         ctx.addIssue({
           path: ['pipeline_id'],
           message: t('common.pleaseSelect'),
@@ -171,7 +171,7 @@ export function ChunkMethodDialog({
     defaultValues: {
       parser_id: parserId || '',
       pipeline_id: pipelineId || '',
-      parseType: pipelineId ? 2 : 1,
+      parseType: pipelineId ? ParseType.Pipeline : ParseType.BuiltIn,
       parser_config: defaultParserValues,
     },
   });
@@ -249,7 +249,7 @@ export function ChunkMethodDialog({
       form.reset({
         parser_id: parserId || '',
         pipeline_id: pipelineId || '',
-        parseType: pipelineId ? 2 : 1,
+        parseType: pipelineId ? ParseType.Pipeline : ParseType.BuiltIn,
         parser_config: fillDefaultParserValue({
           pages: pages.length > 0 ? pages : [{ from: 1, to: 1024 }],
           ...omit(parserConfig, 'pages'),
@@ -280,10 +280,10 @@ export function ChunkMethodDialog({
   const parseType = useWatch({
     control: form.control,
     name: 'parseType',
-    defaultValue: pipelineId ? 2 : 1,
+    defaultValue: pipelineId ? ParseType.Pipeline : ParseType.BuiltIn,
   });
   useEffect(() => {
-    if (parseType === 1) {
+    if (parseType === ParseType.BuiltIn) {
       form.setValue('pipeline_id', '');
     }
   }, [parseType, form]);
@@ -301,60 +301,36 @@ export function ChunkMethodDialog({
           >
             <FormContainer>
               <ParseTypeItem />
-              {parseType === 1 && <ChunkMethodItem></ChunkMethodItem>}
-              {parseType === 2 && (
-                <DataFlowSelect
-                  isMult={false}
-                  // toDataPipeline={navigateToAgents}
-                  formFieldName="pipeline_id"
-                />
+              {parseType === ParseType.BuiltIn && <ChunkMethodItem />}
+
+              {showPages && parseType === ParseType.BuiltIn && (
+                <DynamicPageRange />
               )}
 
-              {/* <FormField
-                control={form.control}
-                name="parser_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('knowledgeDetails.chunkMethod')}</FormLabel>
-                    <FormControl>
-                      <RAGFlowSelect
-                        {...field}
-                        options={parserList}
-                      ></RAGFlowSelect>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
+              {showPages &&
+                parseType === ParseType.BuiltIn &&
+                layoutRecognize && (
+                  <FormField
+                    control={form.control}
+                    name="parser_config.task_page_size"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel
+                          tooltip={t('knowledgeDetails.taskPageSizeTip')}
+                        >
+                          {t('knowledgeDetails.taskPageSize')}
+                        </FormLabel>
+                        <FormControl>
+                          <Input {...field} type={'number'} min={1} max={128} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 )}
-              /> */}
-              {showPages && parseType === 1 && (
-                <DynamicPageRange></DynamicPageRange>
-              )}
-              {showPages && parseType === 1 && layoutRecognize && (
-                <FormField
-                  control={form.control}
-                  name="parser_config.task_page_size"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel
-                        tooltip={t('knowledgeDetails.taskPageSizeTip')}
-                      >
-                        {t('knowledgeDetails.taskPageSize')}
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type={'number'}
-                          min={1}
-                          max={128}
-                        ></Input>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              )}
             </FormContainer>
-            {parseType === 1 && (
+
+            {parseType === ParseType.BuiltIn && (
               <>
                 <FormContainer
                   show={showOne || showMaxTokenNumber}
@@ -426,6 +402,16 @@ export function ChunkMethodDialog({
                 )}
               </>
             )}
+
+            <div className="space-y-6 empty:hidden">
+              {parseType === ParseType.Pipeline && (
+                <DataFlowSelect
+                  isMult={false}
+                  // toDataPipeline={navigateToAgents}
+                  formFieldName="pipeline_id"
+                />
+              )}
+            </div>
           </form>
         </Form>
         <DialogFooter>

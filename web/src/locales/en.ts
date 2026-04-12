@@ -196,6 +196,7 @@ Example: A 1 KB message with 1024-dim embedding uses ~9 KB. The 5 MB default lim
       searchKnowledgePlaceholder: 'Search',
       noMoreData: `That's all. Nothing more.`,
       parserRequired: 'Chunk method is required',
+      dataFlowRequired: 'Data flow is required',
     },
     knowledgeDetails: {
       metadata: {
@@ -240,11 +241,11 @@ Example: A 1 KB message with 1024-dim embedding uses ~9 KB. The 5 MB default lim
         deleteManageFieldAllWarn:
           'This field and all its corresponding values will be deleted from all associated files.',
         deleteManageValueAllWarn:
-          'This value will be deleted from from all associated files.',
+          'This value will be deleted from all associated files.',
         deleteManageFieldSingleWarn:
-          'This field and all its corresponding values will be deleted from this files.',
+          'This field and all its corresponding values will be deleted from this file.',
         deleteManageValueSingleWarn:
-          'This value will be deleted from this files.',
+          'This value will be deleted from this file.',
         deleteSettingFieldWarn: `This field will be deleted; existing metadata won't be affected.`,
         deleteSettingValueWarn: `This value will be deleted; existing metadata won't be affected.`,
       },
@@ -953,6 +954,8 @@ Example: Virtual Hosted Style`,
       newDocs: 'New docs',
       timeStarted: 'Time started',
       log: 'Log',
+      rssDescription:
+        'Connect to a public RSS or Atom feed and sync feed entries into your knowledge base.',
       confluenceDescription:
         'Integrate your Confluence workspace to search documentation.',
       s3Description:

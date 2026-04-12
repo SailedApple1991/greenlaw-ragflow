@@ -175,6 +175,7 @@ export default {
       searchKnowledgePlaceholder: '搜索',
       noMoreData: '没有更多数据了',
       parserRequired: '分块方法必填',
+      dataFlowRequired: '数据流必填',
     },
     knowledgeDetails: {
       metadata: {
@@ -881,6 +882,8 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       newDocs: '新文档',
       timeStarted: '开始时间',
       log: '日志',
+      rssDescription:
+        '连接公开的 RSS 或 Atom feed，并将 feed 条目同步到知识库。',
       confluenceDescription: '连接你的 Confluence 工作区以搜索文档内容。',
       s3Description: ' 连接你的 AWS S3 存储桶以导入和同步文件。',
       google_cloud_storageDescription:
@@ -1089,7 +1092,7 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       FishAudioModelNameMessage: '请为你的TTS模型起名',
       addFishAudioAK: 'Fish Audio API KEY',
       FishAudioAKMessage: '请输入 API KEY',
-      addFishAudioRefID: 'FishAudio Refrence ID',
+      addFishAudioRefID: 'FishAudio Reference ID',
       FishAudioRefIDMessage: '请输入引用模型的ID（留空表示使用默认模型）',
       GoogleModelIDMessage: '请输入 model ID!',
       addGoogleProjectID: 'Project ID',
