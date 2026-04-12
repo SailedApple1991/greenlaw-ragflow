@@ -34,9 +34,18 @@ from api.utils.crypt import decrypt
 from api.utils import health_utils
 
 from api.common.exceptions import AdminException, UserAlreadyExistsError, UserNotFoundError
-from rag.utils.redis_conn import REDIS_CONN
-from api.db.services.cache_service import invalidate_dialog_cache, _ensure_cache_index, _cache_index_name, _get_raw_client, CACHE_INDEX_PREFIX
 from config import SERVICE_CONFIGS
+
+_CACHE_AVAILABLE = False
+try:
+    from rag.utils.redis_conn import REDIS_CONN
+    from api.db.services.cache_service import (
+        invalidate_dialog_cache, _ensure_cache_index,
+        _cache_index_name, _get_raw_client, CACHE_INDEX_PREFIX,
+    )
+    _CACHE_AVAILABLE = True
+except Exception:
+    logging.warning("Cache dependencies unavailable — cache management disabled")
 
 
 class UserMgr:
@@ -729,8 +738,14 @@ class CacheMgr:
     """Manager for L1 (Redis) and L2 (ES) semantic cache operations."""
 
     @staticmethod
+    def _require_cache():
+        if not _CACHE_AVAILABLE:
+            raise AdminException("Cache service not configured in this environment")
+
+    @staticmethod
     def get_cache_stats() -> dict:
         """Return aggregate stats for L1 and L2 caches."""
+        CacheMgr._require_cache()
         # -- L1 stats (Redis) --
         redis_alive = REDIS_CONN.is_alive()
         l1_total_keys = 0
@@ -784,6 +799,7 @@ class CacheMgr:
     @staticmethod
     def list_tenants_with_cache() -> list:
         """List tenants that have L2 cache indices."""
+        CacheMgr._require_cache()
         result = []
         try:
             from common import settings
@@ -811,6 +827,7 @@ class CacheMgr:
     @staticmethod
     def list_dialogs_for_tenant(tenant_id: str) -> list:
         """List distinct dialogs with cached entries for a tenant."""
+        CacheMgr._require_cache()
         result = []
         try:
             from common import settings
@@ -858,6 +875,7 @@ class CacheMgr:
                         question_search: str | None = None,
                         page: int = 1, page_size: int = 20) -> dict:
         """Paginated listing of L2 cache entries."""
+        CacheMgr._require_cache()
         entries = []
         total = 0
         try:
@@ -923,6 +941,7 @@ class CacheMgr:
     @staticmethod
     def get_l2_entry(tenant_id: str, entry_id: str) -> dict:
         """Get a single L2 cache entry by ID."""
+        CacheMgr._require_cache()
         try:
             from common import settings
 
@@ -939,6 +958,7 @@ class CacheMgr:
     @staticmethod
     def update_l2_entry(tenant_id: str, entry_id: str, updates: dict) -> bool:
         """Update fields of an existing L2 cache entry."""
+        CacheMgr._require_cache()
         try:
             from common import settings
 
@@ -954,6 +974,7 @@ class CacheMgr:
     def create_l2_entry(tenant_id: str, dialog_id: str, question_text: str,
                         answer: str, reference: str = "", ttl: int = 86400) -> dict:
         """Create a new L2 cache entry with embedding generation."""
+        CacheMgr._require_cache()
         try:
             import time as _time
             import uuid as _uuid
@@ -992,6 +1013,7 @@ class CacheMgr:
     @staticmethod
     def delete_l2_entries(tenant_id: str, entry_ids: list) -> int:
         """Delete L2 cache entries by IDs."""
+        CacheMgr._require_cache()
         try:
             from common import settings
 
@@ -1010,4 +1032,5 @@ class CacheMgr:
     @staticmethod
     def invalidate_l1_dialog(dialog_id: str) -> int:
         """Invalidate all L1 cache entries for a dialog."""
+        CacheMgr._require_cache()
         return invalidate_dialog_cache(dialog_id)
