@@ -31,7 +31,7 @@ from api.db import PIPELINE_SPECIAL_PROGRESS_FREEZE_TASK_TYPES, FileType, UserTe
 from api.db.db_models import DB, Document, Knowledgebase, Task, Tenant, UserTenant, File2Document, File, UserCanvas, \
     User
 from api.db.db_utils import bulk_insert_into_db
-from api.db.services.common_service import CommonService
+from api.db.services.common_service import CommonService, retry_deadlock_operation
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.doc_metadata_service import DocMetadataService
 from common.misc_utils import get_uuid
@@ -361,9 +361,10 @@ class DocumentService(CommonService):
     @DB.connection_context()
     def remove_document(cls, doc, tenant_id):
         from api.db.services.task_service import TaskService, cancel_all_task_of
-        cls.clear_chunk_num(doc.id)
+        if not cls.delete_document_and_update_kb_counts(doc.id):
+            return True
 
-        # Cancel all running tasks first Using preset function in task_service.py ---  set cancel flag in Redis 
+        # Cancel all running tasks first Using preset function in task_service.py ---  set cancel flag in Redis
         try:
             cancel_all_task_of(doc.id)
             logging.info(f"Cancelled all tasks for document {doc.id}")
@@ -419,7 +420,7 @@ class DocumentService(CommonService):
         except Exception as e:
             logging.warning(f"Failed to cleanup knowledge graph for document {doc.id}: {e}")
 
-        return cls.delete_by_id(doc.id)
+        return True
 
     @classmethod
     @DB.connection_context()
@@ -522,8 +523,42 @@ class DocumentService(CommonService):
         return num
 
     @classmethod
+    @retry_deadlock_operation()
+    @DB.connection_context()
+    def delete_document_and_update_kb_counts(cls, doc_id) -> bool:
+        """Atomically delete the document row and update KB counters.
+
+        Returns True if the document was deleted by this call, False if it was
+        already deleted by a concurrent request (idempotent).
+        """
+        with DB.atomic():
+            doc = (
+                cls.model.select(
+                    cls.model.id,
+                    cls.model.kb_id,
+                    cls.model.token_num,
+                    cls.model.chunk_num,
+                )
+                .where(cls.model.id == doc_id)
+                .for_update()
+                .get_or_none()
+            )
+            if doc is None:
+                return False
+            deleted = cls.model.delete().where(cls.model.id == doc_id).execute()
+            if not deleted:
+                return False
+            Knowledgebase.update(
+                token_num=Knowledgebase.token_num - doc.token_num,
+                chunk_num=Knowledgebase.chunk_num - doc.chunk_num,
+                doc_num=Knowledgebase.doc_num - 1,
+            ).where(Knowledgebase.id == doc.kb_id).execute()
+        return True
+
+    @classmethod
     @DB.connection_context()
     def clear_chunk_num(cls, doc_id):
+        """Deprecated: use delete_document_and_update_kb_counts instead."""
         doc = cls.model.get_by_id(doc_id)
         assert doc, "Can't fine document in database."
 

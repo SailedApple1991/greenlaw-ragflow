@@ -212,7 +212,7 @@ const MarkdownContent = ({
 
   const renderReference = useCallback(
     (text: string) => {
-      let replacedText = reactStringReplace(text, currentReg, (match) => {
+      const replacedText = reactStringReplace(text, currentReg, (match) => {
         const chunkIndex = getChunkIndex(match);
 
         return (
