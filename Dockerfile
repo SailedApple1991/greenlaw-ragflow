@@ -42,7 +42,7 @@ RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
     echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache && \
     chmod 1777 /tmp && \
     apt update && \
-    apt install -y libglib2.0-0 libglx-mesa0 libgl1 && \
+    apt install -y build-essential libglib2.0-0 libglx-mesa0 libgl1 && \
     apt install -y pkg-config libicu-dev libgdiplus && \
     apt install -y default-jdk && \
     apt install -y libatk-bridge2.0-0 && \
