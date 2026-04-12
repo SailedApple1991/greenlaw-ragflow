@@ -1,7 +1,10 @@
 const webAPI = `/v1`;
 const restAPIv1 = `/api/v1`;
 
-export { restAPIv1, webAPI };
+const api_host = webAPI;
+const ExternalApi = restAPIv1;
+
+export { ExternalApi, api_host, restAPIv1, webAPI };
 
 export default {
   // user
