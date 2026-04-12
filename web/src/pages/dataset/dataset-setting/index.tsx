@@ -60,7 +60,7 @@ export default function DatasetSettings() {
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: '',
-      parser_id: DocumentParserType.Naive,
+      chunk_method: DocumentParserType.Naive,
       permission: PermissionRole.Me,
       language: 'English',
       parser_config: {
@@ -105,7 +105,7 @@ export default function DatasetSettings() {
         llm_id: '',
       },
       pipeline_id: '',
-      parseType: 1,
+      parse_type: 1,
       pagerank: 0,
       connectors: [],
     },
@@ -151,7 +151,7 @@ export default function DatasetSettings() {
         finish_at: knowledgeDetails.raptor_task_finish_at,
         task_id: knowledgeDetails.raptor_task_id,
       } as IGenerateLogButtonProps);
-      form.setValue('parseType', knowledgeDetails.pipeline_id ? 2 : 1);
+      form.setValue('parse_type', knowledgeDetails.pipeline_id ? 2 : 1);
       form.setValue('pipeline_id', knowledgeDetails.pipeline_id || '');
     }
   }, [knowledgeDetails, form]);
@@ -209,18 +209,20 @@ export default function DatasetSettings() {
 
   const parseType = useWatch({
     control: form.control,
-    name: 'parseType',
+    name: 'parse_type',
     defaultValue: knowledgeDetails.pipeline_id ? 2 : 1,
   });
   const selectedTag = useWatch({
-    name: 'parser_id',
+    name: 'chunk_method',
     control: form.control,
   });
+
   useEffect(() => {
     if (parseType === 1) {
       form.setValue('pipeline_id', '');
+    } else {
+      form.setValue('chunk_method', DocumentParserType.Naive);
     }
-    console.log('parseType', parseType);
   }, [parseType, form]);
 
   const unbindFunc = (data: IDataSourceBase) => {
@@ -283,9 +285,12 @@ export default function DatasetSettings() {
                   <div className="text-base font-medium text-text-primary">
                     {t('knowledgeConfiguration.dataPipeline')}
                   </div>
-                  <ParseTypeItem line={1} />
+                  <ParseTypeItem line={1} name="parse_type" />
                   {parseType === 1 && (
-                    <ChunkMethodItem line={1}></ChunkMethodItem>
+                    <ChunkMethodItem
+                      line={1}
+                      name="chunk_method"
+                    ></ChunkMethodItem>
                   )}
                   {parseType === 2 && (
                     <DataFlowSelect

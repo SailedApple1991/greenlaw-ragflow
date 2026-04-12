@@ -68,7 +68,7 @@ const Chunk = () => {
     navigateToAgents,
     navigateToAgent,
   } = useNavigatePage();
-  let fileUrl = useGetDocumentUrl(isAgent);
+  const fileUrl = useGetDocumentUrl(isAgent);
 
   const { highlights, setWidthAndHeight } =
     useGetChunkHighlights(selectedChunk);

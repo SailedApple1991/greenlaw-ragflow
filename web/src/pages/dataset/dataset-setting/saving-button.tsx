@@ -24,7 +24,7 @@ export function GeneralSavingButton() {
       loading={submitLoading}
       onClick={() => {
         (async () => {
-          let isValidate = await form.trigger('name');
+          const isValidate = await form.trigger('name');
           const { name, description, permission, avatar } = form.getValues();
 
           if (isValidate) {
@@ -58,16 +58,20 @@ export function SavingButton() {
       onClick={() => {
         (async () => {
           try {
-            let beValid = await form.trigger();
+            const beValid = await form.trigger();
             if (!beValid) {
               const errors = form.formState.errors;
               console.error('Validation errors:', errors);
             }
             if (beValid) {
-              form.handleSubmit(async (values) => {
-                console.log('saveKnowledgeConfiguration: ', values);
-                delete values['parseType'];
-                // delete values['avatar'];
+              form.handleSubmit(async (originalValues) => {
+                const values = originalValues;
+                if (originalValues.parse_type === 1) {
+                  values.pipeline_id = null;
+                } else {
+                  values.chunk_method = null;
+                }
+
                 await saveKnowledgeConfiguration({
                   kb_id,
                   ...values,
@@ -89,7 +93,6 @@ export function SavingButton() {
             }
           } catch (e) {
             console.log(e);
-          } finally {
           }
         })();
       }}

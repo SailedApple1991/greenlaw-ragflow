@@ -71,6 +71,8 @@ export function KnowledgeBaseFormField({
   showVariable = false,
 }: {
   showVariable?: boolean;
+  name?: string;
+  required?: boolean;
 }) {
   const form = useFormContext();
   const { t } = useTranslation();

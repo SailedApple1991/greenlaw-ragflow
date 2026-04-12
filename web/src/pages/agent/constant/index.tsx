@@ -412,7 +412,7 @@ export const initialIterationValues = {
 export const initialIterationStartValues = {
   outputs: {
     item: {
-      type: 'unkown',
+      type: 'unknown',
     },
     index: {
       type: 'integer',
@@ -692,6 +692,7 @@ export const RestrictedUpstreamMap = {
   [Operator.Loop]: [Operator.Begin],
   [Operator.LoopStart]: [Operator.Begin],
   [Operator.ExitLoop]: [Operator.Begin],
+  [Operator.PDFGenerator]: [Operator.Begin],
 };
 
 export const NodeMap = {
