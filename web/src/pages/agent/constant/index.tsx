@@ -17,6 +17,7 @@ import {
 export {
   AgentDialogueMode,
   AgentStructuredOutputField,
+  BeginId,
   JsonSchemaDataType,
   Operator,
   initialBeginValues,
@@ -50,8 +51,6 @@ import {
   ToggleLeft,
   WrapText,
 } from 'lucide-react';
-
-export const BeginId = 'begin';
 
 export const CommonOperatorList = Object.values(Operator).filter(
   (x) => x !== Operator.Note,
@@ -394,6 +393,7 @@ export const initialEmailValues = {
   smtp_server: '',
   smtp_port: 465,
   email: '',
+  smtp_username: '',
   password: '',
   sender_name: '',
   to_email: '',

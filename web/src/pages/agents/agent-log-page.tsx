@@ -1,4 +1,3 @@
-import TimeRangePicker from '@/components/originui/time-range-picker';
 import { PageHeader } from '@/components/page-header';
 import {
   Breadcrumb,
@@ -10,6 +9,7 @@ import {
 } from '@/components/ui/breadcrumb';
 import { SearchInput } from '@/components/ui/input';
 import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
+import { DatePickerWithRange } from '@/components/ui/range-picker';
 import { Spin } from '@/components/ui/spin';
 import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { useFetchAgentLog } from '@/hooks/use-agent-request';
@@ -18,6 +18,7 @@ import {
   IAgentLogResponse,
 } from '@/interfaces/database/agent';
 import { IReferenceObject } from '@/interfaces/database/chat';
+import { formatDate } from '@/utils/date';
 import { useQueryClient } from '@tanstack/react-query';
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router';
@@ -43,6 +44,7 @@ const getEndOfToday = (): Date => {
   today.setHours(23, 59, 59, 999);
   return today;
 };
+
 const AgentLogPage: React.FC = () => {
   const { navigateToAgents, navigateToAgent } = useNavigatePage();
   const { flowDetail: agentDetail } = useFetchDataOnMount();
@@ -95,12 +97,18 @@ const AgentLogPage: React.FC = () => {
       dataIndex: 'update_date',
       key: 'update_date',
       sortable: true,
+      render(text: string) {
+        return formatDate(text);
+      },
     },
     {
       title: 'Create Date',
       dataIndex: 'create_date',
       key: 'create_date',
       sortable: true,
+      render(text: string) {
+        return formatDate(text);
+      },
     },
   ];
 
@@ -111,11 +119,8 @@ const AgentLogPage: React.FC = () => {
     to: searchParams.to_date,
   });
   const [keywords, setKeywords] = useState(searchParams.keywords);
-  const handleDateRangeChange = ({
-    from: startDate,
-    to: endDate,
-  }: DateRange) => {
-    setCurrentDate({ from: startDate, to: endDate });
+  const handleDateRangeChange = (dateRange: DateRange) => {
+    setCurrentDate({ from: dateRange.from, to: dateRange.to });
   };
 
   const [pagination, setPagination] = useState<{
@@ -242,10 +247,14 @@ const AgentLogPage: React.FC = () => {
             </div>
             <div className="flex items-center space-x-2">
               <span className="whitespace-nowrap">Latest Date</span>
-              <TimeRangePicker
-                onSelect={handleDateRangeChange}
-                selectDateRange={currentDate}
-              />
+              <DatePickerWithRange
+                required
+                selected={currentDate}
+                onSelect={(range) =>
+                  range.from &&
+                  handleDateRangeChange({ from: range.from, to: range.to })
+                }
+              ></DatePickerWithRange>
             </div>
             <button
               type="button"

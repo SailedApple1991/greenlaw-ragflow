@@ -3,7 +3,6 @@
 import { AvatarUpload } from '@/components/avatar-upload';
 import { KnowledgeBaseFormField } from '@/components/knowledge-base-item';
 import { MetadataFilter } from '@/components/metadata-filter';
-import { SliderInputFormField } from '@/components/slider-input-form-field';
 import { SwitchFormField } from '@/components/switch-fom-field';
 import { TavilyFormField } from '@/components/tavily-form-field';
 import { TOCEnhanceFormField } from '@/components/toc-enhance-form-field';
@@ -14,19 +13,19 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { Input, NumberInput } from '@/components/ui/input';
+import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { FormLayout } from '@/constants/form';
 import { useTranslate } from '@/hooks/common-hooks';
-import { useFormContext, useWatch } from 'react-hook-form';
+import { getDirAttribute } from '@/utils/text-direction';
+import { useFormContext } from 'react-hook-form';
 
 export default function ChatBasicSetting() {
   const { t } = useTranslate('chat');
   const form = useFormContext();
-  const enableCache = useWatch({
-    control: form.control,
-    name: 'prompt_config.enable_cache',
-  });
+  const nameValue = form.watch('name');
+  const descriptionValue = form.watch('description');
+  const emptyResponseValue = form.watch('prompt_config.empty_response');
+  const prologueValue = form.watch('prompt_config.prologue');
 
   return (
     <div className="space-y-8">
@@ -52,7 +51,7 @@ export default function ChatBasicSetting() {
           <FormItem>
             <FormLabel required>{t('assistantName')}</FormLabel>
             <FormControl>
-              <Input {...field}></Input>
+              <Input {...field} dir={getDirAttribute(nameValue || '')}></Input>
             </FormControl>
             <FormMessage />
           </FormItem>
@@ -65,7 +64,11 @@ export default function ChatBasicSetting() {
           <FormItem>
             <FormLabel>{t('description')}</FormLabel>
             <FormControl>
-              <Textarea {...field}></Textarea>
+              <Textarea
+                {...field}
+                placeholder={t('descriptionPlaceholder')}
+                dir={getDirAttribute(descriptionValue || '')}
+              ></Textarea>
             </FormControl>
             <FormMessage />
           </FormItem>
@@ -80,7 +83,11 @@ export default function ChatBasicSetting() {
               {t('emptyResponse')}
             </FormLabel>
             <FormControl>
-              <Textarea {...field}></Textarea>
+              <Textarea
+                {...field}
+                placeholder={t('emptyResponsePlaceholder')}
+                dir={getDirAttribute(emptyResponseValue || '')}
+              ></Textarea>
             </FormControl>
             <FormMessage />
           </FormItem>
@@ -95,7 +102,10 @@ export default function ChatBasicSetting() {
               {t('setAnOpener')}
             </FormLabel>
             <FormControl>
-              <Textarea {...field}></Textarea>
+              <Textarea
+                {...field}
+                dir={getDirAttribute(prologueValue || '')}
+              ></Textarea>
             </FormControl>
             <FormMessage />
           </FormItem>
@@ -116,46 +126,6 @@ export default function ChatBasicSetting() {
         label={t('tts')}
         tooltip={t('ttsTip')}
       ></SwitchFormField>
-      <SwitchFormField
-        name={'prompt_config.enable_cache'}
-        label={t('enableCache')}
-        tooltip={t('enableCacheTip')}
-      ></SwitchFormField>
-      {enableCache && (
-        <>
-          <FormField
-            control={form.control}
-            name={'prompt_config.cache_ttl'}
-            defaultValue={86400}
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel tooltip={t('cacheTtlTip')}>
-                  {t('cacheTtl')}
-                </FormLabel>
-                <FormControl>
-                  <NumberInput
-                    min={60}
-                    max={604800}
-                    value={field.value}
-                    onChange={field.onChange}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <SliderInputFormField
-            name={'prompt_config.cache_similarity_threshold'}
-            label={t('cacheThreshold')}
-            tooltip={t('cacheThresholdTip')}
-            min={0.8}
-            max={1}
-            step={0.01}
-            defaultValue={0.95}
-            layout={FormLayout.Vertical}
-          />
-        </>
-      )}
       <TOCEnhanceFormField name="prompt_config.toc_enhance"></TOCEnhanceFormField>
       <TavilyFormField></TavilyFormField>
       <KnowledgeBaseFormField></KnowledgeBaseFormField>

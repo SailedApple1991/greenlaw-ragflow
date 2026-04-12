@@ -45,6 +45,7 @@ export default {
       submit: 'Отправить',
       clear: 'Очистить',
       embedIntoSite: 'Встроить на веб-страницу',
+      openInNewTab: 'Чат в новой вкладке',
       previousPage: 'Назад',
       nextPage: 'Вперед',
       add: 'Добавить',
@@ -124,7 +125,7 @@ export default {
       generate: 'Сгенерировать',
       raptor: 'RAPTOR',
       processingType: 'Тип обработки',
-      dataPipeline: 'Пайплайн обработки',
+      dataPipeline: 'Переключить или настроить конвейер приема данных.',
       operations: 'Операции',
       taskId: 'ID задачи',
       duration: 'Продолжительность',
@@ -278,6 +279,8 @@ export default {
       reRankModelWaring: 'Re-rank модель очень требовательна ко времени.',
     },
     knowledgeConfiguration: {
+      autoMetadata: 'Авто-метаданные',
+      utoMetadataTip: `Автоматическая генерация метаданных. Применяется к новым файлам во время синтаксического анализа. Существующие файлы требуют повторного разбора для обновления (фрагменты остаются сохраненными). Имейте в виду, что дополнительные токены будут использоваться моделью индексации, указанной в разделе "Конфигурация".`,
       imageTableContextWindow: 'Окно контекста изображения и таблицы',
       imageTableContextWindowTip:
         'Захватывает N токенов текста выше и ниже изображения и таблицы, чтобы дать более богатый контекст.',
@@ -316,7 +319,7 @@ export default {
       linkPipelineSetTip:
         'Управление связью пайплайна обработки с этим набором данных',
       default: 'По умолчанию',
-      dataPipeline: 'Пайплайн обработки',
+      dataPipeline: 'Переключить или настроить конвейер приема данных',
       linkDataPipeline: 'Связать пайплайн обработки',
       enableAutoGenerate: 'Включить авто-генерацию',
       teamPlaceholder: 'Пожалуйста, выберите команду.',
@@ -777,6 +780,8 @@ export default {
         'Подключите GitHub для синхронизации содержимого Pull Request и Issue для поиска.',
       airtableDescription:
         'Подключите Airtable и синхронизируйте файлы из указанной таблицы в заданном рабочем пространстве.',
+      dingtalkAITableDescription:
+        'Подключите Dingtalk AI Table и синхронизируйте записи из указанной таблицы.',
       gitlabDescription:
         'Подключите GitLab для синхронизации репозиториев, задач, merge requests и связанной документации.',
       asanaDescription:
@@ -893,6 +898,8 @@ export default {
         'Если ваш API ключ от OpenAI, просто проигнорируйте это. Любые другие промежуточные провайдеры дадут этот базовый url вместе с API ключом.',
       tongyiBaseUrlTip:
         'Для китайских пользователей не нужно заполнять или используйте https://dashscope.aliyuncs.com/compatible-mode/v1. Для международных пользователей используйте https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+      siliconBaseUrlTip:
+        'Для китайских пользователей не нужно заполнять или используйте https://api.siliconflow.cn/v1. Для международных пользователей используйте https://api.siliconflow.com/v1',
       tongyiBaseUrlPlaceholder:
         '(Только для международных пользователей, см. подсказку)',
       minimaxBaseUrlTip:
@@ -1623,11 +1630,12 @@ export default {
         'Компонент, который форматирует вывод других компонентов.1. Поддерживает шаблоны Jinja2, сначала преобразует вход в объект, а затем рендерит шаблон, 2. Одновременно сохраняет исходный метод использования замены строки {parameter}',
       emailComponent: 'Email',
       emailDescription: 'Отправить email на указанный адрес.',
-      smtpServer: 'SMTP Сервер',
-      smtpPort: 'SMTP Порт',
-      senderEmail: 'Email отправителя',
-      authCode: 'Код авторизации',
-      senderName: 'Имя отправителя',
+      smtpServer: 'SMTP хост',
+      smtpPort: 'SMTP порт',
+      senderEmail: 'Адрес отправителя (From)',
+      smtpUsername: 'Имя пользователя SMTP',
+      authCode: 'Пароль SMTP / пароль приложения',
+      senderName: 'Отображаемое имя отправителя',
       toEmail: 'Email получателя',
       ccEmail: 'Email копии',
       emailSubject: 'Тема',

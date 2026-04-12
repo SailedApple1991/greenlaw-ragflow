@@ -92,7 +92,7 @@ class Dealer:
                       ["docnm_kwd", "content_ltks", "kb_id", "img_id", "title_tks", "important_kwd", "position_int",
                        "doc_id", "page_num_int", "top_int", "create_timestamp_flt", "knowledge_graph_kwd",
                        "question_kwd", "question_tks", "doc_type_kwd",
-                       "available_int", "content_with_weight", "mom_id", PAGERANK_FLD, TAG_FLD])
+                       "available_int", "content_with_weight", "mom_id", PAGERANK_FLD, TAG_FLD, "row_id()"])
         kwds = set([])
 
         qst = req.get("question", "")
@@ -436,6 +436,12 @@ class Dealer:
 
         # When vector_similarity_weight is 0, similarity_threshold is not meaningful for term-only scores.
         post_threshold = 0.0 if vector_similarity_weight <= 0 else similarity_threshold
+
+        # When doc_ids is explicitly provided (metadata or document filtering), bypass threshold
+        # User wants those specific documents regardless of their relevance score
+        if doc_ids:
+            post_threshold = 0.0
+
         valid_idx = [int(i) for i in sorted_idx if sim_np[i] >= post_threshold]
         filtered_count = len(valid_idx)
         ranks["total"] = int(filtered_count)
@@ -477,6 +483,7 @@ class Dealer:
                 "positions": position_int,
                 "doc_type_kwd": chunk.get("doc_type_kwd", ""),
                 "mom_id": chunk.get("mom_id", ""),
+                "row_id": chunk.get("row_id()"),
             }
             if highlight and sres.highlight:
                 if id in sres.highlight:
@@ -538,15 +545,18 @@ class Dealer:
         res = []
         bs = 128
         for p in range(offset, max_count, bs):
-            es_res = self.dataStore.search(fields, [], condition, [], orderBy, p, bs, index_name(tenant_id),
+            limit = min(bs, max_count - p)
+            if limit <= 0:
+                break
+            es_res = self.dataStore.search(fields, [], condition, [], orderBy, p, limit, index_name(tenant_id),
                                            kb_ids)
             dict_chunks = self.dataStore.get_fields(es_res, fields)
             for id, doc in dict_chunks.items():
                 doc["id"] = id
             if dict_chunks:
                 res.extend(dict_chunks.values())
-            # FIX: Solo terminar si no hay chunks, no si hay menos de bs
-            if len(dict_chunks.values()) == 0:
+            chunk_count = len(dict_chunks)
+            if chunk_count == 0 or chunk_count < limit:
                 break
         return res
 

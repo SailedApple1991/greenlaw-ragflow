@@ -39,6 +39,7 @@ export default {
       spanish: 'Tiếng Tây Ban Nha',
       japanese: 'Tiếng Nhật',
       embedIntoSite: 'Nhúng vào trang web',
+      openInNewTab: 'Chat trong tab mới',
       nextPage: 'Tới',
       previousPage: 'Lùi',
     },
@@ -572,6 +573,8 @@ export default {
       baseUrl: 'Base-Url',
       baseUrlTip:
         'Nếu khóa API của bạn từ OpenAI, chỉ cần bỏ qua nó. Bất kỳ nhà cung cấp trung gian nào khác sẽ cung cấp URL cơ sở này với khóa API.',
+      siliconBaseUrlTip:
+        'For Chinese users, no need to fill in or use https://api.siliconflow.cn/v1. For international users, use https://api.siliconflow.com/v1',
       minimaxBaseUrlTip:
         'Chỉ người dùng quốc tế: dùng https://api.minimax.io/v1.',
       minimaxBaseUrlPlaceholder:
@@ -720,6 +723,8 @@ export default {
       FishAudioRefIDMessage: `Vui lòng nhập ID của model tham chiếu (để trống để sử dụng model mặc định)`,
       modelsToBeAddedTooltip:
         'Nếu nhà cung cấp mô hình của bạn không có trong danh sách nhưng tuyên bố tương thích với "OpenAI", hãy chọn thẻ OpenAI-API-compatible để thêm mô hình liên quan.',
+      dingtalkAITableDescription:
+        'Kết nối với Dingtalk AI Table và đồng bộ hóa bản ghi từ một bảng được chỉ định.',
     },
     message: {
       registered: 'Đã đăng ký!',
@@ -1193,8 +1198,8 @@ export default {
       toEmail: 'Email người nhận',
       smtpServerRequired: 'Vui lòng nhập địa chỉ máy chủ SMTP',
       emailContent: 'Nội dung',
-      smtpServer: 'SMTP Server',
-      smtpPort: 'SMTP Port',
+      smtpServer: 'Máy chủ SMTP',
+      smtpPort: 'Cổng SMTP',
       senderEmailRequired: 'Vui lòng nhập email người gửi',
       authCodeRequired: 'Vui lòng nhập mã xác thực',
       toEmailRequired: 'Vui lòng nhập email người nhận',
@@ -1204,9 +1209,10 @@ export default {
       jsonFormatTip:
         'Thành phần thượng nguồn phải cung cấp chuỗi JSON theo định dạng sau:',
       emailComponent: 'Email',
-      senderEmail: 'Người gửi Email',
-      authCode: 'Mã xác minh',
-      senderName: 'Tên người gửi',
+      senderEmail: 'Địa chỉ người gửi (From)',
+      smtpUsername: 'Tên đăng nhập SMTP',
+      authCode: 'Mật khẩu SMTP / mật khẩu ứng dụng',
+      senderName: 'Tên hiển thị người gửi',
       jsonUploadContentErrorMessage: 'lỗi tệp json',
       contentTip: 'content: Nội dung email (Tùy chọn)',
       subjectTip: 'subject: Tiêu đề email (Tùy chọn)',
