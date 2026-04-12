@@ -28,6 +28,7 @@ services:
     environment:
       - TZ=${TZ:-Asia/Singapore}
       - DOC_ENGINE=opensearch
+      - ENABLE_ADMIN_SERVER=1
     networks:
       - ragflow
     restart: on-failure
