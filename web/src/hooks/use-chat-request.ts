@@ -261,6 +261,9 @@ export const useFetchChat = () => {
   return { data, loading, refetch };
 };
 
+export const useFetchDialog = useFetchChat;
+export const useSetDialog = useUpdateChat;
+
 //#region Session
 
 export const useFetchSessionList = () => {
