@@ -262,7 +262,7 @@ async def full_question(tenant_id=None, llm_id=None, messages=[], language=None,
     return ans if ans.find("**ERROR**") < 0 else messages[-1]["content"]
 
 
-async def cross_languages(tenant_id, llm_id, query, languages=[]):
+async def cross_languages(tenant_id, llm_id, query, languages=[], chat_mdl=None):
     from common.constants import LLMType
     from api.db.services.llm_service import LLMBundle
     from api.db.services.tenant_llm_service import TenantLLMService
@@ -275,7 +275,8 @@ async def cross_languages(tenant_id, llm_id, query, languages=[]):
             chat_model_config = get_tenant_default_model_by_type(tenant_id, LLMType.CHAT)
         else:
             chat_model_config = get_model_config_by_type_and_name(tenant_id, LLMType.CHAT, llm_id)
-    chat_mdl = LLMBundle(tenant_id, chat_model_config)
+    if chat_mdl is None:
+        chat_mdl = LLMBundle(tenant_id, chat_model_config)
     rendered_sys_prompt = PROMPT_JINJA_ENV.from_string(CROSS_LANGUAGES_SYS_PROMPT_TEMPLATE).render()
     rendered_user_prompt = PROMPT_JINJA_ENV.from_string(CROSS_LANGUAGES_USER_PROMPT_TEMPLATE).render(query=query,
                                                                                                      languages=languages)
