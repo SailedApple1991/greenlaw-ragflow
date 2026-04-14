@@ -62,7 +62,7 @@ const methods = {
   },
   rmKb: {
     url: rm_kb,
-    method: 'post',
+    method: 'delete',
   },
   get_kb_detail: {
     url: get_kb_detail,
@@ -254,7 +254,7 @@ export function deleteKnowledgeGraph(knowledgeId: string) {
 export const listDataset = (
   params?: IFetchKnowledgeListRequestParams,
   body?: IFetchKnowledgeListRequestBody,
-) => request.post(api.kb_list, { data: body || {}, params });
+) => request.get(api.kb_list, { params: { ...params, ...body } });
 
 export const listDocument = (
   params?: IFetchKnowledgeListRequestParams,
@@ -299,5 +299,20 @@ export function deletePipelineTask({
 }) {
   return request.delete(api.unbindPipelineTask({ kb_id, type }));
 }
+
+export const updateKb = (datasetId: string, params: any) =>
+  request.put(api.update_kb(datasetId), { data: params });
+
+export const runGraphRag = (datasetId: string, params?: any) =>
+  request.post(api.runGraphRag(datasetId), { data: params });
+
+export const traceGraphRag = (datasetId: string, params?: any) =>
+  request.get(api.traceGraphRag(datasetId), { params });
+
+export const runRaptor = (datasetId: string, params?: any) =>
+  request.post(api.runRaptor(datasetId), { data: params });
+
+export const traceRaptor = (datasetId: string, params?: any) =>
+  request.get(api.traceRaptor(datasetId), { params });
 
 export default kbService;
