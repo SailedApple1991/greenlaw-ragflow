@@ -18,10 +18,7 @@ from io import BytesIO
 
 from docx import Document
 from api.db.services.llm_service import LLMBundle
-from api.db.joint_services.tenant_model_service import (
-    get_model_config_by_type_and_name,
-    get_tenant_default_model_by_type,
-)
+
 from common.constants import LLMType
 from deepdoc.parser.figure_parser import VisionFigureParser
 from rag.nlp import is_english, random_choices, remove_contents_table
@@ -130,14 +127,9 @@ def enhance_media_sections_with_vision(
 
     try:
         try:
-            vision_model_config = get_model_config_by_type_and_name(
-                tenant_id, LLMType.IMAGE2TEXT, vlm_conf["llm_id"]
-            )
+            vision_model = LLMBundle(tenant_id, LLMType.IMAGE2TEXT, vlm_conf["llm_id"])
         except Exception:
-            vision_model_config = get_tenant_default_model_by_type(
-                tenant_id, LLMType.IMAGE2TEXT
-            )
-        vision_model = LLMBundle(tenant_id, vision_model_config)
+            vision_model = LLMBundle(tenant_id, LLMType.IMAGE2TEXT)
     except Exception:
         return sections
 
