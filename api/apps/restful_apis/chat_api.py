@@ -24,10 +24,7 @@ from copy import deepcopy
 from quart import Response, request
 
 from api.apps import current_user, login_required
-from api.db.joint_services.tenant_model_service import (
-    get_model_config_by_type_and_name,
-    get_tenant_default_model_by_type,
-)
+
 from api.db.services.chunk_feedback_service import ChunkFeedbackService
 from api.db.services.conversation_service import ConversationService, structure_answer
 from api.db.services.dialog_service import DialogService, async_ask, async_chat, gen_mindmap
@@ -845,11 +842,9 @@ async def tts():
     text = req["text"]
 
     try:
-        default_tts_model_config = get_tenant_default_model_by_type(current_user.id, LLMType.TTS)
+        tts_mdl = LLMBundle(current_user.id, LLMType.TTS)
     except Exception as e:
         return get_data_error_result(message=str(e))
-
-    tts_mdl = LLMBundle(current_user.id, default_tts_model_config)
 
     def stream_audio():
         try:
@@ -895,11 +890,9 @@ async def transcriptions():
     await uploaded.save(temp_audio_path)
 
     try:
-        default_asr_model_config = get_tenant_default_model_by_type(current_user.id, LLMType.SPEECH2TEXT)
+        asr_mdl = LLMBundle(current_user.id, LLMType.SPEECH2TEXT)
     except Exception as e:
         return get_data_error_result(message=str(e))
-
-    asr_mdl = LLMBundle(current_user.id, default_asr_model_config)
     if not stream_mode:
         text = asr_mdl.transcription(temp_audio_path)
         try:
@@ -957,11 +950,7 @@ async def related_questions():
     question = req["question"]
 
     chat_id = search_config.get("chat_id", "")
-    if chat_id:
-        chat_model_config = get_model_config_by_type_and_name(current_user.id, LLMType.CHAT, chat_id)
-    else:
-        chat_model_config = get_tenant_default_model_by_type(current_user.id, LLMType.CHAT)
-    chat_mdl = LLMBundle(current_user.id, chat_model_config)
+    chat_mdl = LLMBundle(current_user.id, LLMType.CHAT, chat_id if chat_id else None)
 
     gen_conf = search_config.get("llm_setting", {"temperature": 0.9})
     if "parameter" in gen_conf:
