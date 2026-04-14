@@ -11,7 +11,6 @@ import request, { post } from '@/utils/request';
 
 const {
   create_kb,
-  update_kb,
   rm_kb,
   get_kb_detail,
   kb_list,
@@ -42,10 +41,6 @@ const {
   getKnowledgeBasicInfo,
   fetchDataPipelineLog,
   fetchPipelineDatasetLogs,
-  runGraphRag,
-  traceGraphRag,
-  runRaptor,
-  traceRaptor,
   check_embedding,
   kbUpdateMetaData,
   documentUpdateMetaData,
@@ -54,10 +49,6 @@ const {
 const methods = {
   createKb: {
     url: create_kb,
-    method: 'post',
-  },
-  updateKb: {
-    url: update_kb,
     method: 'post',
   },
   rmKb: {
@@ -191,22 +182,6 @@ const methods = {
     method: 'get',
   },
 
-  runGraphRag: {
-    url: runGraphRag,
-    method: 'post',
-  },
-  traceGraphRag: {
-    url: traceGraphRag,
-    method: 'get',
-  },
-  runRaptor: {
-    url: runRaptor,
-    method: 'post',
-  },
-  traceRaptor: {
-    url: traceRaptor,
-    method: 'get',
-  },
   pipelineRerun: {
     url: api.pipelineRerun,
     method: 'post',
