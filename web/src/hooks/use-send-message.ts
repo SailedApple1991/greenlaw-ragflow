@@ -145,7 +145,7 @@ export const useSendMessageBySSE = (url: string) => {
                 const val = JSON.parse(value?.data || '');
 
                 console.info('data:', val);
-                if (val.code === 500) {
+                if (typeof val?.code === 'number' && val.code !== 0) {
                   message.error(val.message);
                 }
 
