@@ -42,7 +42,6 @@ import { DataFlowSelect } from '../data-pipeline-select';
 import { DelimiterFormField } from '../delimiter-form-field';
 import { EntityTypesFormField } from '../entity-types-form-field';
 import { ExcelToHtmlFormField } from '../excel-to-html-form-field';
-import { FormContainer } from '../form-container';
 import { LayoutRecognizeFormField } from '../layout-recognize-form-field';
 import { MaxTokenNumberFormField } from '../max-token-number-from-field';
 import { MinerUOptionsFormField } from '../mineru-options-form-field';
@@ -216,7 +215,6 @@ export function ChunkMethodDialog({
   const showAutoKeywords = useShowAutoKeywords();
 
   async function onSubmit(data: z.infer<typeof FormSchema>) {
-    console.log('🚀 ~ onSubmit ~ data:', data);
     const parserConfig = data.parser_config;
     const imageTableContextWindow = Number(
       parserConfig?.image_table_context_window || 0,
@@ -235,7 +233,6 @@ export function ChunkMethodDialog({
         pages: parserConfig?.pages?.map((x: any) => [x.from, x.to]) ?? [],
       },
     };
-    console.log('🚀 ~ onSubmit ~ nextData:', nextData);
     const ret = await onOk?.(nextData);
     if (ret) {
       hideModal?.();
@@ -293,13 +290,14 @@ export function ChunkMethodDialog({
         <DialogHeader>
           <DialogTitle>{t('knowledgeDetails.chunkMethod')}</DialogTitle>
         </DialogHeader>
+
         <Form {...form}>
           <form
             onSubmit={form.handleSubmit(onSubmit)}
-            className="space-y-6 max-h-[70vh] overflow-auto"
+            className="space-y-6 max-h-[70vh] overflow-auto -mx-6 px-10 py-5"
             id={FormId}
           >
-            <FormContainer>
+            <div className="space-y-6">
               <ParseTypeItem />
               {parseType === ParseType.BuiltIn && <ChunkMethodItem />}
 
@@ -328,20 +326,18 @@ export function ChunkMethodDialog({
                     )}
                   />
                 )}
-            </FormContainer>
+            </div>
 
             {parseType === ParseType.BuiltIn && (
               <>
-                <FormContainer
-                  show={showOne || showMaxTokenNumber}
-                  className="space-y-3"
-                >
+                <div className="space-y-6 border-t-0.5 border-border-button pt-6 empty:hidden">
                   {showOne && (
                     <>
                       <LayoutRecognizeFormField showMineruOptions={false} />
                       {isMineruSelected && <MinerUOptionsFormField />}
                     </>
                   )}
+
                   {showMaxTokenNumber && (
                     <>
                       <MaxTokenNumberFormField
@@ -350,26 +346,21 @@ export function ChunkMethodDialog({
                             ? 8192 * 2
                             : 2048
                         }
-                      ></MaxTokenNumberFormField>
-                      <DelimiterFormField></DelimiterFormField>
+                      />
+                      <DelimiterFormField />
                       <ChildrenDelimiterForm />
                     </>
                   )}
-                </FormContainer>
-                <FormContainer
-                  show={
-                    isMineruSelected ||
-                    showAutoKeywords(selectedTag) ||
-                    showExcelToHtml
-                  }
-                  className="space-y-3"
-                >
+                </div>
+
+                <div className="space-y-6 border-t-0.5 border-border-button pt-6 empty:hidden">
                   {selectedTag === DocumentParserType.Naive && (
                     <>
                       <EnableTocToggle />
                       <ImageContextWindow />
                     </>
                   )}
+
                   {showAutoKeywords(selectedTag) && (
                     <>
                       <AutoMetadata
@@ -380,26 +371,15 @@ export function ChunkMethodDialog({
                       <AutoQuestionsFormField></AutoQuestionsFormField>
                     </>
                   )}
+
                   {showExcelToHtml && (
                     <ExcelToHtmlFormField></ExcelToHtmlFormField>
                   )}
-                </FormContainer>
-                {/* {showRaptorParseConfiguration(
-                  selectedTag as DocumentParserType,
-                ) && (
-                  <FormContainer>
-                    <RaptorFormFields></RaptorFormFields>
-                  </FormContainer>
-                )} */}
-                {/* {showGraphRagItems(selectedTag as DocumentParserType) &&
-                  useGraphRag && (
-                    <FormContainer>
-                      <UseGraphRagFormField></UseGraphRagFormField>
-                    </FormContainer>
-                  )} */}
-                {showEntityTypes && (
-                  <EntityTypesFormField></EntityTypesFormField>
-                )}
+                </div>
+
+                <div className="space-y-6 border-t-0.5 border-border-button pt-6 empty:hidden">
+                  {showEntityTypes && <EntityTypesFormField />}
+                </div>
               </>
             )}
 

@@ -71,6 +71,8 @@ export const enum AgentApiAction {
   CreateAgentSession = 'createAgentSession',
   DeleteAgentSession = 'deleteAgentSession',
   FetchSessionByIdManually = 'fetchSessionByIdManually',
+  FetchAgentLog = 'fetchAgentLog',
+  FetchFlowDetailSSE = 'flowDetailSSE',
 }
 
 export const useFetchAgentTemplates = () => {
@@ -306,6 +308,7 @@ export const useSetAgent = (showMessage: boolean = true) => {
       dsl?: Record<string, any>;
       avatar?: string;
       canvas_category?: string;
+      release?: string;
     }) => {
       const { data = {} } = await agentService.setCanvas(params);
       if (data.code === 0) {
@@ -528,7 +531,7 @@ export const useFetchInputForm = (componentId?: string) => {
 export const useFetchVersionList = () => {
   const { id } = useParams();
   const { data, isFetching: loading } = useQuery<
-    Array<{ created_at: string; title: string; id: string }>
+    Array<{ created_at: string; title: string; id: string; release?: boolean }>
   >({
     queryKey: [AgentApiAction.FetchVersionList],
     initialData: [],
@@ -598,7 +601,7 @@ export const useFetchAgentAvatar = (): {
 export const useFetchAgentLog = (searchParams: IAgentLogsRequest) => {
   const { id } = useParams();
   const { data, isFetching: loading } = useQuery<IAgentLogsResponse>({
-    queryKey: ['fetchAgentLog', id, searchParams],
+    queryKey: [AgentApiAction.FetchAgentLog, id, searchParams],
     initialData: {} as IAgentLogsResponse,
     gcTime: 0,
     queryFn: async () => {
@@ -802,7 +805,7 @@ export const useFetchFlowSSE = (): {
     isFetching: loading,
     refetch,
   } = useQuery({
-    queryKey: ['flowDetailSSE'],
+    queryKey: [AgentApiAction.FetchFlowDetailSSE],
     initialData: {} as IFlow,
     refetchOnReconnect: false,
     refetchOnMount: false,
@@ -969,3 +972,21 @@ export function useFetchSessionManually() {
 
   return { data, loading, fetchSessionManually: mutateAsync };
 }
+
+export const useExportAgentLog = () => {
+  const { id } = useParams();
+  const { mutateAsync, isPending: loading } = useMutation({
+    mutationKey: [AgentApiAction.FetchAgentLog, 'export', id],
+    mutationFn: async (searchParams: IAgentLogsRequest) => {
+      const { data } = await fetchAgentLogsByCanvasId(id as string, {
+        ...searchParams,
+        page: 1,
+        page_size: 100000,
+      });
+
+      return data?.data?.sessions ?? [];
+    },
+  });
+
+  return { exportLogs: mutateAsync, loading };
+};

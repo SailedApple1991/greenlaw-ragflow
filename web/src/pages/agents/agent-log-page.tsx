@@ -7,6 +7,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
+import { Button } from '@/components/ui/button';
 import { SearchInput } from '@/components/ui/input';
 import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
 import { DatePickerWithRange } from '@/components/ui/range-picker';
@@ -21,6 +22,7 @@ import { IReferenceObject } from '@/interfaces/database/chat';
 import { formatDate } from '@/utils/date';
 import { useQueryClient } from '@tanstack/react-query';
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router';
 import { DateRange } from '../../components/originui/calendar/index';
 import {
@@ -33,6 +35,7 @@ import {
 } from '../../components/ui/table';
 import { useFetchDataOnMount } from '../agent/hooks/use-fetch-data';
 import { AgentLogDetailModal } from './agent-log-detail-modal';
+import { useExportAgentLogToCSV } from './hooks/use-export-agent-log';
 const getStartOfToday = (): Date => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -46,6 +49,7 @@ const getEndOfToday = (): Date => {
 };
 
 const AgentLogPage: React.FC = () => {
+  const { t } = useTranslation();
   const { navigateToAgents, navigateToAgent } = useNavigatePage();
   const { flowDetail: agentDetail } = useFetchDataOnMount();
   const { id: canvasId } = useParams();
@@ -60,27 +64,34 @@ const AgentLogPage: React.FC = () => {
     page_size: 10,
   };
   const [searchParams, setSearchParams] = useState(init);
+
   const columns = [
     {
-      title: 'ID',
+      title: t('flow.id'),
       dataIndex: 'id',
       key: 'id',
     },
     {
-      title: 'Title',
+      title: t('flow.userId'),
+      dataIndex: 'user_id',
+      key: 'user_id',
+      render: (text: string) => <span>{text}</span>,
+    },
+    {
+      title: t('flow.logTitle'),
       dataIndex: 'title',
       key: 'title',
-      render: (text, record: IAgentLogResponse) => (
+      render: (_text: string, record: IAgentLogResponse) => (
         <span>
           {record?.message?.length ? record?.message[0]?.content : ''}
         </span>
       ),
     },
     {
-      title: 'State',
+      title: t('flow.state'),
       dataIndex: 'state',
       key: 'state',
-      render: (text, record: IAgentLogResponse) => (
+      render: (_text: string, record: IAgentLogResponse) => (
         <div
           className="size-2 rounded-full"
           style={{ backgroundColor: record.errors ? 'red' : 'green' }}
@@ -88,12 +99,12 @@ const AgentLogPage: React.FC = () => {
       ),
     },
     {
-      title: 'Number',
+      title: t('flow.number'),
       dataIndex: 'round',
       key: 'round',
     },
     {
-      title: 'Latest Date',
+      title: t('flow.latestDate'),
       dataIndex: 'update_date',
       key: 'update_date',
       sortable: true,
@@ -102,7 +113,7 @@ const AgentLogPage: React.FC = () => {
       },
     },
     {
-      title: 'Create Date',
+      title: t('flow.createDate'),
       dataIndex: 'create_date',
       key: 'create_date',
       sortable: true,
@@ -110,10 +121,16 @@ const AgentLogPage: React.FC = () => {
         return formatDate(text);
       },
     },
+    {
+      title: t('flow.version.version'),
+      dataIndex: 'version_title',
+      key: 'version_title',
+    },
   ];
 
   const { data: logData, loading } = useFetchAgentLog(searchParams);
   const { sessions: data, total } = logData || {};
+  const { handleExport, loading: exportLoading } = useExportAgentLogToCSV();
   const [currentDate, setCurrentDate] = useState<DateRange>({
     from: searchParams.from_date,
     to: searchParams.to_date,
@@ -148,7 +165,6 @@ const AgentLogPage: React.FC = () => {
   } | null>({ orderby: init.orderby, desc: init.desc ? true : false });
 
   const handlePageChange = (current?: number, pageSize?: number) => {
-    console.log('current', current, 'pageSize', pageSize);
     let page = current || 1;
     if (pagination.pageSize !== pageSize) {
       page = 1;
@@ -209,6 +225,16 @@ const AgentLogPage: React.FC = () => {
     }
   };
 
+  const onExportClick = () => {
+    handleExport({
+      keywords: searchParams.keywords,
+      from_date: searchParams.from_date,
+      to_date: searchParams.to_date,
+      orderby: searchParams.orderby,
+      desc: searchParams.desc,
+    });
+  };
+
   return (
     <div className=" text-white">
       <PageHeader>
@@ -236,6 +262,9 @@ const AgentLogPage: React.FC = () => {
 
           <div className="flex justify-end space-x-2 mb-4 text-foreground">
             <div className="flex items-center space-x-2">
+              <Button onClick={onExportClick} loading={exportLoading}>
+                {t('flow.export')}
+              </Button>
               <span>ID/Title</span>
               <SearchInput
                 value={keywords}
@@ -328,8 +357,13 @@ const AgentLogPage: React.FC = () => {
                     {columns.map((column) => (
                       <TableCell key={column.dataIndex}>
                         {column.render
-                          ? column.render(item[column.dataIndex], item)
-                          : item[column.dataIndex]}
+                          ? column.render(
+                              item[column.dataIndex as keyof IAgentLogResponse],
+                              item,
+                            )
+                          : (item[
+                              column.dataIndex as keyof typeof item
+                            ] as string)}
                       </TableCell>
                     ))}
                   </TableRow>

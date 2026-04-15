@@ -59,7 +59,7 @@ export const useTraceGenerate = ({ open }: { open: boolean }) => {
       retryDelay: 1000,
       enabled: open,
       queryFn: async () => {
-        const { data } = await traceGraphRag(id as string);
+        const { data } = await traceGraphRag(id);
         return data?.data || {};
       },
     });
@@ -74,7 +74,7 @@ export const useTraceGenerate = ({ open }: { open: boolean }) => {
       retryDelay: 1000,
       enabled: open,
       queryFn: async () => {
-        const { data } = await traceRaptor(id as string);
+        const { data } = await traceRaptor(id);
         return data?.data || {};
       },
     });
@@ -136,7 +136,7 @@ export const useDatasetGenerate = () => {
     mutationFn: async ({ type }: { type: GenerateType }) => {
       const func =
         type === GenerateType.KnowledgeGraph ? runGraphRag : runRaptor;
-      const { data } = await func(id as string);
+      const { data } = await func(id);
       if (data.code === 0) {
         message.success(t('message.operated'));
         queryClient.invalidateQueries({
