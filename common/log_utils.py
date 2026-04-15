@@ -21,6 +21,7 @@ from logging.handlers import RotatingFileHandler
 from common.file_utils import get_project_base_directory
 
 initialized_root_logger = False
+pkg_levels = {}
 
 def init_root_logger(logfile_basename: str, log_format: str = "%(asctime)-15s %(levelname)-8s %(process)d %(message)s"):
     global initialized_root_logger
@@ -45,6 +46,7 @@ def init_root_logger(logfile_basename: str, log_format: str = "%(asctime)-15s %(
 
     logging.captureWarnings(True)
 
+    global pkg_levels
     LOG_LEVELS = os.environ.get("LOG_LEVELS", "")
     pkg_levels = {}
     for pkg_name_level in LOG_LEVELS.split(","):
@@ -70,6 +72,24 @@ def init_root_logger(logfile_basename: str, log_format: str = "%(asctime)-15s %(
 
     msg = f"{logfile_basename} log path: {log_path}, log levels: {pkg_levels}"
     logger.info(msg)
+
+
+def set_log_level(pkg_name: str, level: str) -> bool:
+    """Set log level for a package at runtime. Returns True if successful."""
+    global pkg_levels
+    level_value = logging.getLevelName(level.strip().upper())
+    if not isinstance(level_value, int):
+        return False
+    pkg_levels[pkg_name] = logging.getLevelName(level_value)
+    pkg_logger = logging.getLogger(pkg_name)
+    pkg_logger.setLevel(level_value)
+    return True
+
+
+def get_log_levels() -> dict:
+    """Get current log levels for all packages."""
+    global pkg_levels
+    return dict(pkg_levels)
 
 
 def log_exception(e, *args):
