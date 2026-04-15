@@ -53,7 +53,7 @@ const methods = {
   },
   rmKb: {
     url: rm_kb,
-    method: 'delete',
+    method: 'post',
   },
   get_kb_detail: {
     url: get_kb_detail,
@@ -229,7 +229,7 @@ export function deleteKnowledgeGraph(knowledgeId: string) {
 export const listDataset = (
   params?: IFetchKnowledgeListRequestParams,
   body?: IFetchKnowledgeListRequestBody,
-) => request.get(api.kb_list, { params: { ...params, ...body } });
+) => request.post(api.kb_list, { data: body || {}, params });
 
 export const listDocument = (
   params?: IFetchKnowledgeListRequestParams,

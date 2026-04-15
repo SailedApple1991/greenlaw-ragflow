@@ -60,10 +60,10 @@ export default {
   // knowledge base
 
   check_embedding: `${webAPI}/kb/check_embedding`,
-  kb_list: `${restAPIv1}/datasets`,
+  kb_list: `${webAPI}/kb/list`,
   create_kb: `${restAPIv1}/datasets`,
   update_kb: (datasetId: string) => `${restAPIv1}/datasets/${datasetId}`,
-  rm_kb: `${restAPIv1}/datasets`,
+  rm_kb: `${webAPI}/kb/rm`,
   get_kb_detail: `${webAPI}/kb/detail`,
   getKnowledgeGraph: (knowledgeId: string) =>
     `${restAPIv1}/datasets/${knowledgeId}/knowledge_graph`,
@@ -158,14 +158,14 @@ export default {
   fetchExternalChatInfo: (id: string) => `${restAPIv1}/chatbots/${id}/info`,
 
   // file manager
-  listFile: `${restAPIv1}/files`,
-  uploadFile: `${restAPIv1}/files`,
-  removeFile: `${restAPIv1}/files`,
-  getAllParentFolder: `${restAPIv1}/files`,
-  createFolder: `${restAPIv1}/files`,
+  listFile: `${webAPI}/file/list`,
+  uploadFile: `${webAPI}/file/upload`,
+  removeFile: `${webAPI}/file/rm`,
+  getAllParentFolder: `${webAPI}/file/all_parent_folder`,
+  createFolder: `${webAPI}/file/create`,
   connectFileToKnowledge: `${webAPI}/file2document/convert`,
-  getFile: `${restAPIv1}/files`,
-  moveFile: `${restAPIv1}/files/move`,
+  getFile: `${webAPI}/file/get`,
+  moveFile: `${webAPI}/file/mv`,
 
   // system
   getSystemVersion: `${restAPIv1}/system/version`,
@@ -230,15 +230,12 @@ export default {
   testMcpServer: `${webAPI}/mcp_server/test_mcp`,
 
   // next-search
-  createSearch: `${restAPIv1}/searches`,
-  getSearchList: `${restAPIv1}/searches`,
-  deleteSearch: (params: { search_id: string }) =>
-    `${restAPIv1}/searches/${params.search_id}`,
-  getSearchDetail: (params: { search_id: string }) =>
-    `${restAPIv1}/searches/${params.search_id}`,
+  createSearch: `${webAPI}/search/create`,
+  getSearchList: `${webAPI}/search/list`,
+  deleteSearch: `${webAPI}/search/rm`,
+  getSearchDetail: `${webAPI}/search/detail`,
   getSearchDetailShare: `${restAPIv1}/searchbots/detail`,
-  updateSearchSetting: (params: { search_id: string }) =>
-    `${restAPIv1}/searches/${params.search_id}`,
+  updateSearchSetting: `${webAPI}/search/update`,
   askShare: `${restAPIv1}/searchbots/ask`,
   mindmapShare: `${restAPIv1}/searchbots/mindmap`,
   getRelatedQuestionsShare: `${restAPIv1}/searchbots/related_questions`,
