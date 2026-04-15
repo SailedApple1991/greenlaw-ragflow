@@ -72,6 +72,7 @@ export enum Routes {
   AdminWhitelist = `${Admin}/whitelist`,
   AdminRoles = `${Admin}/roles`,
   AdminMonitoring = `${Admin}/monitoring`,
+  AdminCacheManagement = '/cache-management',
 }
 
 const defaultRouteFallback = (
@@ -245,6 +246,10 @@ const routeConfigOptions = [
       {
         path: Routes.Files,
         Component: () => import('@/pages/files'),
+      },
+      {
+        path: Routes.AdminCacheManagement,
+        Component: () => import('@/pages/admin/cache-management'),
       },
       {
         path: Routes.UserSetting,
