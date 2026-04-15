@@ -20,16 +20,16 @@ const methods = {
   },
   getSearchList: {
     url: getSearchList,
-    method: 'get',
+    method: 'post',
   },
-  deleteSearch: { url: deleteSearch, method: 'delete' },
+  deleteSearch: { url: deleteSearch, method: 'post' },
   getSearchDetail: {
     url: getSearchDetail,
     method: 'get',
   },
   updateSearchSetting: {
     url: updateSearchSetting,
-    method: 'put',
+    method: 'post',
   },
   askShare: {
     url: askShare,
