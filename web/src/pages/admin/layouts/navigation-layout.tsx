@@ -5,7 +5,6 @@ import { NavLink, Outlet, useNavigate } from 'react-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
 
 import {
-  LucideDatabase,
   LucideMonitor,
   LucideServerCrash,
   LucideSquareUserRound,
@@ -21,7 +20,7 @@ import { getSystemVersion, logout } from '@/services/admin-service';
 
 import authorizationUtil from '@/utils/authorization-util';
 
-import ThemeSwitch from '../components/theme-switch';
+import ThemeSwitch from '../../../components/theme-switch';
 import { IS_ENTERPRISE } from '../utils';
 import { CurrentUserInfoContext } from './root-layout';
 
@@ -51,11 +50,6 @@ const AdminNavigationLayout = () => {
         path: Routes.AdminSandboxSettings,
         name: t('admin.sandboxSettings'),
         icon: <LucideZap className="size-[1em]" />,
-      },
-      {
-        path: Routes.AdminCacheManagement,
-        name: t('admin.cacheManagement'),
-        icon: <LucideDatabase className="size-[1em]" />,
       },
       ...(IS_ENTERPRISE
         ? [

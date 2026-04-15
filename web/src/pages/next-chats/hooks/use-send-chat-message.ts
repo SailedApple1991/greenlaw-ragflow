@@ -9,7 +9,6 @@ import {
 import { useGetChatSearchParams } from '@/hooks/use-chat-request';
 import { IMessage } from '@/interfaces/database/chat';
 import api from '@/utils/api';
-import { generateConversationId } from '@/utils/chat';
 import { trim } from 'lodash';
 import { useCallback, useEffect } from 'react';
 import { useParams } from 'react-router';
@@ -147,70 +146,64 @@ export const useSendMessage = (controller: AbortController) => {
     }: NextMessageInputOnPressEnterParameter) => {
       if (trim(value) === '') return;
 
-      // Pre-compute conversationId so we can show the message immediately
-      const targetConversationId = conversationId || generateConversationId();
-      const id = uuid();
-      const messageValue = value;
+      const data = await createConversationBeforeSendMessage(value);
 
-      // Optimistic UI: show user message immediately before awaiting conversation creation
+      if (data === undefined) {
+        return;
+      }
+
+      const { targetConversationId, currentMessages } = data;
+
+      const id = uuid();
+
       addNewestQuestion({
-        content: messageValue,
+        content: value,
         files: files,
         id,
         role: MessageType.User,
         conversationId: targetConversationId,
       });
 
-      // Clear input immediately for better responsiveness
-      setValue('');
-      clearFiles();
-
-      // Now create conversation if needed (this was previously blocking message display)
-      const data = await createConversationBeforeSendMessage(
-        messageValue,
-        conversationId ? undefined : targetConversationId,
-      );
-
-      if (data === undefined) {
-        // Rollback: remove the optimistic message on failure
-        removeLatestMessage();
-        setValue(messageValue);
-        return;
-      }
-
-      const { currentMessages } = data;
-
       if (done) {
+        setValue('');
         sendMessage({
           currentConversationId: targetConversationId,
           messages: currentMessages,
           message: {
             id,
-            content: messageValue.trim(),
+            content: value.trim(),
             role: MessageType.User,
-            files: files,
+            files,
             conversationId: targetConversationId,
           },
           enableInternet,
           enableThinking,
         });
-      } else {
-        // Previous streaming still in flight — rollback the optimistic message
-        removeLatestMessage();
-        setValue(messageValue);
+      }
+
+      clearFiles();
+
+      // Auto scroll to bottom when sending new message
+      if (messageContainerRef.current) {
+        const el = messageContainerRef.current;
+
+        requestAnimationFrame(() => {
+          el.scrollTo({
+            top: el.scrollHeight,
+          });
+        });
       }
     },
     [
       value,
-      conversationId,
       createConversationBeforeSendMessage,
       addNewestQuestion,
-      removeLatestMessage,
       files,
       done,
       clearFiles,
       setValue,
       sendMessage,
+      messageContainerRef,
     ],
   );
 

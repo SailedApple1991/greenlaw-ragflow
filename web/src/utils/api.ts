@@ -1,10 +1,7 @@
 const webAPI = `/v1`;
 const restAPIv1 = `/api/v1`;
 
-const api_host = webAPI;
-const ExternalApi = restAPIv1;
-
-export { ExternalApi, api_host, restAPIv1, webAPI };
+export { restAPIv1, webAPI };
 
 export default {
   // user
@@ -12,11 +9,11 @@ export default {
   logout: `${webAPI}/user/logout`,
   register: `${webAPI}/user/register`,
   setting: `${webAPI}/user/setting`,
-  user_info: `${webAPI}/user/info`,
-  tenant_info: `${webAPI}/user/tenant_info`,
-  set_tenant_info: `${webAPI}/user/set_tenant_info`,
-  login_channels: `${webAPI}/user/login/channels`,
-  login_channel: (channel: string) => `${webAPI}/user/login/${channel}`,
+  userInfo: `${webAPI}/user/info`,
+  tenantInfo: `${webAPI}/user/tenant_info`,
+  setTenantInfo: `${webAPI}/user/set_tenant_info`,
+  loginChannels: `${webAPI}/user/login/channels`,
+  loginChannel: (channel: string) => `${webAPI}/user/login/${channel}`,
 
   // team
   addTenantUser: (tenantId: string) => `${webAPI}/tenant/${tenantId}/user`,
@@ -28,13 +25,13 @@ export default {
   agreeTenant: (tenantId: string) => `${webAPI}/tenant/agree/${tenantId}`,
 
   // llm model
-  factories_list: `${webAPI}/llm/factories`,
-  llm_list: `${webAPI}/llm/list`,
-  my_llm: `${webAPI}/llm/my_llms`,
-  set_api_key: `${webAPI}/llm/set_api_key`,
-  add_llm: `${webAPI}/llm/add_llm`,
-  delete_llm: `${webAPI}/llm/delete_llm`,
-  enable_llm: `${webAPI}/llm/enable_llm`,
+  factoriesList: `${webAPI}/llm/factories`,
+  llmList: `${webAPI}/llm/list`,
+  myLlm: `${webAPI}/llm/my_llms`,
+  setApiKey: `${webAPI}/llm/set_api_key`,
+  addLlm: `${webAPI}/llm/add_llm`,
+  deleteLlm: `${webAPI}/llm/delete_llm`,
+  enableLlm: `${webAPI}/llm/enable_llm`,
   deleteFactory: `${webAPI}/llm/delete_factory`,
 
   // data source
@@ -53,18 +50,18 @@ export default {
   boxWebAuthResult: () => `${webAPI}/connector/box/oauth/web/result`,
 
   // plugin
-  llm_tools: `${webAPI}/plugin/llm_tools`,
+  llmTools: `${webAPI}/plugin/llm_tools`,
 
   chatsTranscriptions: `${restAPIv1}/chats/transcriptions`,
 
   // knowledge base
 
-  check_embedding: `${webAPI}/kb/check_embedding`,
-  kb_list: `${webAPI}/kb/list`,
-  create_kb: `${restAPIv1}/datasets`,
-  update_kb: (datasetId: string) => `${restAPIv1}/datasets/${datasetId}`,
-  rm_kb: `${webAPI}/kb/rm`,
-  get_kb_detail: `${webAPI}/kb/detail`,
+  checkEmbedding: `${webAPI}/kb/check_embedding`,
+  kbList: `${restAPIv1}/datasets`,
+  createKb: `${restAPIv1}/datasets`,
+  updateKb: (datasetId: string) => `${restAPIv1}/datasets/${datasetId}`,
+  rmKb: `${restAPIv1}/datasets`,
+  getKbDetail: `${webAPI}/kb/detail`,
   getKnowledgeGraph: (knowledgeId: string) =>
     `${restAPIv1}/datasets/${knowledgeId}/knowledge_graph`,
   deleteKnowledgeGraph: (knowledgeId: string) =>
@@ -73,7 +70,7 @@ export default {
   getKnowledgeBasicInfo: `${webAPI}/kb/basic_info`,
   // data pipeline log
   fetchDataPipelineLog: `${webAPI}/kb/list_pipeline_logs`,
-  get_pipeline_detail: `${webAPI}/kb/pipeline_log_detail`,
+  getPipelineDetail: `${webAPI}/kb/pipeline_log_detail`,
   fetchPipelineDatasetLogs: `${webAPI}/kb/list_pipeline_dataset_logs`,
   runGraphRag: (datasetId: string) =>
     `${restAPIv1}/datasets/${datasetId}/run_graphrag`,
@@ -86,7 +83,8 @@ export default {
   unbindPipelineTask: ({ kb_id, type }: { kb_id: string; type: string }) =>
     `${webAPI}/kb/unbind_task?kb_id=${kb_id}&pipeline_task_type=${type}`,
   pipelineRerun: `${webAPI}/canvas/rerun`,
-  getMetaData: `${webAPI}/document/metadata/summary`,
+  getMetaData: (datasetId: string) =>
+    `${restAPIv1}/datasets/${datasetId}/metadata/summary`,
   updateMetaData: `${webAPI}/document/metadata/update`,
   kbUpdateMetaData: `${webAPI}/kb/update_metadata_setting`,
   documentUpdateMetaData: `${webAPI}/document/update_metadata_setting`,
@@ -98,35 +96,37 @@ export default {
   renameTag: (knowledgeId: string) => `${webAPI}/kb/${knowledgeId}/rename_tag`,
 
   // chunk
-  chunk_list: `${webAPI}/chunk/list`,
-  create_chunk: `${webAPI}/chunk/create`,
-  set_chunk: `${webAPI}/chunk/set`,
-  get_chunk: `${webAPI}/chunk/get`,
-  switch_chunk: `${webAPI}/chunk/switch`,
-  rm_chunk: `${webAPI}/chunk/rm`,
-  retrieval_test: `${webAPI}/chunk/retrieval_test`,
-  knowledge_graph: `${webAPI}/chunk/knowledge_graph`,
+  chunkList: `${webAPI}/chunk/list`,
+  createChunk: `${webAPI}/chunk/create`,
+  setChunk: `${webAPI}/chunk/set`,
+  getChunk: `${webAPI}/chunk/get`,
+  switchChunk: `${webAPI}/chunk/switch`,
+  rmChunk: `${webAPI}/chunk/rm`,
+  retrievalTest: `${webAPI}/chunk/retrieval_test`,
+  knowledgeGraph: `${webAPI}/chunk/knowledge_graph`,
 
   // document
-  get_document_list: `${webAPI}/document/list`,
-  document_change_status: `${webAPI}/document/change_status`,
-  document_rm: `${webAPI}/document/rm`,
-  document_delete: `${webAPI}/api/document`,
-  document_rename: `${webAPI}/document/rename`,
-  document_create: `${webAPI}/document/create`,
-  document_run: `${webAPI}/document/run`,
-  document_change_parser: `${webAPI}/document/change_parser`,
-  document_thumbnails: `${webAPI}/document/thumbnails`,
-  get_document_file: `${webAPI}/document/get`,
-  get_document_file_download: (docId: string) =>
+  getDocumentList: `${webAPI}/document/list`,
+  documentChangeStatus: `${webAPI}/document/change_status`,
+  documentRm: `${webAPI}/document/rm`,
+  documentDelete: `${webAPI}/api/document`,
+  documentRename: (datasetId: string, documentId: string) =>
+    `${restAPIv1}/datasets/${datasetId}/documents/${documentId}`,
+  documentCreate: `${webAPI}/document/create`,
+  documentRun: `${webAPI}/document/run`,
+  documentChangeParser: `${webAPI}/document/change_parser`,
+  documentThumbnails: `${webAPI}/document/thumbnails`,
+  getDocumentFile: `${webAPI}/document/get`,
+  getDocumentFileDownload: (docId: string) =>
     `${webAPI}/document/download/${docId}`,
-  document_upload: `${webAPI}/document/upload`,
-  web_crawl: `${webAPI}/document/web_crawl`,
-  document_infos: `${webAPI}/document/infos`,
-  upload_and_parse: `${webAPI}/document/upload_info`,
+  documentUpload: (datasetId: string) =>
+    `${restAPIv1}/datasets/${datasetId}/documents`,
+  webCrawl: `${webAPI}/document/web_crawl`,
+  documentInfos: `${webAPI}/document/infos`,
+  uploadAndParse: `${webAPI}/document/upload_info`,
   parse: `${webAPI}/document/parse`,
   setMeta: `${webAPI}/document/set_meta`,
-  get_dataset_filter: `${webAPI}/document/filter`,
+  getDatasetFilter: `${webAPI}/document/filter`,
 
   // chat
   createChat: `${restAPIv1}/chats`,
@@ -158,20 +158,20 @@ export default {
   fetchExternalChatInfo: (id: string) => `${restAPIv1}/chatbots/${id}/info`,
 
   // file manager
-  listFile: `${webAPI}/file/list`,
-  uploadFile: `${webAPI}/file/upload`,
-  removeFile: `${webAPI}/file/rm`,
-  getAllParentFolder: `${webAPI}/file/all_parent_folder`,
-  createFolder: `${webAPI}/file/create`,
+  listFile: `${restAPIv1}/files`,
+  uploadFile: `${restAPIv1}/files`,
+  removeFile: `${restAPIv1}/files`,
+  getAllParentFolder: `${restAPIv1}/files`,
+  createFolder: `${restAPIv1}/files`,
   connectFileToKnowledge: `${webAPI}/file2document/convert`,
-  getFile: `${webAPI}/file/get`,
-  moveFile: `${webAPI}/file/mv`,
+  getFile: `${restAPIv1}/files`,
+  moveFile: `${restAPIv1}/files/move`,
 
   // system
   getSystemVersion: `${restAPIv1}/system/version`,
-  getSystemTokenList: `${webAPI}/system/token_list`,
-  createSystemToken: `${webAPI}/system/new_token`,
-  removeSystemToken: `${webAPI}/system/token`,
+  getSystemTokenList: `${restAPIv1}/system/tokens`,
+  createSystemToken: `${restAPIv1}/system/tokens`,
+  removeSystemToken: `${restAPIv1}/system/tokens`,
   getSystemConfig: `${webAPI}/system/config`,
   setLangfuseConfig: `${webAPI}/langfuse/api_key`,
 
@@ -230,12 +230,15 @@ export default {
   testMcpServer: `${webAPI}/mcp_server/test_mcp`,
 
   // next-search
-  createSearch: `${webAPI}/search/create`,
-  getSearchList: `${webAPI}/search/list`,
-  deleteSearch: `${webAPI}/search/rm`,
-  getSearchDetail: `${webAPI}/search/detail`,
+  createSearch: `${restAPIv1}/searches`,
+  getSearchList: `${restAPIv1}/searches`,
+  deleteSearch: (params: { search_id: string }) =>
+    `${restAPIv1}/searches/${params.search_id}`,
+  getSearchDetail: (params: { search_id: string }) =>
+    `${restAPIv1}/searches/${params.search_id}`,
   getSearchDetailShare: `${restAPIv1}/searchbots/detail`,
-  updateSearchSetting: `${webAPI}/search/update`,
+  updateSearchSetting: (params: { search_id: string }) =>
+    `${restAPIv1}/searches/${params.search_id}`,
   askShare: `${restAPIv1}/searchbots/ask`,
   mindmapShare: `${restAPIv1}/searchbots/mindmap`,
   getRelatedQuestionsShare: `${restAPIv1}/searchbots/related_questions`,
@@ -322,4 +325,17 @@ export default {
   adminGetSandboxConfig: `${restAPIv1}/admin/sandbox/config`,
   adminSetSandboxConfig: `${restAPIv1}/admin/sandbox/config`,
   adminTestSandboxConnection: `${restAPIv1}/admin/sandbox/test`,
+
+  // Cache management
+  adminCacheStats: `${webAPI}/cache/stats`,
+  adminCacheTenants: `${webAPI}/cache/tenants`,
+  adminCacheTenantDialogs: (tenantId: string) =>
+    `${webAPI}/cache/tenants/${tenantId}/dialogs`,
+  adminCacheL2Entries: `${webAPI}/cache/l2/entries`,
+  adminCacheL2Entry: (tenantId: string, entryId: string) =>
+    `${webAPI}/cache/l2/tenants/${tenantId}/entries/${entryId}`,
+  adminCacheL1InvalidateDialog: (dialogId: string) =>
+    `${webAPI}/cache/l1/dialogs/${dialogId}`,
+  adminCacheL1Entries: `${webAPI}/cache/l1/entries`,
+  adminCacheL1Dialogs: `${webAPI}/cache/l1/dialogs`,
 };

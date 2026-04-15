@@ -1,7 +1,6 @@
 import message from '@/components/ui/message';
 import { Authorization } from '@/constants/authorization';
 import { MessageType } from '@/constants/chat';
-import { LanguageTranslationMap } from '@/constants/common';
 import { FormInstance } from '@/interfaces/antd-compat';
 import { Pagination } from '@/interfaces/common';
 import { ResponseType } from '@/interfaces/database/base';
@@ -27,7 +26,6 @@ import {
   useRef,
   useState,
 } from 'react';
-import { useTranslation } from 'react-i18next';
 import { v4 as uuid } from 'uuid';
 import { useTranslate } from './common-hooks';
 import { useSetPaginationParams } from './route-hook';
@@ -52,15 +50,15 @@ export const useSetSelectedRecord = <T = IKnowledgeFile>() => {
 };
 
 export const useChangeLanguage = () => {
-  const { i18n } = useTranslation();
   const { saveSetting } = useSaveSetting();
 
-  const changeLanguage = (lng: string) => {
-    const targetLng =
-      LanguageTranslationMap[lng as keyof typeof LanguageTranslationMap];
-    changeLanguageAsync(targetLng);
-    saveSetting({ language: lng });
-  };
+  const changeLanguage = useCallback(
+    (lng: string) => {
+      changeLanguageAsync(lng);
+      saveSetting({ language: lng });
+    },
+    [saveSetting],
+  );
 
   return changeLanguage;
 };
