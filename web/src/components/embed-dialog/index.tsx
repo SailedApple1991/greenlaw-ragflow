@@ -51,6 +51,7 @@ type IProps = IModalProps<any> & {
 
 function EmbedDialog({
   hideModal,
+  visible,
   token = '',
   from,
   beta = '',
@@ -154,7 +155,7 @@ function EmbedDialog({
   }, [generateIframeSrc]);
 
   return (
-    <Dialog open onOpenChange={hideModal}>
+    <Dialog open={visible} onOpenChange={hideModal}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
