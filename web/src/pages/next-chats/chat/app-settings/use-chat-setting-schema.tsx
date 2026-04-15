@@ -36,9 +36,6 @@ export function useChatSettingSchema() {
     reasoning: z.boolean().optional(),
     cross_languages: z.array(z.string()).optional(),
     toc_enhance: z.boolean().optional(),
-    enable_cache: z.boolean(),
-    cache_ttl: z.number(),
-    cache_similarity_threshold: z.number(),
   });
 
   const formSchema = z.object({

@@ -261,9 +261,6 @@ export const useFetchChat = () => {
   return { data, loading, refetch };
 };
 
-export const useFetchDialog = useFetchChat;
-export const useSetDialog = useUpdateChat;
-
 //#region Session
 
 export const useFetchSessionList = () => {
@@ -497,7 +494,7 @@ export function useUploadAndParseFile() {
 
         const { data } = await chatService.uploadAndParse(
           {
-            url: api.upload_and_parse,
+            url: api.uploadAndParse,
             signal: controller.current.signal,
             data: formData,
             onUploadProgress: ({ progress }) => {

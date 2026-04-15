@@ -72,6 +72,7 @@ export enum Routes {
   AdminWhitelist = `${Admin}/whitelist`,
   AdminRoles = `${Admin}/roles`,
   AdminMonitoring = `${Admin}/monitoring`,
+  AdminCacheManagement = '/cache-management',
 }
 
 const defaultRouteFallback = (
@@ -147,7 +148,7 @@ const routeConfigOptions = [
     path: Routes.Root,
     layout: false,
     Component: () => import('@/layouts/root-layout'),
-    loader: ({ request }) => {
+    loader: ({ request }: { request: Request }) => {
       const url = new URL(request.url);
       const auth = url.searchParams.get('auth');
       if (auth) {
@@ -247,6 +248,10 @@ const routeConfigOptions = [
         Component: () => import('@/pages/files'),
       },
       {
+        path: Routes.AdminCacheManagement,
+        Component: () => import('@/pages/admin/cache-management'),
+      },
+      {
         path: Routes.UserSetting,
         Component: () => import('@/pages/user-setting'),
         layout: false,
@@ -261,10 +266,12 @@ const routeConfigOptions = [
             path: `${Routes.UserSetting}/profile`,
             Component: () => import('@/pages/user-setting/profile'),
           },
+          /*
           {
             path: `${Routes.UserSetting}/locale`,
             Component: () => import('@/pages/user-setting/setting-locale'),
           },
+          */
           {
             path: `${Routes.UserSetting}/model`,
             Component: () => import('@/pages/user-setting/setting-model'),

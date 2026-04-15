@@ -18,6 +18,7 @@ export default {
       name: '名称',
       save: '保存',
       namePlaceholder: '请输入名称',
+      descriptionPlaceholder: '请输入描述',
       next: '下一步',
       create: '创建',
       edit: '编辑',
@@ -27,11 +28,14 @@ export default {
       chinese: '简体中文',
       traditionalChinese: '繁体中文',
       bulgarian: '保加利亚语',
+      arabic: '阿拉伯语',
       language: '语言',
       languageMessage: '请输入语言',
       languagePlaceholder: '请选择语言',
       copy: '复制',
       copied: '复制成功',
+      viewMore: '查看更多',
+      viewLess: '收起',
       comingSoon: '即将推出',
       download: '下载',
       close: '关闭',
@@ -93,12 +97,12 @@ export default {
       setting: '用户设置',
       logout: '登出',
       fileManager: '文件管理',
+      cacheManagement: '缓存',
       flow: '智能体',
       search: '搜索',
       welcome: '欢迎来到',
       dataset: '知识库',
       memories: '记忆',
-      cacheManagement: '缓存',
     },
     memories: {
       llmTooltip: '分析对话内容，提取关键信息，并生成结构化的记忆摘要。',
@@ -203,7 +207,7 @@ export default {
         // editMetadataForDataset: '查看和编辑元数据 ',
         restrictDefinedValues: '限制为已定义的值',
         metadataGenerationSettings: '元数据生成设置',
-        // manageMetadataForDataset: '管理此数据集的元数据',
+        // manageMetadataForDataset: '管理此知识库的元数据',
         manageMetadata: '管理元数据',
         metadata: '元数据',
         values: '值',
@@ -248,7 +252,7 @@ export default {
       startDate: '开始时间',
       source: '来源',
       fileName: '文件名',
-      datasetLogs: '数据集',
+      datasetLogs: '知识库',
       fileLogs: '文件',
       overview: '日志',
       success: '成功',
@@ -340,7 +344,7 @@ export default {
       changeSpecificCategory: '更改特定类别',
       uploadTitle: '点击或拖拽文件至此区域即可上传',
       uploadDescription:
-        '支持单次或批量上传。本地部署的单次上传文件总大小上限为 1GB，单次批量上传文件数不超过 32，单个账户不限文件数量。对于 demo.ragflow.io：每次上传的总文件大小限制为 10MB，每个文件不得超过 10MB，每个账户最多可上传 128 个文件。严禁上传违禁文件。',
+        '支持单次或批量上传。本地部署的单次上传文件总大小上限为 1GB，单次批量上传文件数不超过 32，单个账户不限文件数量。对于 cloud.ragflow.io：每次上传的总文件大小限制为 10MB，每个文件不得超过 10MB，每个账户最多可上传 128 个文件。严禁上传违禁文件。',
       chunk: '解析块',
       bulk: '批量',
       cancel: '取消',
@@ -391,7 +395,7 @@ export default {
     knowledgeConfiguration: {
       randomSeedTip:
         '种子是伪随机算法的起点，它确保在不同运行中产生相同的输出，从而保证可重复性。',
-      datasetDescription: '你的数据集描述。',
+      datasetDescription: '你的知识库描述。',
       overlappedPercentTip: '相邻两个块之间的重叠百分比',
       settings: '设置',
       autoMetadataTip:
@@ -431,13 +435,13 @@ export default {
       baseInfo: '基础信息',
       globalIndex: '全局索引',
       dataSource: '数据源',
-      linkSourceSetTip: '管理与此数据集的数据源链接',
+      linkSourceSetTip: '管理与此知识库的数据源链接',
       linkDataSource: '链接数据源',
       tocExtractionTip:
         '对于已有的chunk生成层级结构的目录信息（每个文件一个目录）。在查询时，激活`Page Index`后，系统会用大模型去判断用户问题和哪些目录项相关，从而找到相关的chunk。',
       deleteGenerateModalContent: `
         <p>删除生成的 <strong class='text-text-primary'>{{type}}</strong> 结果
-          将从此数据集中移除所有派生实体和关系。
+          将从此知识库中移除所有派生实体和关系。
           您的原始文件将保持不变。<p>
           <br/>
           是否要继续？
@@ -450,7 +454,7 @@ export default {
       setDefaultTip: '',
       setDefault: '设置默认',
       editLinkDataPipeline: '编辑pipeline',
-      linkPipelineSetTip: '管理与此数据集的数据管道链接',
+      linkPipelineSetTip: '管理与此知识库的数据管道链接',
       default: '默认',
       dataPipeline: '切换或配置 ingestion pipeline。',
       linkDataPipeline: '关联pipeline',
@@ -631,7 +635,7 @@ export default {
       tagSetTip: `
       <p> 请选择一个或多个标签集或标签知识库，用于对知识库中的每个文本块进行标记。</p>
       <p>对这些文本块的查询也将自动关联相应标签。 </p>
-      <p>此功能基于文本相似度，能够为数据集的文本块批量添加更多领域知识，从而显著提高检索准确性。该功能还能提升大量文本块的操作效率。</p>
+      <p>此功能基于文本相似度，能够为知识库的文本块批量添加更多领域知识，从而显著提高检索准确性。该功能还能提升大量文本块的操作效率。</p>
       <p>为了更好地理解标签集的作用，以下是标签集和关键词之间的主要区别：</p>
       <ul>
       <li>标签集是一个由用户定义和管理的封闭集，而自动生成的关键词属于开放集合。 </li>
@@ -681,6 +685,9 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       delete: '删除',
     },
     chat: {
+      chatSupport: '聊天支持',
+      replyInstantly: '我们通常会即时回复',
+      typeYourMessage: '输入您的消息...',
       messagePlaceholder: '请输入消息...',
       exit: '退出',
       multipleModels: '多模型',
@@ -705,7 +712,7 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       assistantAvatar: '助理头像',
       language: '语言',
       emptyResponse: '空回复',
-      emptyResponsePlaceholder: '在数据集中未找到您要寻找的答案！',
+      emptyResponsePlaceholder: '在知识库中未找到您要寻找的答案！',
       emptyResponseTip: `如果在知识库中没有检索到用户的问题，它将使用它作为答案。 如果您希望 LLM 在未检索到任何内容时提出自己的意见，请将此留空。`,
       emptyResponseMessage: `当知识库中未检索到任何相关信息时，将触发空响应。由于未选择任何知识库，因此请清除“空响应”。`,
       setAnOpener: '设置开场白',
@@ -720,7 +727,7 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       systemPlaceholder: `你是一个智能助手，主要功能是基于提供的知识库严格回答问题。
 
 **重要规则:**
-  - 你的回答必须**仅**来自此数据集：{knowledge}。
+  - 你的回答必须**仅**来自此知识库：{knowledge}。
   - **当信息可用时**: 总结内容以给出详细答案。
   - **当信息不可用时**: 你的回答必须包含这句确切的话："在知识库中未找到您要的答案！"
   - **始终考虑**整个对话历史。`,
@@ -796,6 +803,16 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       created: '创建于',
       action: '操作',
       embedModalTitle: '嵌入网站',
+      published: '已发布',
+      publishedTooltip:
+        '在嵌入中使用已发布的版本。启用后，生成的 URL 将包含 release=true。',
+      embedType: '嵌入类型',
+      fullscreenChat: '全屏聊天（传统 iframe）',
+      floatingWidget: '悬浮组件（Intercom 风格）',
+      theme: '主题',
+      light: '浅色',
+      dark: '深色',
+      enableStreaming: '启用流式响应',
       comingSoon: '即将推出',
       fullScreenTitle: '全屏嵌入',
       fullScreenDescription: '将以下iframe嵌入您的网站处于所需位置',
@@ -811,17 +828,6 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       read: '朗读内容',
       tts: '文本转语音',
       ttsTip: '是否用语音转换播放语音，请先在设置里面选择TTS（语音转换模型）。',
-      enableCache: '启用缓存',
-      enableCacheTip:
-        '缓存相同或相似问题的答案以降低响应延迟。命中缓存时将直接返回答案，无需调用大模型或检索流程。',
-      cacheTtl: '缓存有效期（秒）',
-      cacheTtlTip:
-        '缓存答案的有效时间（秒）。超过此时间后缓存将自动失效。默认值：86400（24小时）。',
-      cacheThreshold: '相似度阈值',
-      cacheThresholdTip:
-        '语义缓存命中所需的最低余弦相似度。值越高，匹配要求越严格。范围：0.80–1.00。默认值：0.95。',
-      cachedResponse: '来自缓存',
-      manageCacheEntries: '管理缓存条目',
       relatedQuestion: '相关问题',
       answerTitle: '智能回答',
       multiTurn: '多轮对话优化',
@@ -931,6 +937,7 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       bitbucketRepositorySlugsTip:
         '用英文逗号分隔的仓库 slug，例如：repo-one,repo-two',
       connectorNameTip: '为连接器命名',
+      syncDeletedFiles: '同步删除文件',
       githubDescription:
         '连接 GitHub，可同步 Pull Request 与 Issue 内容用于检索。',
       airtableDescription: '连接 Airtable，同步指定工作区下指定表格中的文件。',
@@ -1231,7 +1238,7 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       parseOnCreation: '创建时解析',
       uploadTitle: '点击或拖拽文件至此区域即可上传',
       uploadDescription:
-        '支持单次或批量上传。 本地部署的单次上传文件总大小上限为 1GB，单次批量上传文件数不超过 32，单个账户不限文件数量。对于 demo.ragflow.io：每次上传的总文件大小限制为 10MB，每个文件不得超过 10MB，每个账户最多可上传 128 个文件。严禁上传违禁文件。',
+        '支持单次或批量上传。 本地部署的单次上传文件总大小上限为 1GB，单次批量上传文件数不超过 32，单个账户不限文件数量。对于 cloud.ragflow.io：每次上传的总文件大小限制为 10MB，每个文件不得超过 10MB，每个账户最多可上传 128 个文件。严禁上传违禁文件。',
       file: '文件',
       directory: '文件夹',
       local: '本地上传',
@@ -1250,6 +1257,19 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
         author: '作者',
         sectionTitle: '章节标题',
       },
+      includeHeadingContent: '包含标题内容',
+      includeHeadingContentTip:
+        '启用后，标题下的直接内容将作为一个独立的块保留。子块仅保留标题路径。',
+      hierarchyTip: `构建标题树并生成独立的块，每个块携带其完整的祖先标题路径（例如 第1部分 › 第3章 › 第2节 + 正文）。<br>
+适用场景：具有独立的、结构性重要章节的文档——如法律条款、法规、合同和技术规范——其中每个块即使没有上下文也能通过其结构位置来识别。`,
+      groupTip: `在选定的标题级别将文档扁平分割，并自动合并相邻的小节以保持内容连续性。不注入父标题路径。<br>
+适用场景：具有流动性的、内容相关联的文档——如书籍、手册、报告和文章——其中相邻段落应保持在一起以维持叙述连贯性。`,
+      enableMultiColumn: '启用多栏',
+      enableMultiColumnTip:
+        '检测并解析多栏页面布局以保持正确的阅读顺序。对于具有双栏或报纸式布局的PDF或文档，请开启此功能。',
+      removeToc: '移除原始目录',
+      removeTocTip:
+        '移除原始PDF中包含的目录，这样它就不会被解析为常规内容或作为检索块。',
       autoPlay: '自动播放',
       downloadFileTypeTip: '文件下载的类型',
       downloadFileType: '文件类型',
@@ -1264,6 +1284,13 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       consumerApp: '消费者应用',
       other: '其他',
       agents: '智能体',
+      id: 'ID',
+      logTitle: '标题',
+      state: '状态',
+      number: '轮数',
+      latestDate: '最新日期',
+      createDate: '创建日期',
+      publishedAt: '发布于',
       beginInput: '开始输入',
       seconds: '秒',
       ref: '引用变量',
@@ -1294,6 +1321,10 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       tab: '制表符',
       space: '空格',
       delimiters: '分隔符',
+      one: 'One',
+      oneChunkTitle: 'Note',
+      oneChunkDescription:
+        '所有解析后的 sections 会按原始顺序合并为 1 个 chunk。',
       merge: '合并',
       split: '拆分',
       script: '脚本',
@@ -1355,10 +1386,12 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       version: {
         details: '版本详情',
         download: '下载',
+        version: '版本',
       },
       cite: '引用',
       citeTip: '引用',
       nameMessage: '请输入名称',
+      lastSavedAt: '上次保存于',
       description: '描述',
       examples: '示例',
       to: '下一步',
@@ -1426,10 +1459,8 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       searXNG: 'SearXNG',
       searXNGDescription:
         '该组件通过您提供的 SearXNG 实例地址进行搜索。请设置 Top N 和实例 URL。',
-      pdfGenerator: '文档生成器',
-      pDFGenerator: '文档生成器',
-      pdfGeneratorDescription: `该组件从 markdown 格式的内容生成文档（PDF、DOCX、TXT），支持自定义样式、图片和表格。支持：**粗体**、*斜体*、# 标题、- 列表、使用 | 语法的表格。`,
-      pDFGeneratorDescription: `该组件从 markdown 格式的内容生成文档（PDF、DOCX、TXT），支持自定义样式、图片和表格。支持：**粗体**、*斜体*、# 标题、- 列表、使用 | 语法的表格。`,
+      docGenerator: '文档生成器',
+      docGeneratorDescription: `从 Markdown 内容生成文件。`,
       subtitle: '副标题',
       logoImage: '标志图片',
       logoPosition: '标志位置',
@@ -1906,6 +1937,13 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
         '在此处编写您的 SQL 查询。您可以使用变量、原始 SQL，或使用变量语法混合使用两者。',
       frameworkPrompts: '框架',
       release: '发布',
+      production: '正式版',
+      productionTooltip: '此版本已发布到生产环境。可通过 API 或嵌入页面访问。',
+      confirmPublish: '确认发布',
+      publishIngestionPipeline: '您即将发布此 Ingestion pipeline。',
+      publishAgent: '您即将发布此智能体',
+      linkedDataset: '已关联的知识库：',
+      lastPublished: '上次发布时间',
       createFromBlank: '从空白创建',
       createFromTemplate: '从模板创建',
       importJsonFile: '导入 JSON 文件',
@@ -1916,24 +1954,39 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       tokenizerRequired: '请先添加Tokenizer节点',
       tokenizerDescription:
         '根据所选的搜索方法，将文本转换为所需的数据结构（例如，用于嵌入搜索的向量嵌入）。',
-      splitter: '按字符分割',
-      splitterDescription:
+      tokenChunker: '按 Token 分块',
+      tokenChunkerDescription:
         '根据分词器长度将文本拆分成块，并带有可选的分隔符和重叠。',
-      hierarchicalMergerDescription:
-        '使用正则表达式规则按标题层次结构将文档拆分成多个部分，以实现更精细的控制。',
-      hierarchicalMerger: '按标题分割',
+      titleChunkerDescription:
+        '按标题层级拆分文档。通过正则表达式定义各级标题，再选择层级或分组模式控制切片方式。',
+      titleChunker: '按标题分块',
       extractor: '提取器',
       extractorDescription:
         '使用 LLM 从文档块（例如摘要、分类等）中提取结构化见解。',
       outputFormat: '输出格式',
       fileFormats: '文件类型',
+      fileFormatOptions: {
+        pdf: 'PDF',
+        spreadsheet: '表格',
+        image: '图片',
+        email: '邮件',
+        markdown: 'Markdown',
+        'text&code': '文本与代码',
+        html: 'HTML',
+        doc: 'DOC',
+        docx: 'DOCX',
+        slides: 'PPTX',
+        audio: '音频',
+        video: '视频',
+      },
       fields: '字段',
       addParser: '增加解析器',
+      group: '聚合',
       hierarchy: '层次结构',
       regularExpressions: '正则表达式',
       overlappedPercent: '重叠百分比（%）',
       searchMethod: '搜索方法',
-      searchMethodTip: `决定该数据集启用的搜索方式，可选择全文、向量，或两者兼有。
+      searchMethodTip: `决定该知识库启用的搜索方式，可选择全文、向量，或两者兼有。
 Tokenizer 会根据所选方式将内容存储为对应的数据结构。`,
       filenameEmbdWeight: '文件名嵌入权重',
       parserMethod: '解析方法',
@@ -2157,6 +2210,8 @@ Tokenizer 会根据所选方式将内容存储为对应的数据结构。`,
       korean: '韩语',
       vietnamese: '越南语',
       bulgarian: '保加利亚语',
+      arabic: '阿拉伯语',
+      turkish: '土耳其语',
     },
     pagination: {
       total: '总共 {{total}} 条',
@@ -2190,7 +2245,7 @@ Tokenizer 会根据所选方式将内容存储为对应的数据结构。`,
       changeStepModalCancelText: '取消',
       unlinkPipelineModalTitle: '解绑pipeline',
       unlinkPipelineModalContent: `
-      <p>一旦取消链接，该数据集将不再连接到当前数据管道。</p>
+      <p>一旦取消链接，该知识库将不再连接到当前数据管道。</p>
       <p>正在解析的文件将继续解析，直到完成。</p>
       <p>尚未解析的文件将不再被处理。</p> <br/>
       <p>你确定要继续吗?</p> `,
@@ -2229,8 +2284,8 @@ Tokenizer 会根据所选方式将内容存储为对应的数据结构。`,
       noMCP: '暂无 MCP 服务器可用',
       agentTitle: '尚未创建智能体',
       notFoundAgent: '未查询到智能体',
-      datasetTitle: '尚未创建数据集',
-      notFoundDataset: '未查询到数据集',
+      datasetTitle: '尚未创建知识库',
+      notFoundDataset: '未查询到知识库',
       chatTitle: '尚未创建聊天应用',
       notFoundChat: '未查询到聊天应用',
       searchTitle: '尚未创建搜索应用',
