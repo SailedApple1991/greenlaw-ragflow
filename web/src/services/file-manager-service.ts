@@ -23,7 +23,7 @@ const methods = {
   },
   removeFile: {
     url: removeFile,
-    method: 'delete',
+    method: 'post',
   },
   uploadFile: {
     url: uploadFile,
