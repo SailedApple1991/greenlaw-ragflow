@@ -16,6 +16,7 @@
 
 import json
 import logging
+import math
 import os
 import re
 import tempfile
@@ -46,6 +47,33 @@ from common.constants import LLMType, RetCode, StatusEnum
 from common.misc_utils import get_uuid
 from rag.prompts.generator import chunks_format
 from rag.prompts.template import load_prompt
+
+
+def _sanitize_json_floats(obj):
+    """Replace NaN/Infinity floats with None so the result is RFC 8259 JSON.
+
+    json.dumps emits the literal tokens NaN/Infinity by default (allow_nan=True);
+    those are invalid per the JSON spec and downstream proxies / Go consumers
+    reject the response (fixes #15245). Retrieval scores (similarity,
+    vector_similarity, term_similarity) can become NaN when an aggregation runs
+    over an empty set or a similarity denominator is zero, so the chat
+    completions stream is the realistic trigger. Probe via math.isnan/isinf in a
+    try/except so numpy.float32/float16 and other duck-typed numerics are caught
+    too, without touching upstream callers.
+    """
+    try:
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+    except TypeError:
+        pass
+    if isinstance(obj, dict):
+        return {k: _sanitize_json_floats(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_json_floats(v) for v in obj]
+    if isinstance(obj, tuple):
+        return tuple(_sanitize_json_floats(v) for v in obj)
+    return obj
+
 
 _DEFAULT_PROMPT_CONFIG = {
     "system": (
@@ -1021,7 +1049,8 @@ async def session_completion(chat_id, session_id):
             try:
                 async for ans in async_chat(dia, msg, True, **req):
                     ans = structure_answer(conv, ans, message_id, conv.id)
-                    yield "data:" + json.dumps({"code": 0, "message": "", "data": ans}, ensure_ascii=False) + "\n\n"
+                    payload = _sanitize_json_floats({"code": 0, "message": "", "data": ans})
+                    yield "data:" + json.dumps(payload, ensure_ascii=False) + "\n\n"
                 if not is_embedded:
                     ConversationService.update_by_id(conv.id, conv.to_dict())
             except Exception as ex:
@@ -1043,7 +1072,7 @@ async def session_completion(chat_id, session_id):
             if not is_embedded:
                 ConversationService.update_by_id(conv.id, conv.to_dict())
             break
-        return get_json_result(data=answer)
+        return get_json_result(data=_sanitize_json_floats(answer))
     except Exception as ex:
         return server_error_response(ex)
 
@@ -1065,7 +1094,8 @@ async def ask():
         nonlocal req, uid
         try:
             async for ans in async_ask(req["question"], req["kb_ids"], uid, search_config=search_config):
-                yield "data:" + json.dumps({"code": 0, "message": "", "data": ans}, ensure_ascii=False) + "\n\n"
+                payload = _sanitize_json_floats({"code": 0, "message": "", "data": ans})
+                yield "data:" + json.dumps(payload, ensure_ascii=False) + "\n\n"
         except Exception as ex:
             yield "data:" + json.dumps({"code": 500, "message": str(ex), "data": {"answer": "**ERROR**: " + str(ex), "reference": []}}, ensure_ascii=False) + "\n\n"
         yield "data:" + json.dumps({"code": 0, "message": "", "data": True}, ensure_ascii=False) + "\n\n"
