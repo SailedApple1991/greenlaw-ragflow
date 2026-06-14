@@ -19,6 +19,8 @@ import functools
 import inspect
 import json
 import logging
+from werkzeug.exceptions import Unauthorized as WerkzeugUnauthorized
+from api.db.db_models import APIToken
 import sys
 import time
 from copy import deepcopy
@@ -710,3 +712,65 @@ def get_allowed_llm_factories() -> list:
         return factories
 
     return [factory for factory in factories if factory.name in settings.ALLOWED_LLM_FACTORIES]
+
+# --- fork: token_required (API-token auth for legacy sdk/*_app.py /v1 routes; coexists with v0.26 login_required) ---
+def token_required(func):
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        # Validate the token (API Key)
+        if os.environ.get("DISABLE_SDK"):
+            err = WerkzeugUnauthorized(description="`Authorization` can't be empty")
+            err.code = RetCode.SUCCESS
+            raise err
+
+        authorization_str = request.headers.get("Authorization")
+        if not authorization_str:
+            err = WerkzeugUnauthorized(description="`Authorization` can't be empty")
+            err.code = RetCode.SUCCESS
+            raise err
+
+        authorization_list = authorization_str.split()
+        if len(authorization_list) < 2:
+            err = WerkzeugUnauthorized(description="Please check your authorization format.")
+            err.code = RetCode.AUTHENTICATION_ERROR
+            raise err
+
+        token = authorization_list[1]
+        objs = APIToken.query(token=token)
+        if not objs:
+            err = WerkzeugUnauthorized(description="Authentication error: API key is invalid!")
+            err.code = RetCode.AUTHENTICATION_ERROR
+            raise err
+
+        # On success, inject tenant_id into the route function's kwargs
+        kwargs["tenant_id"] = objs[0].tenant_id
+        result = func(*args, **kwargs)
+        if inspect.iscoroutine(result):
+            return await result
+        return result
+
+    return wrapper
+
+# --- fork: apikey_required (legacy API-key auth decorator) ---
+def apikey_required(func):
+    @wraps(func)
+    async def decorated_function(*args, **kwargs):
+        authorization = request.headers.get("Authorization")
+        if not authorization:
+            return build_error_result(message="Authorization header is missing!", code=RetCode.FORBIDDEN)
+        parts = authorization.split()
+        if len(parts) < 2:
+            return build_error_result(message="Please check your authorization format.", code=RetCode.FORBIDDEN)
+        token = parts[1]
+        objs = APIToken.query(token=token)
+        if not objs:
+            return build_error_result(message="API-KEY is invalid!", code=RetCode.FORBIDDEN)
+        kwargs["tenant_id"] = objs[0].tenant_id
+        if inspect.iscoroutinefunction(func):
+            return await func(*args, **kwargs)
+
+        return func(*args, **kwargs)
+
+    return decorated_function
+
+
