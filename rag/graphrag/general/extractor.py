@@ -83,6 +83,15 @@ class Extractor:
         if response:
             return response
         _, system_msg = message_fit_in([{"role": "system", "content": system}], int(self._llm.max_length * 0.92))
+        # fork: disable thinking mode for Qwen3 during extraction to avoid wasting
+        # tokens on <think> reasoning instead of structured output (87af807a5).
+        # Adapted to v0.26 LLMBundle attribute llm_name (was model_name).
+        kwargs = {}
+        if self._llm.llm_name.lower().find("qwen3") >= 0:
+            kwargs["extra_body"] = {
+                "enable_thinking": False,
+                "chat_template_kwargs": {"enable_thinking": False},
+            }
         response = ""
         for attempt in range(3):
             if task_id:
@@ -91,7 +100,7 @@ class Extractor:
                     raise TaskCanceledException(f"Task {task_id} was cancelled")
             try:
                 response = await asyncio.wait_for(
-                    self._llm.async_chat(system_msg[0]["content"], hist, conf),
+                    self._llm.async_chat(system_msg[0]["content"], hist, conf, **kwargs),
                     timeout=60 * 20,
                 )
                 response = self._normalize_response_text(response)
