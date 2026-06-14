@@ -8,7 +8,7 @@ import {
 import { useSetModalState } from '@/hooks/common-hooks';
 import { IRemoveMessageById } from '@/hooks/logic-hooks';
 import { AgentChatContext } from '@/pages/agent/context';
-import { downloadAgentFile } from '@/services/file-manager-service';
+import { downloadFile } from '@/services/file-manager-service';
 import { downloadFileFromBlob } from '@/utils/file-util';
 import {
   DeleteOutlined,
@@ -82,10 +82,7 @@ export const AssistantGroupButton = ({
         className="space-x-1"
       >
         <ToggleGroupItem value="a">
-          <CopyToClipboard
-            text={content}
-            className="border-none hover:!bg-transparent"
-          ></CopyToClipboard>
+          <CopyToClipboard text={content}></CopyToClipboard>
         </ToggleGroupItem>
         {showLoudspeaker && (
           <ToggleGroupItem value="b" onClick={handleRead}>
@@ -125,7 +122,7 @@ export const AssistantGroupButton = ({
             value="g"
             onClick={async () => {
               try {
-                const response = await downloadAgentFile({
+                const response = await downloadFile({
                   docId: attachment.doc_id,
                   ext: attachment.format,
                 });

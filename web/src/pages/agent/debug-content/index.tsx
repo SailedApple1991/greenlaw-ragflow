@@ -1,5 +1,4 @@
 import MarkdownContent from '@/components/next-markdown-content';
-import { SelectWithSearch } from '@/components/originui/select-with-search';
 import { ButtonLoading } from '@/components/ui/button';
 import {
   Form,
@@ -10,6 +9,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { RAGFlowSelect } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { IMessage } from '@/interfaces/database/chat';
@@ -147,7 +147,7 @@ const DebugContent = ({
               <FormItem className="flex-1">
                 <FormLabel>{props.label}</FormLabel>
                 <FormControl>
-                  <SelectWithSearch
+                  <RAGFlowSelect
                     allowClear
                     options={
                       q.options?.map((x) => ({
@@ -156,7 +156,7 @@ const DebugContent = ({
                       })) ?? []
                     }
                     {...field}
-                  ></SelectWithSearch>
+                  ></RAGFlowSelect>
                 </FormControl>
                 <FormMessage />
               </FormItem>

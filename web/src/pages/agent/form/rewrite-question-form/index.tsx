@@ -1,5 +1,5 @@
+import { NextLLMSelect } from '@/components/llm-select/next';
 import { MessageHistoryWindowSizeFormField } from '@/components/message-history-window-size-item';
-import { ModelTreeSelectFormField } from '@/components/model-tree-select';
 import {
   Form,
   FormControl,
@@ -24,10 +24,20 @@ const RewriteQuestionForm = ({ form }: INextOperatorForm) => {
           e.preventDefault();
         }}
       >
-        <ModelTreeSelectFormField
+        <FormField
+          control={form.control}
           name="llm_id"
-          label={t('chat.model')}
-          tooltip={t('chat.modelTip')}
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel tooltip={t('chat.modelTip')}>
+                {t('chat.model')}
+              </FormLabel>
+              <FormControl>
+                <NextLLMSelect {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
         />
         <FormField
           control={form.control}

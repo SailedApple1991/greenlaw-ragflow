@@ -64,6 +64,7 @@ export default function SearchPage() {
         </div>
         {openSetting && (
           <SearchSetting
+            className="mt-20 me-2"
             open={openSetting}
             setOpen={setOpenSetting}
             data={SearchData as ISearchAppDetailProps}

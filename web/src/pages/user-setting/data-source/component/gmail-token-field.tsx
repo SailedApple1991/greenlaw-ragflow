@@ -95,7 +95,11 @@ const withRedirectUri = (credentials: string, redirectUri: string): string => {
   });
 };
 
-const GmailTokenField = ({ value, onChange }: GmailTokenFieldProps) => {
+const GmailTokenField = ({
+  value,
+  onChange,
+  placeholder,
+}: GmailTokenFieldProps) => {
   const [files, setFiles] = useState<File[]>([]);
   const [pendingCredentials, setPendingCredentials] = useState<string>('');
   const [redirectUri, setRedirectUri] = useState('');
@@ -191,7 +195,7 @@ const GmailTokenField = ({ value, onChange }: GmailTokenFieldProps) => {
         }
         message.error(data.message || 'Authorization failed.');
         clearWebState();
-      } catch {
+      } catch (err) {
         message.error('Unable to retrieve authorization result.');
         clearWebState();
       }
@@ -311,7 +315,7 @@ const GmailTokenField = ({ value, onChange }: GmailTokenFieldProps) => {
       } else {
         message.error(data.message || 'Failed to start browser authorization.');
       }
-    } catch {
+    } catch (err) {
       message.error('Failed to start browser authorization.');
     } finally {
       setWebAuthLoading(false);

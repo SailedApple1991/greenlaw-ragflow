@@ -192,7 +192,7 @@ const GoogleDriveTokenField = ({
         }
         message.error(data.message || 'Authorization failed.');
         clearWebState();
-      } catch {
+      } catch (err) {
         message.error('Unable to retrieve authorization result.');
         clearWebState();
       }
@@ -312,7 +312,7 @@ const GoogleDriveTokenField = ({
       } else {
         message.error(data.message || 'Failed to start browser authorization.');
       }
-    } catch {
+    } catch (err) {
       message.error('Failed to start browser authorization.');
     } finally {
       setWebAuthLoading(false);

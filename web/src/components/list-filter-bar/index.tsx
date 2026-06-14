@@ -16,7 +16,6 @@ interface IProps {
   searchString?: string;
   onSearchChange?: ChangeEventHandler<HTMLInputElement>;
   showFilter?: boolean;
-  showSearch?: boolean;
   leftPanel?: ReactNode;
   preChildren?: ReactNode;
 }
@@ -59,7 +58,6 @@ export default function ListFilterBar({
   searchString,
   onSearchChange,
   showFilter = true,
-  showSearch = true,
   leftPanel,
   value,
   onChange,
@@ -123,14 +121,12 @@ export default function ListFilterBar({
           </FilterPopover>
         )}
 
-        {showSearch && (
-          <SearchInput
-            value={searchString}
-            onChange={onSearchChange}
-            className="w-32"
-            role="searchbox"
-          ></SearchInput>
-        )}
+        <SearchInput
+          value={searchString}
+          onChange={onSearchChange}
+          className="w-32"
+          role="searchbox"
+        ></SearchInput>
         {children}
       </div>
     </div>

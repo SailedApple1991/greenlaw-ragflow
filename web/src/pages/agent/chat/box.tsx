@@ -10,14 +10,15 @@ import PdfSheet from '@/components/pdf-drawer';
 import { useClickDrawer } from '@/components/pdf-drawer/hooks';
 import {
   useFetchAgent,
-  useUploadAgentFileWithProgress,
+  useUploadCanvasFileWithProgress,
 } from '@/hooks/use-agent-request';
 import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
 import { buildMessageUuidWithRole } from '@/utils/chat';
 import { memo, useCallback, useContext } from 'react';
+import { useParams } from 'react-router';
 import { AgentChatContext } from '../context';
 import DebugContent from '../debug-content';
-import { useAwaitComponentData } from '../hooks/use-chat-logic';
+import { useAwaitCompentData } from '../hooks/use-chat-logic';
 import { useIsTaskMode } from '../hooks/use-get-begin-query';
 import { useGetFileIcon } from './use-get-file-icon';
 
@@ -42,11 +43,13 @@ function AgentChatBox() {
     useClickDrawer();
   useGetFileIcon();
   const { data: userInfo } = useFetchUserInfo();
-  const { uploadAgentFile, loading } = useUploadAgentFileWithProgress();
+  const { id: canvasId } = useParams();
+  const { uploadCanvasFile, loading } = useUploadCanvasFileWithProgress();
 
-  const { buildInputList, handleOk, isWaiting } = useAwaitComponentData({
+  const { buildInputList, handleOk, isWaitting } = useAwaitCompentData({
     derivedMessages,
     sendFormMessage,
+    canvasId: canvasId as string,
   });
 
   const { setDerivedMessages } = useContext(AgentChatContext);
@@ -57,10 +60,10 @@ function AgentChatBox() {
   const handleUploadFile: NonNullable<FileUploadProps['onUpload']> =
     useCallback(
       async (files, options) => {
-        const ret = await uploadAgentFile({ files, options });
+        const ret = await uploadCanvasFile({ files, options });
         appendUploadResponseList(ret.data, files);
       },
-      [appendUploadResponseList, uploadAgentFile],
+      [appendUploadResponseList, uploadCanvasFile],
     );
 
   return (
@@ -122,9 +125,9 @@ function AgentChatBox() {
           <NextMessageInput
             value={value}
             sendLoading={sendLoading}
-            disabled={isWaiting}
-            sendDisabled={sendLoading || isWaiting}
-            isUploading={loading || isWaiting}
+            disabled={isWaitting}
+            sendDisabled={sendLoading || isWaitting}
+            isUploading={loading || isWaitting}
             resize="vertical"
             onPressEnter={handlePressEnter}
             onInputChange={handleInputChange}

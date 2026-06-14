@@ -10,7 +10,7 @@ type Service<T extends string> = Record<
   (params?: any, urlAppendix?: string) => any
 >;
 
-const Methods = ['post', 'delete', 'put', 'patch'];
+const Methods = ['post', 'delete', 'put'];
 
 const registerServer = <T extends string>(
   opt: Record<T, { url: string; method: string }>,

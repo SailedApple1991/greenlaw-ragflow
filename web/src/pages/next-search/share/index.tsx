@@ -9,7 +9,7 @@ import { useCheckSettings, useGetSharedSearchParams } from '../hooks';
 import '../index.less';
 import SearchHome from '../search-home';
 import SearchingPage from '../searching';
-export default function ShareSearchPage() {
+export default function ShareSeachPage() {
   const { tenantId, locale, visibleAvatar } = useGetSharedSearchParams();
   const {
     data: searchData = {
@@ -48,7 +48,6 @@ export default function ShareSearchPage() {
             searchText={searchText}
             setSearchText={setSearchText}
             canSearch={!canSearch}
-            showEmbedLogo={false}
           />
         </div>
       )}
@@ -59,7 +58,6 @@ export default function ShareSearchPage() {
             searchText={searchText}
             setSearchText={setSearchText}
             data={searchData as ISearchAppDetailProps}
-            showEmbedLogo={false}
           />
         </div>
       )}

@@ -1,94 +1,68 @@
-import { ModelTreeSelect, ModelTypeMap } from '@/components/model-tree-select';
+import {
+  SelectWithSearch,
+  SelectWithSearchFlagOptionType,
+} from '@/components/originui/select-with-search';
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { FieldToModelType } from '@/constants/llm';
+import { LlmModelType } from '@/constants/knowledge';
 import { useTranslate } from '@/hooks/common-hooks';
 import {
-  useFetchDefaultModelDictionary,
-  useSetDefaultModel,
+  ISystemModelSettingSavingParams,
+  useComposeLlmOptionsByModelTypes,
 } from '@/hooks/use-llm-request';
-import { parseModelValue } from '@/utils/llm-util';
 import { CircleQuestionMark } from 'lucide-react';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useFetchSystemModelSettingOnMount } from '../hooks';
 
-interface ModelFieldItemProps {
-  id: string;
-  label: string;
-  value: string;
-  tooltip?: string;
-  isRequired?: boolean;
-  onChange: (id: string, value: string) => void;
+interface IProps {
+  loading: boolean;
+  onOk: (
+    payload: Omit<ISystemModelSettingSavingParams, 'tenant_id' | 'name'>,
+  ) => void;
 }
 
-function ModelFieldItem({
-  label,
-  value,
-  tooltip,
-  id,
-  isRequired,
-  onChange,
-}: ModelFieldItemProps) {
+const SystemSetting = ({ onOk, loading }: IProps) => {
+  const { systemSetting: initialValues, allOptions } =
+    useFetchSystemModelSettingOnMount();
   const { t } = useTranslate('setting');
 
-  return (
-    <div className="flex gap-3">
-      <label className="block text-sm font-normal text-text-secondary mb-1 w-1/4">
-        {isRequired && <span className="text-state-error">*</span>}
-        {label}
-        {tooltip && (
-          <Tooltip>
-            <TooltipContent>{tooltip}</TooltipContent>
-            <TooltipTrigger>
-              <CircleQuestionMark
-                size={12}
-                className="ml-1 text-text-secondary text-xs"
-              />
-            </TooltipTrigger>
-          </Tooltip>
-        )}
-      </label>
-      <div className="w-3/4">
-        <ModelTreeSelect
-          modelTypes={ModelTypeMap[id as keyof typeof ModelTypeMap] ?? ['chat']}
-          value={value}
-          onChange={(val) => onChange(id, val)}
-          placeholder={t('selectModelPlaceholder')}
-          showSearch
-          allowClear={id !== 'llm_id'}
-        />
-      </div>
-    </div>
-  );
-}
-
-function SystemSetting() {
-  const { t } = useTranslate('setting');
-  const defaultModelDictionary = useFetchDefaultModelDictionary();
-  const { setDefaultModel } = useSetDefaultModel();
+  const [formData, setFormData] = useState({
+    llm_id: '',
+    embd_id: '',
+    img2txt_id: '',
+    asr_id: '',
+    rerank_id: '',
+    tts_id: '',
+  });
 
   const handleFieldChange = useCallback(
-    async (field: string, value: string) => {
-      const modelType = FieldToModelType[field];
-      if (!modelType) return;
-
-      if (!value) {
-        await setDefaultModel({
-          model_provider: '',
-          model_instance: '',
-          model_name: '',
-          model_type: modelType,
-        });
-      } else {
-        const parsed = parseModelValue(value);
-        if (!parsed) return;
-        await setDefaultModel({ ...parsed, model_type: modelType });
-      }
+    (field: string, value: string) => {
+      const updatedData = { ...formData, [field]: value || '' };
+      setFormData(updatedData);
+      console.log('updatedData', updatedData);
+      onOk(updatedData);
     },
-    [setDefaultModel],
+    [formData, onOk],
   );
+
+  useEffect(() => {
+    setFormData({
+      llm_id: initialValues.llm_id ?? '',
+      embd_id: initialValues.embd_id ?? '',
+      img2txt_id: initialValues.img2txt_id ?? '',
+      asr_id: initialValues.asr_id ?? '',
+      rerank_id: initialValues.rerank_id ?? '',
+      tts_id: initialValues.tts_id ?? '',
+    });
+  }, [initialValues]);
+
+  const modelOptions = useComposeLlmOptionsByModelTypes([
+    LlmModelType.Chat,
+    LlmModelType.Image2text,
+  ]);
 
   const llmList = useMemo(() => {
     return [
@@ -96,41 +70,107 @@ function SystemSetting() {
         id: 'llm_id',
         label: t('chatModel'),
         isRequired: true,
-        value: defaultModelDictionary.llm_id,
+        value: formData.llm_id,
+        options: modelOptions as SelectWithSearchFlagOptionType[],
         tooltip: t('chatModelTip'),
+        testId: 'default-llm-combobox',
       },
       {
         id: 'embd_id',
         label: t('embeddingModel'),
-        value: defaultModelDictionary.embd_id,
+        value: formData.embd_id,
+        options: allOptions[
+          LlmModelType.Embedding
+        ] as SelectWithSearchFlagOptionType[],
         tooltip: t('embeddingModelTip'),
+        testId: 'default-embedding-combobox',
       },
       {
         id: 'img2txt_id',
         label: t('img2txtModel'),
-        value: defaultModelDictionary.img2txt_id,
+        value: formData.img2txt_id,
+        options: allOptions[
+          LlmModelType.Image2text
+        ] as SelectWithSearchFlagOptionType[],
         tooltip: t('img2txtModelTip'),
       },
       {
         id: 'asr_id',
         label: t('sequence2txtModel'),
-        value: defaultModelDictionary.asr_id,
+        value: formData.asr_id,
+        options: allOptions[
+          LlmModelType.Speech2text
+        ] as SelectWithSearchFlagOptionType[],
         tooltip: t('sequence2txtModelTip'),
       },
       {
         id: 'rerank_id',
         label: t('rerankModel'),
-        value: defaultModelDictionary.rerank_id,
+        value: formData.rerank_id,
+        options: allOptions[
+          LlmModelType.Rerank
+        ] as SelectWithSearchFlagOptionType[],
         tooltip: t('rerankModelTip'),
       },
       {
         id: 'tts_id',
         label: t('ttsModel'),
-        value: defaultModelDictionary.tts_id,
+        value: formData.tts_id,
+        options: allOptions[
+          LlmModelType.TTS
+        ] as SelectWithSearchFlagOptionType[],
         tooltip: t('ttsModelTip'),
       },
     ];
-  }, [defaultModelDictionary, t]);
+  }, [formData, modelOptions, t, allOptions]);
+
+  const Items = ({
+    label,
+    value,
+    options,
+    tooltip,
+    id,
+    isRequired,
+    testId,
+  }: {
+    id: string;
+    label: string;
+    value: string;
+    options: SelectWithSearchFlagOptionType[];
+    tooltip?: string;
+    isRequired?: boolean;
+    testId?: string;
+  }) => {
+    return (
+      <div className="flex gap-3">
+        <label className="block text-sm font-normal text-text-secondary mb-1 w-1/4">
+          {isRequired && <span className="text-red-500">*</span>}
+          {label}
+          {tooltip && (
+            <Tooltip>
+              <TooltipContent>{tooltip}</TooltipContent>
+              <TooltipTrigger>
+                <CircleQuestionMark
+                  size={12}
+                  className="ml-1 text-text-secondary text-xs"
+                />
+              </TooltipTrigger>
+            </Tooltip>
+          )}
+        </label>
+        <SelectWithSearch
+          triggerClassName="w-3/4 flex items-center"
+          allowClear={id !== 'llm_id'}
+          value={value}
+          options={options}
+          onChange={(value) => handleFieldChange(id, value)}
+          placeholder={t('selectModelPlaceholder')}
+          emptyData={t('modelEmptyTip')}
+          testId={testId}
+        />
+      </div>
+    );
+  };
 
   return (
     <article className="rounded-lg w-full">
@@ -145,15 +185,20 @@ function SystemSetting() {
 
       <div className="px-7 py-6 space-y-6 max-h-[70vh] overflow-y-auto border border-border-button rounded-lg">
         {llmList.map((item) => (
-          <ModelFieldItem
-            key={item.id}
-            {...item}
-            onChange={handleFieldChange}
-          />
+          <Items key={item.id} {...item} />
         ))}
       </div>
+      {/* <div className="border-t px-6 py-4 flex justify-end">
+          <Button
+            onClick={hideModal}
+            disabled={loading}
+            className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+          >
+            {t('common:cancel')}
+          </Button>
+        </div> */}
     </article>
   );
-}
+};
 
 export default SystemSetting;

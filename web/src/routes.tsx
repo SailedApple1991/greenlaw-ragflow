@@ -16,8 +16,7 @@ export enum Routes {
   Home = '/home',
   Datasets = '/datasets',
   DatasetBase = '/dataset',
-  Files = '/files',
-  Dataset = `${Routes.DatasetBase}/${Routes.Files}`,
+  Dataset = `${Routes.DatasetBase}${Routes.DatasetBase}`,
   Agent = '/agent',
   AgentTemplates = '/agent-templates',
   Agents = '/agents',
@@ -33,8 +32,7 @@ export enum Routes {
   SearchShare = '/search/share',
   Chats = '/chats',
   Chat = '/chat',
-
-  Skills = '/files/skills',
+  Files = '/files',
   ProfileSetting = '/profile-setting',
   Profile = '/profile',
   Api = '/api',
@@ -51,7 +49,7 @@ export enum Routes {
   ProfileModel = `${ProfileSetting}${Model}`,
   ProfilePrompt = `${ProfileSetting}${Prompt}`,
   ProfileProfile = `${ProfileSetting}${Profile}`,
-  DatasetTesting = '/retrieval',
+  DatasetTesting = '/testing',
   Chunk = '/chunk',
   ChunkResult = `${Chunk}${Chunk}`,
   Parsed = '/parsed',
@@ -64,8 +62,8 @@ export enum Routes {
   ChatShare = `${Chats}/share`,
   ChatWidget = `${Chats}/widget`,
   UserSetting = '/user-setting',
-  DataSetOverview = '/logs',
-  DataSetSetting = '/configuration',
+  DataSetOverview = '/dataset-overview',
+  DataSetSetting = '/dataset-setting',
   DataflowResult = '/dataflow-result',
   Admin = '/admin',
   AdminServices = `${Admin}/services`,
@@ -74,6 +72,7 @@ export enum Routes {
   AdminWhitelist = `${Admin}/whitelist`,
   AdminRoles = `${Admin}/roles`,
   AdminMonitoring = `${Admin}/monitoring`,
+  AdminCacheManagement = '/cache-management',
 }
 
 const defaultRouteFallback = (
@@ -249,8 +248,8 @@ const routeConfigOptions = [
         Component: () => import('@/pages/files'),
       },
       {
-        path: Routes.Skills,
-        Component: () => import('@/pages/skills'),
+        path: Routes.AdminCacheManagement,
+        Component: () => import('@/pages/admin/cache-management'),
       },
       {
         path: Routes.UserSetting,

@@ -23,24 +23,20 @@ export function useDefaultParserValues() {
       mineru_formula_enable: true,
       mineru_table_enable: true,
       mineru_lang: 'English',
-      raptor: {
-        use_raptor: false,
-        prompt: t('knowledgeConfiguration.promptText'),
-        max_token: 256,
-        threshold: 0.1,
-        max_cluster: 64,
-        random_seed: 0,
-        scope: 'file',
-        clustering_method: 'gmm',
-        tree_builder: 'raptor',
-      },
+      // raptor: {
+      //   use_raptor: false,
+      //   prompt: t('knowledgeConfiguration.promptText'),
+      //   max_token: 256,
+      //   threshold: 0.1,
+      //   max_cluster: 64,
+      //   random_seed: 0,
+      // },
       // graphrag: {
       //   use_graphrag: false,
       // },
       entity_types: [],
       pages: [],
       metadata: [],
-      built_in_metadata: [],
       enable_metadata: false,
     };
 

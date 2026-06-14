@@ -19,12 +19,12 @@ import { cn, formatBytes } from '@/lib/utils';
 import { Routes } from '@/routes';
 import { formatPureDate } from '@/utils/date';
 
-import { IDataset } from '@/interfaces/database/dataset';
+import { IKnowledge } from '@/interfaces/database/knowledge';
 import { useParams } from 'react-router';
 
 type PropType = {
   refreshCount?: number;
-  dataset: IDataset;
+  dataset: IKnowledge;
 };
 
 export function SideBar({ dataset: data }: PropType) {
@@ -38,7 +38,7 @@ export function SideBar({ dataset: data }: PropType) {
       {
         icon: <LucideFolderOpen className="size-[1em]" />,
         label: t(`knowledgeDetails.subbarFiles`),
-        key: Routes.Files,
+        key: Routes.DatasetBase,
       },
       {
         icon: <LucideTextSearch className="size-[1em]" />,
@@ -96,9 +96,9 @@ export function SideBar({ dataset: data }: PropType) {
         >
           <div className="flex justify-between">
             <span>
-              {data.document_count} {t('knowledgeDetails.files')}
+              {data.doc_num} {t('knowledgeDetails.files')}
             </span>
-            <span>{data.size ? formatBytes(data.size) : ''}</span>
+            <span>{formatBytes(data.size)}</span>
           </div>
 
           <div className="mt-0.5">

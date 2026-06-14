@@ -48,8 +48,7 @@ const RetrievalForm = () => {
         <Collapse title={<div>{t('flow.advancedSettings')}</div>}>
           <FormContainer>
             <SimilaritySliderFormField
-              similarityWeightName="keywords_similarity_weight"
-              similarityWeightType="keyword"
+              vectorSimilarityWeightName="keywords_similarity_weight"
               isTooltipShown
             ></SimilaritySliderFormField>
             <TopNFormField></TopNFormField>

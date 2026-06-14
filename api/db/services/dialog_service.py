@@ -777,9 +777,19 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
                 kbinfos["doc_aggs"].extend(tav_res["doc_aggs"])
             if prompt_config.get("use_kg"):
                 default_chat_model = get_tenant_default_model_by_type(dialog.tenant_id, LLMType.CHAT)
-                ck = await settings.kg_retriever.retrieval(" ".join(questions), tenant_ids, dialog.kb_ids, embd_mdl, LLMBundle(dialog.tenant_id, default_chat_model))
-                if ck["content_with_weight"]:
-                    kbinfos["chunks"].insert(0, ck)
+                # fork: 60s timeout + fallback so KG retrieval can't hang the chat (6dbbb2ec4);
+                # async-adapted to v0.26 (asyncio.wait_for instead of ThreadPoolExecutor.future).
+                try:
+                    ck = await asyncio.wait_for(
+                        settings.kg_retriever.retrieval(" ".join(questions), tenant_ids, dialog.kb_ids, embd_mdl, LLMBundle(dialog.tenant_id, default_chat_model)),
+                        timeout=60,
+                    )
+                    if ck and ck.get("content_with_weight"):
+                        kbinfos["chunks"].insert(0, ck)
+                except asyncio.TimeoutError:
+                    logging.warning("Knowledge graph retrieval timed out after 60s, skipping KG results")
+                except Exception as e:
+                    logging.exception(f"Knowledge graph retrieval failed: {e}")
 
     if include_reference_metadata:
         logging.debug(

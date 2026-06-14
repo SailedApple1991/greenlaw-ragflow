@@ -1,16 +1,17 @@
 import Image from '@/components/image';
 import SvgIcon from '@/components/svg-icon';
-import { MarkdownRemarkPlugins } from '@/constants/markdown-remark-plugins';
 import { IReferenceChunk, IReferenceObject } from '@/interfaces/database/chat';
 import { getExtension } from '@/utils/document-util';
 import { downloadFileFromBlob } from '@/utils/file-util';
 import request from '@/utils/request';
 import DOMPurify from 'dompurify';
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import Markdown, { defaultUrlTransform } from 'react-markdown';
+import Markdown from 'react-markdown';
 import SyntaxHighlighter from 'react-syntax-highlighter';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
 import { visitParents } from 'unist-util-visit-parents';
 
 import { useTranslation } from 'react-i18next';
@@ -21,7 +22,6 @@ import {
   currentReg,
   parseCitationIndex,
   preprocessLaTeX,
-  replaceRetrievingToSection,
   replaceTextByOldReg,
   replaceThinkToSection,
 } from '@/utils/chat';
@@ -46,7 +46,7 @@ import styles from './index.module.less';
 const getChunkIndex = (match: string) => parseCitationIndex(match);
 
 const isArtifactUrl = (url?: string) =>
-  Boolean(url && url.includes('/api/v1/documents/artifact/'));
+  Boolean(url && url.includes('/document/artifact/'));
 
 const fetchArtifactBlob = async (url: string): Promise<Blob> => {
   const response = await request(url, {
@@ -170,7 +170,7 @@ function MarkdownContent({
     useFetchDocumentThumbnailsByIds();
   const contentWithCursor = useMemo(() => {
     let text = DOMPurify.sanitize(content, {
-      ADD_TAGS: ['think', 'section', 'details', 'summary', 'retrieving'],
+      ADD_TAGS: ['think', 'section'],
       ADD_ATTR: ['class'],
     });
     // let text = content;
@@ -178,11 +178,7 @@ function MarkdownContent({
       text = t('chat.searching');
     }
     const nextText = replaceTextByOldReg(text);
-    return pipe(
-      replaceThinkToSection,
-      replaceRetrievingToSection,
-      preprocessLaTeX,
-    )(nextText);
+    return pipe(replaceThinkToSection, preprocessLaTeX)(nextText);
   }, [content, t]);
 
   useEffect(() => {
@@ -358,16 +354,7 @@ function MarkdownContent({
     <div dir={dir} className={styles.markdownContentWrapper}>
       <Markdown
         rehypePlugins={[rehypeWrapReference, rehypeKatex, rehypeRaw]}
-        remarkPlugins={MarkdownRemarkPlugins}
-        urlTransform={(url, key) => {
-          if (
-            key === 'src' &&
-            /^data:image\/(png|jpe?g|gif|webp|svg\+xml);base64,/.test(url)
-          ) {
-            return url;
-          }
-          return defaultUrlTransform(url);
-        }}
+        remarkPlugins={[remarkGfm, remarkMath]}
         components={
           {
             p: ({ children, ...props }: any) => <p {...props}>{children}</p>,

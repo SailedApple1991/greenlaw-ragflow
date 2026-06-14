@@ -1,7 +1,6 @@
 import Image from '@/components/image';
 import SvgIcon from '@/components/svg-icon';
 
-import { MarkdownRemarkPlugins } from '@/constants/markdown-remark-plugins';
 import {
   useFetchDocumentThumbnailsByIds,
   useGetDocumentUrl,
@@ -11,7 +10,6 @@ import {
   currentReg,
   parseCitationIndex,
   preprocessLaTeX,
-  replaceRetrievingToSection,
   replaceTextByOldReg,
   replaceThinkToSection,
   showImage,
@@ -37,11 +35,13 @@ import {
 } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
 import { visitParents } from 'unist-util-visit-parents';
 import styles from './floating-chat-widget-markdown.module.less';
 import { useIsDarkTheme } from './theme-provider';
 import { Button } from './ui/button';
-import { HoverCard, HoverCardContent, HoverCardTrigger } from './ui/hover-card';
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 
 const getChunkIndex = (match: string) =>
@@ -66,11 +66,7 @@ const FloatingChatWidgetMarkdown = ({
   const contentWithCursor = useMemo(() => {
     const text = content === '' ? t('chat.searching') : content;
     const nextText = replaceTextByOldReg(text);
-    return pipe(
-      replaceThinkToSection,
-      replaceRetrievingToSection,
-      preprocessLaTeX,
-    )(nextText);
+    return pipe(replaceThinkToSection, preprocessLaTeX)(nextText);
   }, [content, t]);
 
   useEffect(() => {
@@ -172,7 +168,7 @@ const FloatingChatWidgetMarkdown = ({
           className="flex gap-2 widget-citation-content"
         >
           {imageId && (
-            <Tooltip>
+            <Popover>
               <TooltipTrigger asChild>
                 <Image
                   id={imageId}
@@ -185,7 +181,7 @@ const FloatingChatWidgetMarkdown = ({
                   className="max-w-[80vw] max-h-[60vh] rounded"
                 />
               </TooltipContent>
-            </Tooltip>
+            </Popover>
           )}
           <div className="space-y-2 flex-1 min-w-0">
             <div
@@ -277,12 +273,12 @@ const FloatingChatWidgetMarkdown = ({
         }
 
         return (
-          <HoverCard key={`hovercard-${i}`}>
-            <HoverCardTrigger asChild>
+          <Popover key={`popover-${i}`}>
+            <PopoverTrigger asChild>
               <InfoCircleOutlined className={styles.referenceIcon} />
-            </HoverCardTrigger>
-            <HoverCardContent>{getPopoverContent(chunkIndex)}</HoverCardContent>
-          </HoverCard>
+            </PopoverTrigger>
+            <PopoverContent>{getPopoverContent(chunkIndex)}</PopoverContent>
+          </Popover>
         );
       });
     },
@@ -295,15 +291,13 @@ const FloatingChatWidgetMarkdown = ({
     <div className="floating-chat-widget" dir={dir}>
       <Markdown
         rehypePlugins={[rehypeWrapReference, rehypeKatex, rehypeRaw]}
-        remarkPlugins={MarkdownRemarkPlugins}
+        remarkPlugins={[remarkGfm, remarkMath]}
         className="text-sm leading-relaxed space-y-2 prose-sm max-w-full"
         components={
           {
-            p: (props: any) => {
-              const { children, node, ...rest } = props;
-              void node;
-              return <p {...rest}>{children}</p>;
-            },
+            p: ({ children, node, ...props }: any) => (
+              <p {...props}>{children}</p>
+            ),
             'custom-typography': ({ children }: { children: string }) =>
               renderReference(children),
             code(props: any) {

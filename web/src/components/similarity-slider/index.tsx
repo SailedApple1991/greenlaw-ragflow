@@ -16,8 +16,7 @@ import { NumberInput } from '../ui/input';
 
 interface SimilaritySliderFormFieldProps {
   similarityName?: string;
-  similarityWeightName?: string;
-  similarityWeightType?: 'vector' | 'keyword';
+  vectorSimilarityWeightName?: string;
   isTooltipShown?: boolean;
   numberInputClassName?: string;
 }
@@ -45,21 +44,14 @@ export const initialVectorSimilarityWeightValue = {
 
 export function SimilaritySliderFormField({
   similarityName = 'similarity_threshold',
-  similarityWeightName = 'vector_similarity_weight',
-  similarityWeightType = 'vector',
+  vectorSimilarityWeightName = 'vector_similarity_weight',
   isTooltipShown,
   numberInputClassName,
 }: SimilaritySliderFormFieldProps) {
   const { t } = useTranslate('knowledgeDetails');
   const form = useFormContext();
-  const isVector = similarityWeightType === 'vector';
-  const normalizeWeight = (weight: number) => Number(weight.toFixed(2));
-  const getVectorWeight = (weight: number) =>
-    normalizeWeight(isVector ? weight : 1 - weight);
-  const getFullTextWeight = (weight: number) =>
-    normalizeWeight(isVector ? 1 - weight : weight);
-  const getStoredWeight = (vectorWeight: number) =>
-    normalizeWeight(isVector ? vectorWeight : 1 - vectorWeight);
+  const isVector =
+    vectorSimilarityWeightName.indexOf('vector_similarity_weight') > -1;
 
   return (
     <>
@@ -74,7 +66,7 @@ export function SimilaritySliderFormField({
       ></SliderInputFormField>
       <FormField
         control={form.control}
-        name={similarityWeightName}
+        name={vectorSimilarityWeightName}
         defaultValue={0}
         render={({ field }) => (
           <FormItem
@@ -103,7 +95,7 @@ export function SimilaritySliderFormField({
                         vector
                       </label>
                       <span className="bg-bg-card rounded-md p-1 w-10 text-center text-xs">
-                        {getVectorWeight(field.value).toFixed(2)}
+                        {field.value.toFixed(2)}
                       </span>
                     </div>
                     <div className="flex  items-center gap-1">
@@ -111,14 +103,12 @@ export function SimilaritySliderFormField({
                         full-text
                       </label>
                       <span className="bg-bg-card rounded-md p-1 w-10 text-center text-xs">
-                        {getFullTextWeight(field.value).toFixed(2)}
+                        {(1 - field.value).toFixed(2)}
                       </span>
                     </div>
                   </div>
                   <SingleFormSlider
                     {...field}
-                    value={getVectorWeight(field.value)}
-                    onChange={(value) => field.onChange(getStoredWeight(value))}
                     max={1}
                     step={0.01}
                     min={0}
@@ -136,8 +126,6 @@ export function SimilaritySliderFormField({
                   min={0}
                   step={0.01}
                   {...field}
-                  value={getVectorWeight(field.value)}
-                  onChange={(value) => field.onChange(getStoredWeight(value))}
                 ></NumberInput>
               </FormControl>
             </div>

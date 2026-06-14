@@ -16,10 +16,6 @@ import { useTranslation } from 'react-i18next';
 import { CreateFolderDialog } from './create-folder-dialog';
 import { FileBreadcrumb } from './file-breadcrumb';
 import { FilesTable } from './files-table';
-import {
-  useHandleConnectToKnowledge,
-  UseHandleConnectToKnowledgeReturnType,
-} from './hooks';
 import { MoveDialog } from './move-dialog';
 import { useBulkOperateFile } from './use-bulk-operate-file';
 import { useHandleCreateFolder } from './use-create-folder';
@@ -71,16 +67,11 @@ export default function Files() {
     moveFileLoading,
   } = useHandleMoveFile({ clearRowSelection });
 
-  const connectKnowledgeModal: UseHandleConnectToKnowledgeReturnType =
-    useHandleConnectToKnowledge();
-
   const { list } = useBulkOperateFile({
     files,
     rowSelection,
     showMoveFileModal,
     setRowSelection,
-    showConnectToKnowledgeModal:
-      connectKnowledgeModal.showConnectToKnowledgeModal,
   });
 
   const breadcrumbItems = useSelectBreadcrumbItems();
@@ -139,7 +130,6 @@ export default function Files() {
           rowSelection={rowSelection}
           setRowSelection={setRowSelection}
           showMoveFileModal={showMoveFileModal}
-          connectKnowledgeModal={connectKnowledgeModal}
         />
       </div>
 

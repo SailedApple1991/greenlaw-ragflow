@@ -98,17 +98,14 @@ export const useSendMessage = (controller: AbortController) => {
     } & NextMessageInputOnPressEnterParameter) => {
       const sessionId = currentConversationId ?? conversationId;
       const res = await send(
-        api.completionUrl,
+        api.completionUrl(chatId!, sessionId),
         {
-          chat_id: chatId,
-          session_id: sessionId,
           messages: [
             ...(Array.isArray(messages) && messages?.length > 0
               ? messages
               : (derivedMessages ?? [])),
             message,
           ],
-          pass_all_history_messages: true,
           reasoning: enableThinking,
           internet: enableInternet,
         },

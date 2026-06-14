@@ -33,7 +33,6 @@ import {
   NoDebugOperatorsList,
   NodeHandleId,
   Operator,
-  TitleChunkerMethod,
   TypesWithArray,
   WebhookSecurityAuthType,
 } from './constant';
@@ -229,10 +228,8 @@ function transformParserParams(params: ParserFormSchemaType) {
             parse_method: cur.parse_method,
             lang: cur.lang,
             vlm: { llm_id: cur.vlm?.llm_id },
-            flatten_media_to_text: cur.flatten_media_to_text,
             enable_multi_column: cur.enable_multi_column,
             remove_toc: cur.remove_toc,
-            remove_header_footer: cur.remove_header_footer || false,
           };
           // Only include TCADP parameters if TCADP Parser is selected
           if (cur.parse_method?.toLowerCase() === 'tcadp parser') {
@@ -246,7 +243,6 @@ function transformParserParams(params: ParserFormSchemaType) {
             ...filteredSetup,
             parse_method: cur.parse_method,
             vlm: { llm_id: cur.vlm?.llm_id },
-            flatten_media_to_text: cur.flatten_media_to_text,
           };
           // Only include TCADP parameters if TCADP Parser is selected
           if (cur.parse_method?.toLowerCase() === 'tcadp parser') {
@@ -281,38 +277,10 @@ function transformParserParams(params: ParserFormSchemaType) {
             fields: cur.fields,
           };
           break;
-        case FileType.Doc:
-          filteredSetup = {
-            ...filteredSetup,
-            vlm: { llm_id: cur.vlm?.llm_id },
-            flatten_media_to_text: cur.flatten_media_to_text,
-            remove_header_footer: cur.remove_header_footer || false,
-          };
-          break;
-        case FileType.Docx:
-          filteredSetup = {
-            ...filteredSetup,
-            vlm: { llm_id: cur.vlm?.llm_id },
-            flatten_media_to_text: cur.flatten_media_to_text,
-            remove_header_footer: cur.remove_header_footer || false,
-          };
-          break;
-        case FileType.Html:
-          filteredSetup = {
-            ...filteredSetup,
-            remove_toc: cur.remove_toc,
-            remove_header_footer: cur.remove_header_footer || false,
-          };
-          break;
-        case FileType.TextMarkdown:
-          filteredSetup = {
-            ...filteredSetup,
-            vlm: { llm_id: cur.vlm?.llm_id },
-            flatten_media_to_text: cur.flatten_media_to_text,
-          };
-          break;
         case FileType.Video:
+        case FileType.Docx:
         case FileType.Audio:
+        case FileType.TextMarkdown:
           filteredSetup = {
             ...filteredSetup,
             vlm: { llm_id: cur.vlm?.llm_id },
@@ -354,31 +322,14 @@ function transformTokenChunkerParams(params: TokenChunkerFormSchemaType) {
 }
 
 function transformTitleChunkerParams(params: TitleChunkerFormSchemaType) {
-  const activeRules =
-    params.method === TitleChunkerMethod.Group
-      ? params.groupRules
-      : params.hierarchyRules;
-
-  const levels = (activeRules || []).map((rule) =>
+  const levels = params.rules.map((rule) =>
     transformObjectArrayToPureArray(rule.levels, 'expression'),
   );
 
-  const hierarchyValue =
-    params.method === TitleChunkerMethod.Group
-      ? params.hierarchyGroup
-      : params.hierarchyHierarchy;
-
   return {
-    ...omit(params, [
-      'hierarchyRules',
-      'groupRules',
-      'hierarchyHierarchy',
-      'hierarchyGroup',
-    ]),
     method: params.method,
-    hierarchy: Number(hierarchyValue || 0),
+    hierarchy: Number(params.hierarchy || 0),
     include_heading_content: Boolean(params.include_heading_content),
-    root_chunk_as_heading: Boolean(params.root_chunk_as_heading),
     levels,
   };
 }

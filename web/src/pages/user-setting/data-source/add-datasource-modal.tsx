@@ -7,8 +7,9 @@ import { useTranslation } from 'react-i18next';
 import {
   DataSourceFormBaseFields,
   DataSourceFormDefaultValues,
+  DataSourceFormFields,
   getCommonExtraDefaultValues,
-  getDataSourceFieldsWithExtras,
+  getCommonExtraFields,
   mergeDataSourceFormValues,
 } from './constant';
 import { IDataSorceInfo } from './interface';
@@ -27,7 +28,10 @@ const AddDataSourceModal = ({
     if (sourceData) {
       setFields([
         ...DataSourceFormBaseFields,
-        ...getDataSourceFieldsWithExtras(sourceData.id as any),
+        ...DataSourceFormFields[
+          sourceData.id as keyof typeof DataSourceFormFields
+        ],
+        ...getCommonExtraFields(sourceData.id),
       ] as FormFieldConfig[]);
     }
   }, [sourceData]);

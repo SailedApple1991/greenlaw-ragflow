@@ -10,7 +10,7 @@ import {
   IMessage,
   Message,
 } from '@/interfaces/database/chat';
-import { IKnowledgeFile } from '@/interfaces/database/dataset';
+import { IKnowledgeFile } from '@/interfaces/database/knowledge';
 import { changeLanguageAsync } from '@/locales/config';
 import api from '@/utils/api';
 import { getAuthorization } from '@/utils/authorization-util';
@@ -29,7 +29,7 @@ import {
 import { v4 as uuid } from 'uuid';
 import { useTranslate } from './common-hooks';
 import { useSetPaginationParams } from './route-hook';
-import { useSaveSetting } from './use-user-setting-request';
+import { useFetchTenantInfo, useSaveSetting } from './use-user-setting-request';
 
 export function usePrevious<T>(value: T) {
   const ref = useRef<T>();
@@ -72,14 +72,10 @@ export const useGetPaginationWithRouter = () => {
   } = useSetPaginationParams();
 
   const onPageChange: Pagination['onChange'] = useCallback(
-    (pageNumber: number, size?: number) => {
-      if (size !== pageSize) {
-        setPaginationParams(1, size);
-      } else {
-        setPaginationParams(pageNumber, size);
-      }
+    (pageNumber: number, pageSize?: number) => {
+      setPaginationParams(pageNumber, pageSize);
     },
-    [setPaginationParams, pageSize],
+    [setPaginationParams],
   );
 
   const setCurrentPagination = useCallback(
@@ -279,8 +275,7 @@ export const useSendMessageWithSse = () => {
                 if (typeof d !== 'boolean') {
                   setAnswer((prev) => {
                     const prevAnswer = prev.answer || '';
-                    const currentAnswer =
-                      d.final && prevAnswer ? '' : d.answer || '';
+                    const currentAnswer = d.answer || '';
 
                     let newAnswer: string;
                     if (prevAnswer && currentAnswer.startsWith(prevAnswer)) {
@@ -300,17 +295,18 @@ export const useSendMessageWithSse = () => {
                     return {
                       ...d,
                       answer: newAnswer,
-                      conversationId: body?.session_id ?? body?.conversation_id,
+                      conversationId: body?.conversation_id,
                       chatBoxId: body.chatBoxId,
                     };
                   });
                 }
-              } catch {
+              } catch (e) {
                 // Swallow parse errors silently
               }
             }
-          } catch (error) {
-            if (error instanceof DOMException && error.name === 'AbortError') {
+          } catch (e) {
+            if (e instanceof DOMException && e.name === 'AbortError') {
+              console.log('Request was aborted by user or logic.');
               break;
             }
           }
@@ -318,7 +314,7 @@ export const useSendMessageWithSse = () => {
         setDoneValue(body, true);
         resetAnswer();
         return { data: await res, response };
-      } catch {
+      } catch (e) {
         setDoneValue(body, true);
 
         resetAnswer();
@@ -361,7 +357,7 @@ export const useSpeechWithSse = (url: string = api.chatsTts) => {
         if (res?.code !== 0) {
           message.error(res?.message);
         }
-      } catch {
+      } catch (error) {
         // Swallow errors silently
       }
       return response;
@@ -751,6 +747,12 @@ export const useSelectItem = (defaultId?: string) => {
   }, [defaultId]);
 
   return { selectedId, handleItemClick };
+};
+
+export const useFetchModelId = () => {
+  const { data: tenantInfo } = useFetchTenantInfo(true);
+
+  return tenantInfo?.llm_id ?? '';
 };
 
 const ChunkTokenNumMap = {

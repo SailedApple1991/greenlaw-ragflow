@@ -27,7 +27,6 @@ export function MaxTokenNumberFormField({
       layout={FormLayout.Horizontal}
       sliderTestId={sliderTestId}
       numberInputTestId={numberInputTestId}
-      min={1}
     ></SliderInputFormField>
   );
 }

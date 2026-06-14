@@ -1,7 +1,3 @@
-/**
- * @deprecated This file will be deprecated. Please use `@web/src/utils/next-request.ts` instead.
- */
-
 import message from '@/components/ui/message';
 import { Authorization } from '@/constants/authorization';
 import { ResponseType } from '@/interfaces/database/base';
@@ -12,7 +8,7 @@ import authorizationUtil, {
 } from '@/utils/authorization-util';
 import notification from '@/utils/notification';
 import { RequestMethod, extend } from 'umi-request';
-import { convertTheKeysOfTheObjectToSnake, isFormData } from './common-util';
+import { convertTheKeysOfTheObjectToSnake } from './common-util';
 import { setCachedLlmList } from './llm-cache';
 import { addTenantParams } from './llm-util';
 
@@ -92,9 +88,7 @@ request.interceptors.request.use((url: string, options: any) => {
   const params = convertTheKeysOfTheObjectToSnake(options.params);
 
   // Add tenant parameters to data
-  const dataWithTenantParams = isFormData(data)
-    ? data
-    : addTenantParams(data, url);
+  const dataWithTenantParams = addTenantParams(data, url);
 
   return {
     url,

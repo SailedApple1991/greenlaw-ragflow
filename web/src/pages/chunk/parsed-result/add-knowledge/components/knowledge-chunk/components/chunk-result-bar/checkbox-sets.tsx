@@ -18,7 +18,7 @@ type ICheckboxSetProps = {
   checked: boolean;
   selectedChunkIds: string[];
 };
-export default function CheckboxSets(props: ICheckboxSetProps) {
+export default (props: ICheckboxSetProps) => {
   const {
     className,
     selectAllChunk,
@@ -79,4 +79,4 @@ export default function CheckboxSets(props: ICheckboxSetProps) {
       )}
     </div>
   );
-}
+};

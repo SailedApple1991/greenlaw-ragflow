@@ -180,9 +180,6 @@ declare namespace AdminService {
     label?: string;
     placeholder?: string;
     description?: string;
-    multiline?: boolean;
-    readonly?: boolean;
-    scope?: 'runtime' | 'deployment';
   };
 
   export type SandboxConfigStringField = SandboxConfigFieldBase & {
@@ -217,5 +214,70 @@ declare namespace AdminService {
   export type SandboxConfig = {
     provider_type: string;
     config: Record<string, unknown>;
+  };
+
+  // Cache management types
+  export type CacheStats = {
+    l1: {
+      total_keys: number;
+      dialog_count: number;
+      redis_alive: boolean;
+    };
+    l2: {
+      total_entries: number;
+      indices: Array<{
+        name: string;
+        docs_count: number;
+        size: string;
+      }>;
+    };
+  };
+
+  export type CacheTenant = {
+    tenant_id: string;
+    tenant_name: string;
+    index_name: string;
+    docs_count: number;
+  };
+
+  export type CacheDialog = {
+    dialog_id: string;
+    dialog_name: string;
+    entry_count: number;
+  };
+
+  export type CacheL2Entry = {
+    id: string;
+    dialog_id: string;
+    dialog_name?: string;
+    question_text: string;
+    answer_json: string;
+    reference_json?: string;
+    cached_at: number;
+    ttl: number;
+  };
+
+  export type CacheL2EntriesResponse = {
+    entries: CacheL2Entry[];
+    total: number;
+    page: number;
+    page_size: number;
+  };
+
+  export type CacheL1Entry = {
+    key: string;
+    dialog_id: string;
+    dialog_name?: string;
+    question_text: string;
+    answer: string;
+    cached_at: number;
+    ttl_remaining: number;
+  };
+
+  export type CacheL1EntriesResponse = {
+    entries: CacheL1Entry[];
+    total: number;
+    page: number;
+    page_size: number;
   };
 }

@@ -12,7 +12,7 @@ import {
 } from '@/hooks/use-knowledge-request';
 import { ResponsePostType } from '@/interfaces/database/base';
 import { IAnswer } from '@/interfaces/database/chat';
-import { ITestingResult } from '@/interfaces/database/dataset';
+import { ITestingResult } from '@/interfaces/database/knowledge';
 import { IAskRequestBody } from '@/interfaces/request/chat';
 import kbService from '@/services/knowledge-service';
 import chatService from '@/services/next-chat-service';
@@ -46,7 +46,8 @@ export const useGetSharedSearchParams = () => {
   const [searchParams] = useSearchParams();
   const data_prefix = 'data_';
   const data = Object.fromEntries(
-    Array.from(searchParams.entries())
+    searchParams
+      .entries()
       .filter(([key]) => key.startsWith(data_prefix))
       .map(([key, value]) => [key.replace(data_prefix, ''), value]),
   );
@@ -107,11 +108,7 @@ export const useShowMindMapDrawer = (
   } = useSearchFetchMindMap();
 
   const handleShowModal = useCallback(() => {
-    const searchParams = {
-      question: trim(question),
-      kb_ids: kbIds,
-      search_id: searchId,
-    };
+    const searchParams = { question: trim(question), kb_ids: kbIds, searchId };
     if (
       !isEmpty(searchParams.question) &&
       !isEqual(searchParams, ref.current)
@@ -152,10 +149,10 @@ export const useTestChunkRetrieval = (
     gcTime: 0,
     mutationFn: async (values: any) => {
       const { data } = await retrievalTestFunc({
-        page,
-        size: pageSize,
         ...values,
         kb_id: values.kb_id ?? knowledgeBaseId,
+        page,
+        size: pageSize,
         tenant_id: tenantId,
       });
       if (data.code === 0) {
@@ -203,10 +200,11 @@ export const useTestChunkAllRetrieval = (
     gcTime: 0,
     mutationFn: async (values: any) => {
       const { data } = await retrievalTestFunc({
-        page,
-        size: pageSize,
         ...values,
         kb_id: values.kb_id ?? knowledgeBaseId,
+        doc_ids: [],
+        page,
+        size: pageSize,
         tenant_id: tenantId,
       });
       if (data.code === 0) {
@@ -311,11 +309,7 @@ export const useSendQuestion = (
   related_search: boolean = false,
 ) => {
   const { sharedId } = useGetSharedSearchParams();
-  const askUrl = sharedId
-    ? api.askShare
-    : searchId
-      ? api.searchCompletion(searchId)
-      : '';
+  const askUrl = sharedId ? api.askShare : api.ask;
   const { send, answer, done, stopOutputMessage } = useSendMessageWithSse();
 
   const { testChunk, loading } = useTestChunkRetrieval(tenantId);
@@ -327,19 +321,17 @@ export const useSendQuestion = (
   const [searchStr, setSearchStr] = useState<string>('');
   const [isFirstRender, setIsFirstRender] = useState(true);
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
-  const [pageSize, setPageSize] = useState(10);
+
+  const { pagination, setPagination } = useGetPaginationWithRouter();
 
   const sendQuestion = useCallback(
     (question: string, enableAI: boolean = true) => {
       const q = trim(question);
       if (isEmpty(q)) return;
+      setPagination({ page: 1 });
       setIsFirstRender(false);
       setCurrentAnswer({} as IAnswer);
       if (enableAI) {
-        if (!sharedId && !searchId) {
-          message.error('Search ID is required.');
-          return;
-        }
         setSendingLoading(true);
         send(askUrl, {
           kb_ids: kbIds,
@@ -353,7 +345,7 @@ export const useSendQuestion = (
         highlight: true,
         question: q,
         page: 1,
-        size: pageSize,
+        size: pagination.pageSize,
         search_id: searchId,
       });
 
@@ -364,13 +356,12 @@ export const useSendQuestion = (
     [
       send,
       testChunk,
-      askUrl,
       kbIds,
       fetchRelatedQuestions,
-      pageSize,
+      setPagination,
+      pagination.pageSize,
       tenantId,
       searchId,
-      sharedId,
       related_search,
     ],
   );
@@ -455,8 +446,6 @@ export const useSendQuestion = (
     selectedDocumentIds,
     isSearchStrEmpty: isEmpty(trim(searchStr)),
     stopOutputMessage,
-    pageSize,
-    setPageSize,
   };
 };
 
@@ -481,8 +470,6 @@ export const useSearching = ({
     isSearchStrEmpty,
     setSearchStr,
     stopOutputMessage,
-    pageSize,
-    setPageSize,
   } = useSendQuestion(
     searchData.search_config.kb_ids,
     tenantId as string,
@@ -541,15 +528,14 @@ export const useSearching = ({
     ],
   );
 
-  const handleTopChange = useCallback(
-    (size: number) => {
-      setPageSize(size);
-      handleTestChunk(selectedDocumentIds, 1, size);
-    },
-    [handleTestChunk, selectedDocumentIds, setPageSize],
-  );
+  const { pagination, setPagination } = useGetPaginationWithRouter();
+  const onChange = (pageNumber: number, pageSize: number) => {
+    setPagination({ page: pageNumber, pageSize });
+    handleTestChunk(selectedDocumentIds, pageNumber, pageSize);
+  };
 
   return {
+    sendQuestion,
     handleClickRelatedQuestion,
     handleSearchStrChange,
     handleTestChunk,
@@ -578,8 +564,8 @@ export const useSearching = ({
     chunks,
     total,
     handleSearch,
-    pageSize,
-    handleTopChange,
+    pagination,
+    onChange,
   };
 };
 

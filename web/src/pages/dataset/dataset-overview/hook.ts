@@ -3,9 +3,9 @@ import {
   useGetPaginationWithRouter,
   useHandleSearchChange,
 } from '@/hooks/logic-hooks';
-import {
-  getKnowledgeBasicInfo,
+import kbService, {
   listDataPipelineLogDocument,
+  listPipelineDatasetLogs,
 } from '@/services/knowledge-service';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';
@@ -20,9 +20,9 @@ const useFetchOverviewTotal = () => {
   const { data } = useQuery<IOverviewTotal>({
     queryKey: ['overviewTotal'],
     queryFn: async () => {
-      const { data: res = {} } = await getKnowledgeBasicInfo(
-        knowledgeBaseId || '',
-      );
+      const { data: res = {} } = await kbService.getKnowledgeBasicInfo({
+        kb_id: knowledgeBaseId,
+      });
       return res.data || [];
     },
   });
@@ -40,7 +40,10 @@ const useFetchFileLogList = () => {
     LogTabs.FILE_LOGS,
   );
   const knowledgeBaseId = searchParams.get('id') || id;
-  const logType = active === LogTabs.DATASET_LOGS ? 'dataset' : 'file';
+  const fetchFunc =
+    active === LogTabs.DATASET_LOGS
+      ? listPipelineDatasetLogs
+      : listDataPipelineLogDocument;
   const { data } = useQuery<IFileLogList>({
     queryKey: [
       'fileLogList',
@@ -58,15 +61,15 @@ const useFetchFileLogList = () => {
     },
     enabled: true,
     queryFn: async () => {
-      const { data: res = {} } = await listDataPipelineLogDocument(
-        knowledgeBaseId || '',
+      const { data: res = {} } = await fetchFunc(
         {
+          kb_id: knowledgeBaseId,
           page: pagination.current,
           page_size: pagination.pageSize,
           keywords: searchString,
-          log_type: logType,
-          ...filterValue,
+          // order_by: '',
         },
+        { ...filterValue },
       );
       return res.data || [];
     },

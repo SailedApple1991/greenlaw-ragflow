@@ -169,8 +169,7 @@ function RetrievalForm({ node }: INextOperatorForm) {
         <Collapse title={<div>{t('flow.advancedSettings')}</div>}>
           <section className="space-y-5">
             <SimilaritySliderFormField
-              similarityWeightName="keywords_similarity_weight"
-              similarityWeightType="keyword"
+              vectorSimilarityWeightName="keywords_similarity_weight"
               isTooltipShown
             ></SimilaritySliderFormField>
             <TopNFormField></TopNFormField>

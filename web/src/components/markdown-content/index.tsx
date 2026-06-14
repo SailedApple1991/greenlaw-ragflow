@@ -10,7 +10,8 @@ import Markdown from 'react-markdown';
 import SyntaxHighlighter from 'react-syntax-highlighter';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
-import { MarkdownRemarkPlugins } from '@/constants/markdown-remark-plugins';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
 import { visitParents } from 'unist-util-visit-parents';
 
 import { useTranslation } from 'react-i18next';
@@ -22,7 +23,6 @@ import {
   currentReg,
   parseCitationIndex,
   preprocessLaTeX,
-  replaceRetrievingToSection,
   replaceTextByOldReg,
   replaceThinkToSection,
 } from '@/utils/chat';
@@ -40,13 +40,6 @@ import styles from './index.module.less';
 
 const getChunkIndex = (match: string) => parseCitationIndex(match);
 
-const formatMetadataValue = (value: unknown) => {
-  if (Array.isArray(value)) return value.join(', ');
-  if (value === null || value === undefined) return '';
-  if (typeof value === 'object') return JSON.stringify(value);
-  return String(value);
-};
-
 // TODO: The display of the table is inconsistent with the display previously placed in the MessageItem.
 const MarkdownContent = ({
   reference,
@@ -63,7 +56,7 @@ const MarkdownContent = ({
     useFetchDocumentThumbnailsByIds();
   const contentWithCursor = useMemo(() => {
     let text = DOMPurify.sanitize(content, {
-      ADD_TAGS: ['think', 'section', 'details', 'summary', 'retrieving'],
+      ADD_TAGS: ['think', 'section'],
       ADD_ATTR: ['class'],
     });
 
@@ -72,7 +65,7 @@ const MarkdownContent = ({
       text = t('chat.searching');
     }
     const nextText = replaceTextByOldReg(text);
-    return pipe(replaceThinkToSection, replaceRetrievingToSection, preprocessLaTeX)(nextText);
+    return pipe(replaceThinkToSection, preprocessLaTeX)(nextText);
   }, [content, t]);
 
   useEffect(() => {
@@ -181,21 +174,6 @@ const MarkdownContent = ({
               className={classNames(styles.chunkContentText)}
               dir="auto"
             ></div>
-            {chunkItem?.document_metadata &&
-              Object.keys(chunkItem.document_metadata).length > 0 && (
-                <section className="space-y-1 border border-border-default rounded p-2">
-                  {Object.entries(chunkItem.document_metadata).map(
-                    ([key, value]) => (
-                      <div key={key} className="text-xs">
-                        <span className="text-text-secondary">{key}:</span>{' '}
-                        <span className="text-text-primary">
-                          {formatMetadataValue(value)}
-                        </span>
-                      </div>
-                    ),
-                  )}
-                </section>
-              )}
             {documentId && (
               <section className="flex gap-1">
                 {fileThumbnail ? (
@@ -261,7 +239,7 @@ const MarkdownContent = ({
     <div dir={dir} className={styles.markdownContentWrapper}>
       <Markdown
         rehypePlugins={[rehypeWrapReference, rehypeKatex, rehypeRaw]}
-        remarkPlugins={MarkdownRemarkPlugins}
+        remarkPlugins={[remarkGfm, remarkMath]}
         components={
           {
             p: ({ children, ...props }: any) => <p {...props}>{children}</p>,

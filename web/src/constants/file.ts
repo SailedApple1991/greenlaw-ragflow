@@ -10,7 +10,7 @@ export const FileIconMap = {
   jpeg: 'jpg',
   png: 'png',
   txt: 'text',
-  csv: 'excel',
+  csv: 'pdf',
   md: 'md',
   mdx: 'md',
   mp4: 'mp4',

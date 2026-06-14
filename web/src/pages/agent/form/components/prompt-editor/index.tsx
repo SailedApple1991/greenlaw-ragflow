@@ -184,7 +184,7 @@ export const PromptEditor = forwardRef(function PromptEditor(
     onChange,
     onBlur,
     placeholder,
-    showToolbar = true,
+    showToolbar,
     multiLine = true,
     enablePathQueryAutoMerge = true,
     extraOptions,
@@ -240,7 +240,7 @@ export const PromptEditor = forwardRef(function PromptEditor(
                 '-z-10 absolute top-1 left-2 text-text-disabled pointer-events-none',
                 {
                   'truncate max-w-[calc(100%-4rem)]': !multiLine,
-                  'top-12': showToolbar,
+                  'translate-y-9': multiLine,
                 },
               )}
             >

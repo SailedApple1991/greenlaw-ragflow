@@ -3,7 +3,6 @@ import {
   initialLlmBaseValues,
   DataflowOperator as Operator,
 } from '@/constants/agent';
-import { cloneDeep } from 'lodash';
 
 export enum FileType {
   PDF = 'pdf',
@@ -198,15 +197,12 @@ export const initialParserValues = {
       output_format: PdfOutputFormat.Json,
       parse_method: ParseDocumentType.DeepDOC,
       preprocess: PreprocessValue.main_content,
-      flatten_media_to_text: false,
-      remove_header_footer: false,
     },
     {
       fileFormat: FileType.Spreadsheet,
       output_format: SpreadsheetOutputFormat.Html,
       parse_method: ParseDocumentType.DeepDOC,
       preprocess: PreprocessValue.main_content,
-      flatten_media_to_text: false,
     },
     {
       fileFormat: FileType.Image,
@@ -225,7 +221,6 @@ export const initialParserValues = {
       fileFormat: FileType.TextMarkdown,
       output_format: TextMarkdownOutputFormat.Text,
       preprocess: PreprocessValue.main_content,
-      flatten_media_to_text: false,
     },
     {
       fileFormat: FileType.Code,
@@ -236,21 +231,16 @@ export const initialParserValues = {
       fileFormat: FileType.Html,
       output_format: TextJsonOutputFormat.Json,
       preprocess: PreprocessValue.main_content,
-      remove_header_footer: false,
     },
     {
       fileFormat: FileType.Doc,
       output_format: DocxOutputFormat.Json,
       preprocess: PreprocessValue.main_content,
-      flatten_media_to_text: false,
-      remove_header_footer: false,
     },
     {
       fileFormat: FileType.Docx,
       output_format: DocxOutputFormat.Json,
       preprocess: PreprocessValue.main_content,
-      flatten_media_to_text: false,
-      remove_header_footer: false,
     },
     {
       fileFormat: FileType.PowerPoint,
@@ -279,12 +269,7 @@ export enum Hierarchy {
   H4 = '4',
   H5 = '5',
 }
-
-export enum TitleChunkerMethod {
-  Hierarchy = 'hierarchy',
-  Group = 'group',
-}
-export const originalRules = [
+const rules = [
   {
     // levels: [
     //   { expression: '^#[^#]' },
@@ -337,18 +322,21 @@ export const originalRules = [
     ],
   },
 ];
-
 export const initialTitleChunkerValues = {
   outputs: {
     chunks: { type: 'Array<Object>', value: [] },
   },
-  method: TitleChunkerMethod.Hierarchy,
-  hierarchyHierarchy: Hierarchy.H3,
-  hierarchyGroup: '0',
+  method: 'hierarchy',
+  hierarchy: Hierarchy.H3,
   include_heading_content: false,
-  root_chunk_as_heading: false,
-  hierarchyRules: cloneDeep(originalRules),
-  groupRules: cloneDeep(originalRules),
+  rules: rules,
+};
+
+export const initialGroupValues = {
+  method: 'group',
+  hierarchy: '0',
+  include_heading_content: false,
+  rules: rules,
 };
 
 export const initialExtractorValues = {

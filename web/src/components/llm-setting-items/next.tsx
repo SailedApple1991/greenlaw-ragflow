@@ -27,7 +27,7 @@ import { useHandleFreedomChange } from './use-watch-change';
 
 interface LlmSettingFieldItemsProps {
   prefix?: string;
-  modelTypes?: string[];
+  options?: any[];
   llmId?: string;
   llmSelectTestId?: string;
   llmOptionTestIdPrefix?: string;
@@ -58,7 +58,6 @@ export const LlmSettingFieldSchema = {
   presence_penalty: z.coerce.number().optional(),
   frequency_penalty: z.coerce.number().optional(),
   max_tokens: z.number().optional(),
-  parameter: z.string().optional(),
 };
 
 export const LlmSettingSchema = {
@@ -69,7 +68,7 @@ export const LlmSettingSchema = {
 
 export function LlmSettingFieldItems({
   prefix,
-  modelTypes,
+  options,
   llmSelectTestId,
   llmOptionTestIdPrefix,
   showFields = [
@@ -137,7 +136,7 @@ export function LlmSettingFieldItems({
   return (
     <div className="space-y-5">
       <LLMFormField
-        modelTypes={modelTypes}
+        options={options}
         name={llmId ?? getFieldWithPrefix('llm_id')}
         testId={llmSelectTestId}
         optionTestIdPrefix={llmOptionTestIdPrefix}
@@ -150,7 +149,7 @@ export function LlmSettingFieldItems({
             <FormLabel className="flex-1">{t('freedom')}</FormLabel>
             <FormControl>
               <Select
-                value={field.value}
+                {...field}
                 onValueChange={(val) => {
                   handleChange(val);
                   field.onChange(val);

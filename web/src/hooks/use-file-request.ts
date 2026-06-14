@@ -69,9 +69,7 @@ export const useUploadFile = () => {
           });
         }
         return ret?.data?.code;
-      } catch {
-        return;
-      }
+      } catch (error) {}
     },
   });
 
@@ -215,6 +213,7 @@ export const useFetchFileList = () => {
 };
 
 export const useDeleteFile = () => {
+  const { setPaginationParams } = useSetPaginationParams();
   const queryClient = useQueryClient();
   const { t } = useTranslation();
 
@@ -230,10 +229,11 @@ export const useDeleteFile = () => {
       });
       if (data.code === 0) {
         message.success(t('message.deleted'));
+        setPaginationParams(1); // TODO: There should be a better way to paginate the request list
+        queryClient.invalidateQueries({
+          queryKey: [FileApiAction.FetchFileList],
+        });
       }
-      queryClient.invalidateQueries({
-        queryKey: [FileApiAction.FetchFileList],
-      });
       return data.code;
     },
   });
@@ -317,8 +317,6 @@ export const useFetchPureFileList = () => {
     mutationFn: async (parentId: string) => {
       const { data } = await fileManagerService.listFile({
         parent_id: parentId,
-        page_size: 100,
-        page: 1,
       });
 
       return data;

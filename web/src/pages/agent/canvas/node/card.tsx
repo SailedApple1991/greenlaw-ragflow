@@ -17,9 +17,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useFetchAllAddedModels } from '@/hooks/use-llm-request';
+import { useSelectFlatLlmList } from '@/hooks/use-llm-request';
 import { cn } from '@/lib/utils';
-import { parseModelValue } from '@/utils/llm-util';
 import { PropsWithChildren, useMemo } from 'react';
 
 export function CardWithForm() {
@@ -81,23 +80,12 @@ export function LabelCard({ children, className, ...props }: LabelCardProps) {
 }
 
 export function LLMLabelCard({ llmId }: { llmId?: string }) {
-  const { data: allAddedModels } = useFetchAllAddedModels();
+  const flatLlmList = useSelectFlatLlmList();
 
   const isValidLlm = useMemo(() => {
     if (!llmId) return false;
-
-    const parsed = parseModelValue(llmId);
-    if (parsed) {
-      return allAddedModels.some(
-        (m) =>
-          m.name === parsed.model_name &&
-          m.instance_name === parsed.model_instance &&
-          m.provider_name === parsed.model_provider,
-      );
-    }
-
-    return false;
-  }, [allAddedModels, llmId]);
+    return flatLlmList.some((llm) => llm.uuid === llmId);
+  }, [flatLlmList, llmId]);
 
   return (
     <LabelCard

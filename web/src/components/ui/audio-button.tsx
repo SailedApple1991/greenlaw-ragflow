@@ -8,6 +8,7 @@ import { getAuthorization } from '@/utils/authorization-util';
 import { chain, sum } from 'lodash';
 import { Loader2, Mic, Square } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useIsDarkTheme } from '../theme-provider';
 import { Input } from './input';
 import { Popover, PopoverContent, PopoverTrigger } from './popover';
 
@@ -17,6 +18,7 @@ const VoiceVisualizer = ({ isRecording }: { isRecording: boolean }) => {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number>(0);
   const streamRef = useRef<MediaStream | null>(null);
+  const isDark = useIsDarkTheme();
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -271,9 +273,11 @@ export const AudioButton = ({
       //   throw new Error('ReadableStream not supported in this browser');
       // }
 
+      console.log('Response:', response);
       const { data, code } = await response.json();
       if (code === 0 && data && data.text) {
         setTranscript(data.text);
+        console.log('Transcript:', data.text);
         onOk?.(data.text);
       }
       setPopoverOpen(false);
@@ -337,7 +341,7 @@ export const AudioButton = ({
             <Popover
               open={popoverOpen}
               onOpenChange={(open) => {
-                setPopoverOpen(open);
+                setPopoverOpen(true);
               }}
             >
               <PopoverTrigger asChild>

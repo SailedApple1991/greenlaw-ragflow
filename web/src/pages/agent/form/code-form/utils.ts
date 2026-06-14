@@ -14,7 +14,6 @@ const CodeExecReservedOutputKeys = [
   'content',
   'actual_type',
   'raw_result',
-  'attachments',
   '_ERROR',
   '_ARTIFACTS',
   '_ATTACHMENT_CONTENT',
@@ -30,10 +29,6 @@ export const CodeExecPanelSystemOutputs: ICodeForm['outputs'] = {
   actual_type: {
     type: 'String',
     value: '',
-  },
-  attachments: {
-    type: 'Array<String>',
-    value: [],
   },
 };
 

@@ -9,11 +9,10 @@ const {
   getAllParentFolder,
   createFolder,
   connectFileToKnowledge,
-  getDocumentFile,
+  get_document_file,
   getFile,
   moveFile,
-  getDatasetDocumentFileDownload,
-  getAttachmentFileDownload,
+  get_document_file_download,
 } = api;
 
 const methods = {
@@ -47,7 +46,7 @@ const methods = {
     responseType: 'blob',
   },
   getDocumentFile: {
-    url: getDocumentFile,
+    url: get_document_file,
     method: 'get',
     responseType: 'blob',
   },
@@ -62,24 +61,10 @@ const fileManagerService = registerServer<keyof typeof methods>(
   request,
 );
 
-export const downloadAgentFile = (data: { docId: string; ext: string }) => {
-  return request.get(getAttachmentFileDownload(data.docId), {
+export const downloadFile = (data: { docId: string; ext: string }) => {
+  return request.get(get_document_file_download(data.docId), {
     params: { ext: data.ext },
     responseType: 'blob',
   });
-};
-
-export const downloadDatasetDocument = (data: {
-  datasetId: string;
-  docId: string;
-  ext: string;
-}) => {
-  return request.get(
-    getDatasetDocumentFileDownload(data.datasetId, data.docId),
-    {
-      params: { ext: data.ext },
-      responseType: 'blob',
-    },
-  );
 };
 export default fileManagerService;

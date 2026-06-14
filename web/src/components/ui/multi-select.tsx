@@ -188,10 +188,6 @@ interface MultiSelectProps
   showSelectAll?: boolean;
   popoverTestId?: string;
   optionTestIdPrefix?: string;
-  searchValue?: string;
-  onSearchChange?: (value: string) => void;
-  isSearching?: boolean;
-  shouldFilter?: boolean;
 }
 
 export const MultiSelect = React.forwardRef<
@@ -213,10 +209,6 @@ export const MultiSelect = React.forwardRef<
       showSelectAll = true,
       popoverTestId,
       optionTestIdPrefix,
-      searchValue,
-      onSearchChange,
-      isSearching = false,
-      shouldFilter,
       ...props
     },
     ref,
@@ -442,19 +434,15 @@ export const MultiSelect = React.forwardRef<
           onEscapeKeyDown={() => setIsPopoverOpen(false)}
           data-testid={popoverTestId}
         >
-          <Command className="p-5 pb-8" shouldFilter={shouldFilter}>
-            {((options && options.length > 0) || onSearchChange) && (
+          <Command className="p-5 pb-8">
+            {options && options.length > 0 && (
               <CommandInput
                 placeholder={t('common.search') + '...'}
                 onKeyDown={handleInputKeyDown}
-                value={searchValue}
-                onValueChange={onSearchChange}
               />
             )}
             <CommandList className="mt-2">
-              <CommandEmpty>
-                {isSearching ? t('common.searching') : t('common.noDataFound')}
-              </CommandEmpty>
+              <CommandEmpty>No results found.</CommandEmpty>
               <CommandGroup>
                 {showSelectAll && options && options.length > 0 && (
                   <CommandItem

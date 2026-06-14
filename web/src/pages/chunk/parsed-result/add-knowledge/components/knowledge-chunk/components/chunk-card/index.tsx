@@ -1,4 +1,5 @@
 import Image from '@/components/image';
+import { useTheme } from '@/components/theme-provider';
 import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
@@ -7,7 +8,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import type { ChunkDocType, IChunk } from '@/interfaces/database/dataset';
+import type { ChunkDocType, IChunk } from '@/interfaces/database/knowledge';
 import { cn } from '@/lib/utils';
 import { CheckedState } from '@radix-ui/react-checkbox';
 import classNames from 'classnames';
@@ -43,6 +44,7 @@ const ChunkCard = ({
   const { t } = useTranslation();
   const available = Number(item.available_int);
   const [enabled, setEnabled] = useState(false);
+  const { theme } = useTheme();
 
   const onChange = (checked: boolean) => {
     setEnabled(checked);

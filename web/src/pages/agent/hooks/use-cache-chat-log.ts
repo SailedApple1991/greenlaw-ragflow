@@ -5,15 +5,11 @@ import {
 } from '@/hooks/use-send-message';
 import { get, isEmpty } from 'lodash';
 import { useCallback, useMemo, useState } from 'react';
-import { MessageWaitSuffix } from '../constant/chat';
 
 export const ExcludeTypes = [
   MessageEventType.Message,
   MessageEventType.MessageEnd,
 ];
-
-const resolveMessageId = (messageId: string) =>
-  messageId?.replace(new RegExp(`${MessageWaitSuffix}$`), '');
 
 export function useCacheChatLog() {
   const [messageIdPool, setMessageIdPool] = useState<
@@ -26,9 +22,8 @@ export function useCacheChatLog() {
 
   const filterEventListByMessageId = useCallback(
     (messageId: string) => {
-      const resolvedId = resolveMessageId(messageId);
-      return messageIdPool[resolvedId]?.filter(
-        (x) => x.message_id === resolvedId,
+      return messageIdPool[messageId]?.filter(
+        (x) => x.message_id === messageId,
       );
     },
     [messageIdPool],
@@ -36,8 +31,9 @@ export function useCacheChatLog() {
 
   const filterEventListByEventType = useCallback(
     (eventType: string) => {
-      const resolvedId = resolveMessageId(currentMessageId);
-      return messageIdPool[resolvedId]?.filter((x) => x.event === eventType);
+      return messageIdPool[currentMessageId]?.filter(
+        (x) => x.event === eventType,
+      );
     },
     [messageIdPool, currentMessageId],
   );
@@ -66,20 +62,19 @@ export function useCacheChatLog() {
   }, []);
 
   const currentEventListWithoutMessage = useMemo(() => {
-    const resolvedId = resolveMessageId(currentMessageId);
-    const list = messageIdPool[resolvedId]?.filter(
+    const list = messageIdPool[currentMessageId]?.filter(
       (x) =>
-        x.message_id === resolvedId && ExcludeTypes.every((y) => y !== x.event),
+        x.message_id === currentMessageId &&
+        ExcludeTypes.every((y) => y !== x.event),
     );
     return list as INodeEvent[];
   }, [currentMessageId, messageIdPool]);
 
   const currentEventListWithoutMessageById = useCallback(
     (messageId: string) => {
-      const resolvedId = resolveMessageId(messageId);
-      const list = messageIdPool[resolvedId]?.filter(
+      const list = messageIdPool[messageId]?.filter(
         (x) =>
-          x.message_id === resolvedId &&
+          x.message_id === messageId &&
           ExcludeTypes.every((y) => y !== x.event),
       );
       return list as INodeEvent[];

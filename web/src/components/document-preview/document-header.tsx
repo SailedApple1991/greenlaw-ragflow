@@ -9,12 +9,7 @@ type Props = {
   className?: string;
 };
 
-export default function DocumentHeader({
-  size,
-  name,
-  create_date,
-  className,
-}: Props) {
+export default ({ size, name, create_date, className }: Props) => {
   const sizeName = formatBytes(size);
   const dateStr = formatDate(create_date);
 
@@ -37,4 +32,4 @@ export default function DocumentHeader({
       </dl>
     </header>
   );
-}
+};

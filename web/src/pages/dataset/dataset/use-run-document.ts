@@ -24,7 +24,6 @@ export const useHandleRunDocumentByIds = (id: string) => {
       });
       setCurrentId('');
     } catch (error) {
-      console.warn(error);
       setCurrentId('');
     }
     hideModal();

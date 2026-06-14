@@ -50,7 +50,7 @@ export function BulkOperateBar({
 
         <Separator orientation={'vertical'} className="h-[1em]"></Separator>
 
-        <ul className="flex gap-3">
+        <ul className="flex gap-2">
           {list.map((x) => {
             const isDeleteItem = x.id === 'delete';
 

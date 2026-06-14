@@ -1,10 +1,9 @@
 import { DocumentParserType } from '@/constants/knowledge';
 import { useFetchKnowledgeList } from '@/hooks/use-knowledge-request';
-import { IDataset } from '@/interfaces/database/dataset';
+import { IKnowledge } from '@/interfaces/database/knowledge';
 import { useBuildQueryVariableOptions } from '@/pages/agent/hooks/use-get-begin-query';
-import { useDebounce } from 'ahooks';
 import { toLower } from 'lodash';
-import { type ReactNode, useCallback, useMemo, useRef, useState } from 'react';
+import { useMemo } from 'react';
 import { useFormContext, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { RAGFlowAvatar } from './ragflow-avatar';
@@ -24,45 +23,19 @@ function DatasetLabel({ text }: { text: string }) {
 }
 
 export function useDisableDifferenceEmbeddingDataset(name: string) {
+  const { list: datasetListOrigin } = useFetchKnowledgeList(true);
   const form = useFormContext();
   const datasetId = useWatch({ name, control: form.control });
-  const [searchString, setSearchString] = useState('');
-  const debouncedSearchString = useDebounce(searchString, { wait: 500 });
-  const { list: datasetListOrigin, loading } = useFetchKnowledgeList(
-    true,
-    debouncedSearchString,
-  );
-  const datasetCacheRef = useRef(new Map<string, IDataset>());
-
-  const datasetList = useMemo(() => {
-    datasetListOrigin.forEach((dataset) => {
-      datasetCacheRef.current.set(dataset.id, dataset);
-    });
-
-    const selectedDatasetIds = Array.isArray(datasetId) ? datasetId : [];
-    const selectedDatasets = selectedDatasetIds
-      .map((id) => datasetCacheRef.current.get(id))
-      .filter(Boolean) as IDataset[];
-
-    return Array.from(
-      new Map(
-        [...datasetListOrigin, ...selectedDatasets].map((dataset) => [
-          dataset.id,
-          dataset,
-        ]),
-      ).values(),
-    );
-  }, [datasetId, datasetListOrigin]);
 
   const selectedEmbedId = useMemo(() => {
-    const data = datasetList?.find((item) => item.id === datasetId?.[0]);
+    const data = datasetListOrigin?.find((item) => item.id === datasetId?.[0]);
     return data?.embedding_model ?? '';
-  }, [datasetId, datasetList]);
+  }, [datasetId, datasetListOrigin]);
 
   const nextOptions = useMemo(() => {
-    const datasetListMap = datasetList
+    const datasetListMap = datasetListOrigin
       .filter((x) => x.chunk_method !== DocumentParserType.Tag)
-      .map((item: IDataset) => {
+      .map((item: IKnowledge) => {
         return {
           label: item.name,
           icon: () => (
@@ -85,17 +58,10 @@ export function useDisableDifferenceEmbeddingDataset(name: string) {
       });
 
     return datasetListMap;
-  }, [datasetList, selectedEmbedId]);
-
-  const handleSearchChange = useCallback((value: string) => {
-    setSearchString(value);
-  }, []);
+  }, [datasetListOrigin, selectedEmbedId]);
 
   return {
     datasetOptions: nextOptions,
-    handleSearchChange,
-    loading,
-    searchString,
   };
 }
 
@@ -110,8 +76,7 @@ export function KnowledgeBaseFormField({
 }) {
   const { t } = useTranslation();
 
-  const { datasetOptions, handleSearchChange, loading, searchString } =
-    useDisableDifferenceEmbeddingDataset(name);
+  const { datasetOptions } = useDisableDifferenceEmbeddingDataset(name);
 
   const nextOptions = buildQueryVariableOptionsByShowVariable(showVariable)();
 
@@ -124,26 +89,17 @@ export function KnowledgeBaseFormField({
           options: knowledgeOptions,
         },
         ...nextOptions.map((x) => {
-          const groupLabel = (('label' in x
-            ? x.label
-            : 'title' in x
-              ? x.title
-              : '') ?? '') as ReactNode;
-
           return {
             ...x,
-            label: groupLabel,
             options: x.options
               .filter((y) => toLower(y.type).includes('string'))
               .map((x) => ({
                 ...x,
-                label: x.label ?? x.value ?? '',
-                value: x.value ?? '',
                 icon: () => (
                   <RAGFlowAvatar
                     className="size-4 mr-2"
-                    avatar={String(x.label ?? '')}
-                    name={String(x.label ?? '')}
+                    avatar={x.label}
+                    name={x.label}
                   />
                 ),
               })),
@@ -174,10 +130,6 @@ export function KnowledgeBaseFormField({
           showSelectAll={false}
           popoverTestId="datasets-options"
           optionTestIdPrefix="datasets"
-          searchValue={searchString}
-          onSearchChange={handleSearchChange}
-          isSearching={loading}
-          shouldFilter={false}
           {...field}
         />
       )}

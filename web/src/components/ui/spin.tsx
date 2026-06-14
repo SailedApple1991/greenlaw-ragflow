@@ -26,16 +26,13 @@ export const Spin: React.FC<SpinProps> = ({
   className,
   children,
 }) => {
-  // When used without children (standalone), don't show mask background
-  const hasChildren = React.Children.count(children) > 0;
-
   return (
     <div
       className={cn(
         'relative',
         {
           'after:content-[""] after:absolute after:inset-0 after:z-10 after:bg-text-primary/40 after:transition-all after:duration-300 h-full w-full':
-            spinning && hasChildren,
+            spinning,
         },
         className,
       )}
@@ -43,9 +40,7 @@ export const Spin: React.FC<SpinProps> = ({
       {spinning && (
         <div
           className={cn(
-            hasChildren
-              ? 'absolute inset-0 z-10 flex items-center justify-center bg-text-primary/30'
-              : 'flex items-center justify-center',
+            'absolute inset-0 z-10 flex items-center justify-center bg-text-primary/30',
             minSizeClasses[size],
           )}
         >

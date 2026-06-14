@@ -1,11 +1,15 @@
 import { crossLanguageOptions } from '@/components/cross-language-form-field';
 import { LayoutRecognizeFormField } from '@/components/layout-recognize-form-field';
 import {
+  LLMFormField,
+  LLMFormFieldProps,
+} from '@/components/llm-setting-items/llm-form-field';
+import {
   SelectWithSearch,
   SelectWithSearchFlagOptionType,
 } from '@/components/originui/select-with-search';
 import { RAGFlowFormItem } from '@/components/ragflow-form';
-import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { upperCase, upperFirst } from 'lodash';
 import { useTranslation } from 'react-i18next';
 import {
@@ -71,26 +75,16 @@ export function ParserMethodFormField({
   );
 }
 
-export function FlattenMediaToTextFormField({ prefix }: CommonProps) {
-  const { t } = useTranslation();
+export function LargeModelFormField({
+  prefix,
+  options,
+}: CommonProps & Pick<LLMFormFieldProps, 'options'>) {
   return (
-    <RAGFlowFormItem
-      name={buildFieldNameWithPrefix(`flatten_media_to_text`, prefix)}
-      label={t('flow.flattenMediaToText')}
-      tooltip={t('flow.flattenMediaToTextTip')}
-      horizontal={true}
-      labelClassName="w-full"
-      valueClassName="w-8"
-    >
-      {(field) => (
-        <Switch
-          checked={field.value}
-          onCheckedChange={(checked) => {
-            field.onChange?.(checked);
-          }}
-        />
-      )}
-    </RAGFlowFormItem>
+    <LLMFormField
+      name={buildFieldNameWithPrefix('vlm.llm_id', prefix)}
+      options={options}
+      config={{ allowClear: true }}
+    ></LLMFormField>
   );
 }
 
@@ -102,11 +96,10 @@ export function TwoColumnCheckFormField({ prefix }: CommonProps) {
       label={t('flow.enableMultiColumn')}
       horizontal={true}
       labelClassName="w-full"
-      valueClassName="w-8"
       tooltip={t('flow.enableMultiColumnTip')}
     >
       {(field) => (
-        <Switch
+        <Checkbox
           checked={field.value}
           onCheckedChange={(checked) => {
             field.onChange?.(checked);
@@ -126,32 +119,9 @@ export function RmdirFormField({ prefix }: CommonProps) {
       horizontal={true}
       tooltip={t('flow.removeTocTip')}
       labelClassName="w-full"
-      valueClassName="w-8"
     >
       {(field) => (
-        <Switch
-          checked={field.value}
-          onCheckedChange={(checked) => {
-            field.onChange?.(checked);
-          }}
-        />
-      )}
-    </RAGFlowFormItem>
-  );
-}
-
-export function RemoveHeaderFooterFormField({ prefix }: CommonProps) {
-  const { t } = useTranslation();
-  return (
-    <RAGFlowFormItem
-      name={buildFieldNameWithPrefix(`remove_header_footer`, prefix)}
-      label={t('flow.removeHeaderFooter')}
-      horizontal={true}
-      labelClassName="w-full"
-      valueClassName="w-8"
-    >
-      {(field) => (
-        <Switch
+        <Checkbox
           checked={field.value}
           onCheckedChange={(checked) => {
             field.onChange?.(checked);

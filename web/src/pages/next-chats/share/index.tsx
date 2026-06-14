@@ -4,7 +4,8 @@ import MessageItem from '@/components/message-item';
 import PdfSheet from '@/components/pdf-drawer';
 import { useClickDrawer } from '@/components/pdf-drawer/hooks';
 import { useSyncThemeFromParams } from '@/components/theme-provider';
-import { MessageType } from '@/constants/chat';
+import { MessageType, SharedFrom } from '@/constants/chat';
+import { useFetchFlowSSE } from '@/hooks/use-agent-request';
 import { useFetchExternalChatInfo } from '@/hooks/use-chat-request';
 import i18n, { changeLanguageAsync } from '@/locales/config';
 import { buildMessageUuidWithRole } from '@/utils/chat';
@@ -19,6 +20,7 @@ import { buildMessageItemReference } from '../utils';
 const ChatContainer = () => {
   const {
     sharedId: conversationId,
+    from,
     locale,
     theme,
     visibleAvatar,
@@ -42,13 +44,15 @@ const ChatContainer = () => {
   const sendDisabled = useSendButtonDisabled(value);
   const { data: chatInfo } = useFetchExternalChatInfo();
 
+  const { data: flowData } = useFetchFlowSSE();
   React.useEffect(() => {
     if (locale && i18n.language !== locale) {
       changeLanguageAsync(locale);
     }
   }, [locale, visibleAvatar]);
 
-  const avatarDialogSrc = chatInfo.avatar;
+  const avatarDialogSrc =
+    from === SharedFrom.Agent ? flowData?.avatar : chatInfo.avatar;
 
   if (!conversationId) {
     return <div>empty</div>;

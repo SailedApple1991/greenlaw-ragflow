@@ -1,14 +1,15 @@
 import { useHandleFilterSubmit } from '@/components/list-filter-bar/use-handle-filter-submit';
+import { post } from '@/utils/next-request';
 
 import message from '@/components/ui/message';
 import { RunningStatus } from '@/constants/knowledge';
 import { ResponseType } from '@/interfaces/database/base';
 import { IReferenceChunk } from '@/interfaces/database/chat';
-import { IChunk } from '@/interfaces/database/dataset';
 import {
   IDocumentInfo,
   IDocumentInfoFilter,
 } from '@/interfaces/database/document';
+import { IChunk } from '@/interfaces/database/knowledge';
 import {
   IChangeParserConfigRequestBody,
   IDocumentMetaRequestBody,
@@ -16,16 +17,12 @@ import {
 import i18n from '@/locales/config';
 import { EMPTY_METADATA_FIELD } from '@/pages/dataset/dataset/use-select-filters';
 import kbService, {
-  changeDocumentParser,
-  changeDocumentsStatus,
-  createDocument,
-  deleteDocument,
-  documentFilter,
   listDocument,
   renameDocument,
   uploadDocument,
 } from '@/services/knowledge-service';
-import { restAPIv1 } from '@/utils/api';
+import api, { restAPIv1, webAPI } from '@/utils/api';
+import { getSearchValue } from '@/utils/common-util';
 import { buildChunkHighlights } from '@/utils/document-util';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDebounce } from 'ahooks';
@@ -37,7 +34,6 @@ import {
   useGetPaginationWithRouter,
   useHandleSearchChange,
 } from './logic-hooks';
-import { extractParserConfigExt } from './parser-config-utils';
 import {
   useGetKnowledgeSearchParams,
   useSetPaginationParams,
@@ -55,11 +51,12 @@ export const enum DocumentApiAction {
   SetDocumentMeta = 'setDocumentMeta',
   FetchDocumentFilter = 'fetchDocumentFilter',
   CreateDocument = 'createDocument',
+  WebCrawl = 'webCrawl',
   FetchDocumentThumbnails = 'fetchDocumentThumbnails',
   ParseDocument = 'parseDocument',
 }
 
-export const useUploadDocument = () => {
+export const useUploadNextDocument = () => {
   const queryClient = useQueryClient();
   const { id } = useParams();
 
@@ -67,13 +64,9 @@ export const useUploadDocument = () => {
     data,
     isPending: loading,
     mutateAsync,
-  } = useMutation<
-    ResponseType<IDocumentInfo[]>,
-    Error,
-    { fileList: File[]; parserConfig?: Record<string, any> }
-  >({
+  } = useMutation<ResponseType<IDocumentInfo[]>, Error, File[]>({
     mutationKey: [DocumentApiAction.UploadDocument],
-    mutationFn: async ({ fileList, parserConfig }) => {
+    mutationFn: async (fileList) => {
       if (!id) {
         return { code: 500, message: 'Dataset ID is required' };
       }
@@ -81,9 +74,6 @@ export const useUploadDocument = () => {
       fileList.forEach((file: any) => {
         formData.append('file', file);
       });
-      if (parserConfig) {
-        formData.append('parser_config', JSON.stringify(parserConfig));
-      }
 
       try {
         const ret = await uploadDocument(id, formData);
@@ -105,13 +95,7 @@ export const useUploadDocument = () => {
     },
   });
 
-  const upload = useCallback(
-    (fileList: File[], parserConfig?: Record<string, any>) =>
-      mutateAsync({ fileList, parserConfig }),
-    [mutateAsync],
-  );
-
-  return { uploadDocument: upload, loading, data };
+  return { uploadDocument: mutateAsync, loading, data };
 };
 
 export const useFetchDocumentList = (loop = true) => {
@@ -224,7 +208,6 @@ export const useGetDocumentFilter = (): {
   const { id } = useParams();
   const debouncedSearchString = useDebounce(searchString, { wait: 500 });
   const [open, setOpen] = useState<number>(0);
-  const datasetId = knowledgeId || id;
   const { data } = useQuery({
     queryKey: [
       DocumentApiAction.FetchDocumentFilter,
@@ -232,10 +215,10 @@ export const useGetDocumentFilter = (): {
       knowledgeId,
     ],
     queryFn: async () => {
-      if (!datasetId) {
-        return;
-      }
-      const { data } = await documentFilter(datasetId);
+      const { data } = await kbService.documentFilter({
+        kb_id: knowledgeId || id,
+        keywords: debouncedSearchString,
+      });
       if (data.code === 0) {
         return data.data;
       }
@@ -264,24 +247,20 @@ export const useSetDocumentStatus = () => {
     data,
     isPending: loading,
     mutateAsync,
-  } = useMutation<
-    any,
-    Error,
-    {
+  } = useMutation({
+    mutationKey: [DocumentApiAction.UpdateDocumentStatus],
+    mutationFn: async ({
+      status,
+      documentId,
+    }: {
       status: boolean;
       documentId: string | string[];
-      datasetId: string;
-    }
-  >({
-    mutationKey: [DocumentApiAction.UpdateDocumentStatus],
-    mutationFn: async ({ status, documentId, datasetId }) => {
+    }) => {
       const ids = Array.isArray(documentId) ? documentId : [documentId];
-      const { data } = await changeDocumentsStatus({
-        kb_id: datasetId,
+      const { data } = await kbService.documentChangeStatus({
         doc_ids: ids,
         status: Number(status),
       });
-
       if (data.code === 0) {
         message.success(i18n.t('message.modified'));
         queryClient.invalidateQueries({
@@ -317,7 +296,7 @@ export const useRunDocument = () => {
       queryClient.invalidateQueries({
         queryKey: [DocumentApiAction.FetchDocumentList],
       });
-      const ret = await kbService.documentIngest({
+      const ret = await kbService.documentRun({
         doc_ids: documentIds,
         run,
         ...(option || {}),
@@ -339,7 +318,6 @@ export const useRunDocument = () => {
 
 export const useRemoveDocument = () => {
   const queryClient = useQueryClient();
-  const { id: datasetId } = useParams();
   const {
     data,
     isPending: loading,
@@ -347,8 +325,7 @@ export const useRemoveDocument = () => {
   } = useMutation({
     mutationKey: [DocumentApiAction.RemoveDocument],
     mutationFn: async (documentIds: string | string[]) => {
-      const ids = Array.isArray(documentIds) ? documentIds : [documentIds];
-      const { data } = await deleteDocument(datasetId!, ids);
+      const { data } = await kbService.documentRm({ doc_id: documentIds });
       if (data.code === 0) {
         message.success(i18n.t('message.deleted'));
         queryClient.invalidateQueries({
@@ -409,33 +386,19 @@ export const useSetDocumentParser = () => {
       parserId,
       pipelineId,
       documentId,
-      datasetId,
       parserConfig,
     }: {
       parserId: string;
       pipelineId: string;
       documentId: string;
-      datasetId: string;
-      parserConfig?: IChangeParserConfigRequestBody;
+      parserConfig: IChangeParserConfigRequestBody;
     }) => {
-      // Build update payload
-      const updateData: Record<string, unknown> = {};
-      if (parserId) {
-        updateData.chunk_method = parserId;
-      }
-      if (pipelineId) {
-        updateData.pipeline_id = pipelineId;
-      }
-
-      if (parserConfig) {
-        updateData.parser_config = extractParserConfigExt(parserConfig);
-      }
-
-      const { data } = await changeDocumentParser(
-        datasetId,
-        documentId,
-        updateData,
-      );
+      const { data } = await kbService.documentChangeParser({
+        parser_id: parserId,
+        pipeline_id: pipelineId,
+        doc_id: documentId,
+        parser_config: parserConfig,
+      });
       if (data.code === 0) {
         queryClient.invalidateQueries({
           queryKey: [DocumentApiAction.FetchDocumentList],
@@ -475,7 +438,7 @@ export const useSetDocumentMeta = () => {
         }
         return data?.code;
       } catch (error) {
-        message.error('error:' + error);
+        message.error('error');
       }
     },
   });
@@ -495,10 +458,10 @@ export const useCreateDocument = () => {
   } = useMutation({
     mutationKey: [DocumentApiAction.CreateDocument],
     mutationFn: async (name: string) => {
-      if (!id) {
-        return 500;
-      }
-      const data = await createDocument(id, name);
+      const { data } = await kbService.documentCreate({
+        name,
+        kb_id: id,
+      });
       if (data.code === 0) {
         if (page === 1) {
           queryClient.invalidateQueries({
@@ -518,11 +481,14 @@ export const useCreateDocument = () => {
 };
 
 export const useGetDocumentUrl = (documentId?: string) => {
+  const auth = getSearchValue('auth');
   const getDocumentUrl = useCallback(
     (id?: string) => {
-      return `${restAPIv1}/documents/${id || documentId}/preview`;
+      return auth
+        ? `${restAPIv1}/documents/${id || documentId}`
+        : `${webAPI}/document/get/${id || documentId}`;
     },
-    [documentId],
+    [documentId, auth],
   );
 
   return getDocumentUrl;
@@ -549,6 +515,38 @@ export const useGetChunkHighlights = (
   return { highlights, setWidthAndHeight };
 };
 
+export const useNextWebCrawl = () => {
+  const { knowledgeId } = useGetKnowledgeSearchParams();
+
+  const {
+    data,
+    isPending: loading,
+    mutateAsync,
+  } = useMutation({
+    mutationKey: [DocumentApiAction.WebCrawl],
+    mutationFn: async ({ name, url }: { name: string; url: string }) => {
+      const formData = new FormData();
+      formData.append('name', name);
+      formData.append('url', url);
+      formData.append('kb_id', knowledgeId);
+
+      const ret = await kbService.webCrawl(formData);
+      const code = get(ret, 'data.code');
+      if (code === 0) {
+        message.success(i18n.t('message.uploaded'));
+      }
+
+      return code;
+    },
+  });
+
+  return {
+    data,
+    loading,
+    webCrawl: mutateAsync,
+  };
+};
+
 export const useFetchDocumentThumbnailsByIds = () => {
   const [ids, setDocumentIds] = useState<string[]>([]);
   const { data } = useQuery<Record<string, string>>({
@@ -565,4 +563,27 @@ export const useFetchDocumentThumbnailsByIds = () => {
   });
 
   return { data, setDocumentIds };
+};
+
+export const useParseDocument = () => {
+  const {
+    data,
+    isPending: loading,
+    mutateAsync,
+  } = useMutation({
+    mutationKey: [DocumentApiAction.ParseDocument],
+    mutationFn: async (url: string) => {
+      try {
+        const { data } = await post(api.parse, { url });
+        if (data?.code === 0) {
+          message.success(i18n.t('message.uploaded'));
+        }
+        return data;
+      } catch (error) {
+        message.error('error');
+      }
+    },
+  });
+
+  return { parseDocument: mutateAsync, data, loading };
 };

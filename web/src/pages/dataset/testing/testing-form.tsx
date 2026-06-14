@@ -22,7 +22,6 @@ import {
   similarityThresholdSchema,
   vectorSimilarityWeightSchema,
 } from '@/components/similarity-slider';
-import { TopSelectFormItem } from '@/components/top-select';
 import { ButtonLoading } from '@/components/ui/button';
 import {
   Form,
@@ -34,7 +33,6 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { UseKnowledgeGraphFormField } from '@/components/use-knowledge-graph-item';
 import { useTestRetrieval } from '@/hooks/use-knowledge-request';
-import { ITestRetrievalRequestBody } from '@/interfaces/request/knowledge';
 import { trim } from 'lodash';
 import { Send } from 'lucide-react';
 import { useEffect } from 'react';
@@ -63,9 +61,8 @@ export default function TestingForm({
     ...vectorSimilarityWeightSchema,
     ...topKSchema,
     use_kg: z.boolean().optional(),
-    dataset_ids: z.array(z.string()).optional(),
+    kb_ids: z.array(z.string()).optional(),
     ...MetadataFilterSchema,
-    size: z.number().optional(),
   });
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -75,8 +72,7 @@ export default function TestingForm({
       ...initialVectorSimilarityWeightValue,
       ...initialTopKValue,
       use_kg: false,
-      dataset_ids: [knowledgeBaseId],
-      size: 10,
+      kb_ids: [knowledgeBaseId],
     },
   });
 
@@ -85,7 +81,7 @@ export default function TestingForm({
   const values = useWatch({ control: form.control });
 
   useEffect(() => {
-    setValues(values as ITestRetrievalRequestBody);
+    setValues(values as Required<z.infer<typeof formSchema>>);
   }, [setValues, values]);
 
   function onSubmit() {
@@ -109,7 +105,6 @@ export default function TestingForm({
               name={'cross_languages'}
             ></CrossLanguageFormField>
             <MetadataFilter prefix=""></MetadataFilter>
-            <TopSelectFormItem></TopSelectFormItem>
           </FormContainer>
         </div>
 
@@ -119,6 +114,7 @@ export default function TestingForm({
             name="question"
             render={({ field }) => (
               <FormItem>
+                {/* <FormLabel>{t('knowledgeDetails.testText')}</FormLabel> */}
                 <FormControl>
                   <Textarea {...field}></Textarea>
                 </FormControl>

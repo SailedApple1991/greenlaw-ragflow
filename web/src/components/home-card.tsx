@@ -18,7 +18,6 @@ interface IProps {
   icon?: React.ReactNode;
   testId?: string;
   showReleaseTime?: boolean;
-  extra?: ReactNode;
 }
 
 function Time({ time }: { time: string | number | undefined }) {
@@ -32,7 +31,6 @@ export function HomeCard({
   icon,
   testId,
   showReleaseTime = false,
-  extra,
 }: IProps) {
   const { t } = useTranslation();
 
@@ -83,7 +81,6 @@ export function HomeCard({
               <div className="whitespace-nowrap overflow-hidden text-ellipsis">
                 {data.description}
               </div>
-              {extra}
               <div className="flex justify-between items-center">
                 {showReleaseTime ? (
                   <section className="text-sm text-text-secondary space-y-1">

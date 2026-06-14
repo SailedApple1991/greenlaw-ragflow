@@ -1,8 +1,8 @@
-import { IDataset } from '@/interfaces/database/dataset';
+import { IKnowledge } from '@/interfaces/database/knowledge';
 import React, { createContext, ReactNode, useContext } from 'react';
 
 interface KnowledgeBaseContextType {
-  knowledgeBase: IDataset | null;
+  knowledgeBase: IKnowledge | null;
   loading: boolean;
 }
 
@@ -12,7 +12,7 @@ const KnowledgeBaseContext = createContext<
 
 export const KnowledgeBaseProvider: React.FC<{
   children: ReactNode;
-  knowledgeBase: IDataset | null;
+  knowledgeBase: IKnowledge | null;
   loading: boolean;
 }> = ({ children, knowledgeBase, loading }) => {
   return (

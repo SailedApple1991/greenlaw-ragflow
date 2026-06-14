@@ -50,18 +50,10 @@ export function MetadataFilter({
 
   const methodName = prefix + 'meta_data_filter.method';
 
-  const datasetIds: string[] = useWatch({
+  const kbIds: string[] = useWatch({
     control: form.control,
     name: prefix + 'dataset_ids',
   });
-
-  const oldKbIds: string[] = useWatch({
-    control: form.control,
-    name: prefix + 'kb_ids',
-  });
-
-  const kbIds = datasetIds || oldKbIds || [];
-
   const metadata = useWatch({
     control: form.control,
     name: methodName,

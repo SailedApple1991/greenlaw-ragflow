@@ -1,4 +1,3 @@
-import { FormLayout } from '@/constants/form';
 import { DocumentParserType } from '@/constants/knowledge';
 import { useTranslate } from '@/hooks/common-hooks';
 import { cn } from '@/lib/utils';
@@ -13,7 +12,6 @@ import { useCallback, useMemo } from 'react';
 import { useFormContext, useWatch } from 'react-hook-form';
 import { EntityTypesFormField } from '../entity-types-form-field';
 import { FormContainer } from '../form-container';
-import { SliderInputFormField } from '../slider-input-form-field';
 import {
   FormControl,
   FormField,
@@ -37,7 +35,6 @@ export const showTagItems = (parserId: DocumentParserType) => {
 const enum MethodValue {
   General = 'general',
   Light = 'light',
-  NER = 'ner',
 }
 
 export const excludedParseMethods = [
@@ -125,12 +122,10 @@ const GraphRagItems = ({
   });
 
   const methodOptions = useMemo(() => {
-    return [MethodValue.Light, MethodValue.General /*, MethodValue.NER*/].map(
-      (x) => ({
-        value: x,
-        label: x === MethodValue.NER ? 'NER' : upperFirst(x),
-      }),
-    );
+    return [MethodValue.Light, MethodValue.General].map((x) => ({
+      value: x,
+      label: upperFirst(x),
+    }));
   }, []);
 
   const renderWideTooltip = useCallback(
@@ -192,19 +187,6 @@ const GraphRagItems = ({
               </FormItem>
             )}
           />
-
-          <SliderInputFormField
-            name="parser_config.graphrag.batch_chunk_token_size"
-            label={t('graphRagBatchChunkTokenSize')}
-            tooltip={t('graphRagBatchChunkTokenSizeTip')}
-            max={8196}
-            min={512}
-            step={1}
-            defaultValue={4096}
-            layout={FormLayout.Horizontal}
-            sliderTestId="ds-settings-graph-batch-chunk-token-size-slider"
-            numberInputTestId="ds-settings-graph-batch-chunk-token-size-input"
-          ></SliderInputFormField>
 
           <FormField
             control={form.control}

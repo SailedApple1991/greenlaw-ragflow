@@ -1,8 +1,10 @@
+import { LlmModelType } from '@/constants/knowledge';
 import { useSetModalState } from '@/hooks/common-hooks';
 
 import { useFetchKnowledgeBaseConfiguration } from '@/hooks/use-knowledge-request';
+import { useSelectLlmOptionsByModelType } from '@/hooks/use-llm-request';
 import { useSelectParserList } from '@/hooks/use-user-setting-request';
-import { checkEmbedding } from '@/services/knowledge-service';
+import kbService from '@/services/knowledge-service';
 import { useIsFetching } from '@tanstack/react-query';
 import { pick } from 'lodash';
 import { useCallback, useEffect, useState } from 'react';
@@ -20,11 +22,16 @@ export function useSelectChunkMethodList() {
   return parserList.filter((x) => !HiddenFields.some((y) => y === x.value));
 }
 
+export function useSelectEmbeddingModelOptions() {
+  const allOptions = useSelectLlmOptionsByModelType();
+  return allOptions[LlmModelType.Embedding];
+}
+
 export function useHasParsedDocument(isEdit?: boolean) {
   const { data: knowledgeDetails } = useFetchKnowledgeBaseConfiguration({
     isEdit,
   });
-  return knowledgeDetails.chunk_count > 0;
+  return knowledgeDetails.chunk_num > 0;
 }
 
 export const useFetchKnowledgeConfigurationOnMount = (
@@ -40,8 +47,6 @@ export const useFetchKnowledgeConfigurationOnMount = (
       raptor: {
         ...form.formState?.defaultValues?.parser_config?.raptor,
         ...knowledgeDetails.parser_config?.raptor,
-        clustering_method:
-          knowledgeDetails.parser_config?.raptor?.ext?.clustering_method,
         use_raptor: true,
       },
       graphrag: {
@@ -61,8 +66,8 @@ export const useFetchKnowledgeConfigurationOnMount = (
         'pagerank',
         'avatar',
       ]),
-      embedding_model: knowledgeDetails.embedding_model,
-      chunk_method: knowledgeDetails.chunk_method,
+      embedding_model: knowledgeDetails.embd_id,
+      chunk_method: knowledgeDetails.parser_id,
     } as z.infer<typeof formSchema>;
     form.reset(formValues);
   }, [form, knowledgeDetails]);
@@ -103,7 +108,8 @@ export const useHandleKbEmbedding = () => {
   const knowledgeBaseId = searchParams.get('id') || id;
   const handleChange = useCallback(
     async ({ embed_id }: { embed_id: string }) => {
-      const res = await checkEmbedding(knowledgeBaseId || '', {
+      const res = await kbService.checkEmbedding({
+        kb_id: knowledgeBaseId,
         embd_id: embed_id,
       });
       return res.data;

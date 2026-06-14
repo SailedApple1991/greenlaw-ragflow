@@ -82,7 +82,6 @@ export const useHandleConnectToKnowledge = () => {
   const { connectFileToKnowledge: connectToKnowledge, loading } =
     useConnectToKnowledge();
   const [record, setRecord] = useState<IFile>({} as IFile);
-  const [documentIds, setDocumentIds] = useState<string[]>([]);
 
   const initialValue = useMemo(() => {
     return Array.isArray(record?.kbs_info)
@@ -93,7 +92,7 @@ export const useHandleConnectToKnowledge = () => {
   const onConnectToKnowledgeOk = useCallback(
     async (knowledgeIds: string[]) => {
       const ret = await connectToKnowledge({
-        fileIds: documentIds,
+        fileIds: [record.id],
         kbIds: knowledgeIds,
       });
 
@@ -102,19 +101,12 @@ export const useHandleConnectToKnowledge = () => {
       }
       return ret;
     },
-    [connectToKnowledge, hideConnectToKnowledgeModal, documentIds],
+    [connectToKnowledge, hideConnectToKnowledgeModal, record.id],
   );
 
   const handleShowConnectToKnowledgeModal = useCallback(
-    (documents: IFile | string[]) => {
-      if (Array.isArray(documents)) {
-        setDocumentIds(documents);
-        setRecord({} as IFile);
-      } else {
-        setRecord(documents);
-        setDocumentIds([documents.id]);
-      }
-
+    (record: IFile) => {
+      setRecord(record);
       showConnectToKnowledgeModal();
     },
     [showConnectToKnowledgeModal],

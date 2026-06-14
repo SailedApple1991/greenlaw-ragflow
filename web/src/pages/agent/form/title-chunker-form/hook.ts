@@ -1,17 +1,15 @@
-import { cloneDeep } from 'lodash';
-import { useMemo } from 'react';
+import { isEmpty } from 'lodash';
+import { useEffect, useMemo } from 'react';
 import { UseFormReturn, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { TitleChunkerFormSchemaType } from '.';
-import {
-  Hierarchy,
-  originalRules,
-  TitleChunkerMethod,
-} from '../../constant/pipeline';
+import { Hierarchy, initialTitleChunkerValues } from '../../constant/pipeline';
+
+// type initialValuesType = typeof initialHierarchicalMergerValues;
 
 function transformLevelsToRules(levels: any[]) {
   if (!Array.isArray(levels)) {
-    return originalRules;
+    return initialTitleChunkerValues.rules;
   }
 
   return levels
@@ -55,81 +53,82 @@ function filterEmptyRules(rules: any[]) {
     .filter((rule) => rule !== null);
 }
 
+// function isRulesFormatCorrect(rules: any): boolean {
+//   if (!rules || !Array.isArray(rules)) {
+//     return false;
+//   }
+//   if (rules.length === 0) {
+//     return false;
+//   }
+//   if (!rules[0] || typeof rules[0] !== 'object') {
+//     return false;
+//   }
+//   if (!Array.isArray(rules[0].levels)) {
+//     return false;
+//   }
+//   return true;
+// }
+
 function transformApiResponseToForm(
   apiData: Record<string, any>,
 ): TitleChunkerFormSchemaType {
-  const method = apiData.method as TitleChunkerMethod;
+  if (!apiData) {
+    return apiData;
+  }
+
+  if (isEmpty(apiData)) {
+    return apiData as TitleChunkerFormSchemaType;
+  }
+
+  const method = apiData.method as 'hierarchy' | 'group';
 
   let hierarchy = apiData.hierarchy;
   if (typeof hierarchy === 'number') {
     hierarchy = String(hierarchy);
   }
-
-  // Split hierarchy into two fields by method, and support backward compatibility
-  // with the single `hierarchy` field.
-  let hierarchyHierarchy = apiData.hierarchyHierarchy;
-  let hierarchyGroup = apiData.hierarchyGroup;
-
-  if (!hierarchyHierarchy && !hierarchyGroup && hierarchy) {
-    if (method === TitleChunkerMethod.Hierarchy) {
-      hierarchyHierarchy = hierarchy;
-    } else if (method === TitleChunkerMethod.Group) {
-      hierarchyGroup = hierarchy;
-    }
+  if (method === 'group' && !hierarchy) {
+    hierarchy = '0';
   }
 
-  if (method === TitleChunkerMethod.Group && !hierarchyGroup) {
-    hierarchyGroup = '0';
-  }
-  if (method === TitleChunkerMethod.Hierarchy && !hierarchyHierarchy) {
-    hierarchyHierarchy = hierarchy || Hierarchy.H3;
-  }
-
-  // Extract the new-format rules field, or fall back to legacy formats.
   let rules = apiData.rules;
-  // Check whether the API returned the oldest `levels` format (array of string arrays).
   const hasLevelsData = apiData.levels && Array.isArray(apiData.levels);
 
   if (hasLevelsData) {
-    // Convert the legacy `levels` structure into the modern `rules` shape.
     rules = transformLevelsToRules(apiData.levels);
   } else if (rules && Array.isArray(rules)) {
-    // Clean up the current-format rules by stripping out empty expressions.
     rules = filterEmptyRules(rules);
   }
 
-  // Backward compatibility: older versions only had a generic `rules` field,
-  // while newer versions split it into `hierarchyRules` and `groupRules`.
-  // When the backend returns legacy data, migrate the old `rules` to the
-  // corresponding new field based on the current `method` so that user
-  // configurations are not lost.
-  let hierarchyRules = apiData.hierarchyRules;
-  let groupRules = apiData.groupRules;
+  //   const rulesFormatCorrect = isRulesFormatCorrect(rules);
 
-  if (!hierarchyRules) {
-    if (method === TitleChunkerMethod.Hierarchy) {
-      hierarchyRules = cloneDeep(rules) || cloneDeep(originalRules);
-    } else {
-      hierarchyRules = cloneDeep(originalRules);
-    }
-  }
+  //   if (method === 'group') {
+  //     if (rulesFormatCorrect) {
+  //       return {
+  //         method,
+  //         hierarchy,
+  //         rules,
+  //       };
+  //     }
+  //     return {
+  //       method,
+  //       hierarchy,
+  //       rules,
+  //     };
+  //   }
 
-  if (!groupRules) {
-    if (method === TitleChunkerMethod.Group) {
-      groupRules = cloneDeep(rules) || cloneDeep(originalRules);
-    } else {
-      groupRules = cloneDeep(originalRules);
-    }
-  }
+  //   if (rulesFormatCorrect && method === 'hierarchy') {
+  //     return {
+  //       method,
+  //       hierarchy,
+  //       rules,
+  //     };
+  //   }
 
   return {
     method,
-    hierarchyHierarchy,
-    hierarchyGroup,
+    hierarchy,
     include_heading_content: Boolean(apiData.include_heading_content),
-    root_chunk_as_heading: Boolean(apiData.root_chunk_as_heading),
-    hierarchyRules,
-    groupRules,
+    rules,
   };
 }
 
@@ -164,12 +163,13 @@ export function useDynamicHierarchyOptions(
   const { t } = useTranslation();
   const rules = useWatch({ name, control: form?.control });
   const method = useWatch({ name: 'method', control: form?.control });
+  const currentHierarchy = form.watch('hierarchy');
 
   const hierarchyOptions = useMemo(() => {
     const maxLevelCount = calculateMaxLevelCount(rules);
     const options = getDynamicHierarchyOptions(maxLevelCount);
 
-    if (method === TitleChunkerMethod.Group) {
+    if (method === 'group') {
       return [
         { label: t('common.automatic', 'Automatic'), value: '0' },
         ...options,
@@ -178,6 +178,18 @@ export function useDynamicHierarchyOptions(
 
     return options;
   }, [method, rules, t]);
+
+  useEffect(() => {
+    if (!currentHierarchy || !form) {
+      return;
+    }
+
+    const maxOptionValue = hierarchyOptions[hierarchyOptions.length - 1]?.value;
+
+    if (maxOptionValue && currentHierarchy > maxOptionValue) {
+      form.setValue('hierarchy', maxOptionValue);
+    }
+  }, [currentHierarchy, hierarchyOptions, form]);
 
   return hierarchyOptions;
 }

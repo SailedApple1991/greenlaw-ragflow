@@ -4,7 +4,6 @@ import { CodeOutputContract } from '../../form/code-form/utils';
 const SYSTEM_OUTPUT_NAMES = new Set([
   '_ERROR',
   '_ARTIFACTS',
-  'attachments',
   '_ATTACHMENT_CONTENT',
 ]);
 

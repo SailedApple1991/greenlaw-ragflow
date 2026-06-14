@@ -418,8 +418,8 @@ export default {
       FishAudioLink: 'Cómo usar FishAudio',
       TencentCloudLink: 'Cómo usar TencentCloud ASR',
       volcModelNameMessage: '¡Por favor ingresa el nombre de tu modelo!',
-      addEndpointID: 'Model ID',
-      endpointIDMessage: '¡Por favor ingresa el Model ID del modelo!',
+      addEndpointID: 'EndpointID del modelo',
+      endpointIDMessage: '¡Por favor ingresa el EndpointID del modelo!',
       addArkApiKey: 'VOLC ARK_API_KEY',
       ArkApiKeyMessage: '¡Por favor ingresa tu ARK_API_KEY!',
       bedrockModelNameMessage: '¡Por favor ingresa el nombre de tu modelo!',
@@ -945,7 +945,6 @@ export default {
       bulgarian: 'Búlgaro',
       arabic: 'Árabe',
       turkish: 'Turco',
-      korean: 'Coreano',
     },
   },
 };

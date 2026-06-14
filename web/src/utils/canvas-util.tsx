@@ -73,10 +73,6 @@ function getNodeOutputs(x: BaseNode) {
       type: JsonSchemaDataType.String,
       value: '',
     },
-    attachments: outputs.attachments ?? {
-      type: 'Array<String>',
-      value: [],
-    },
   };
 }
 

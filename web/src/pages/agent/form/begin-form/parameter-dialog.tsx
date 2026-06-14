@@ -210,7 +210,7 @@ export function ParameterDialog({
 
   return (
     <Dialog open onOpenChange={hideModal}>
-      <DialogContent className="max-h-[80vh] overflow-y-auto">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>{t('flow.variableSettings')}</DialogTitle>
         </DialogHeader>

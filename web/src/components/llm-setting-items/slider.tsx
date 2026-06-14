@@ -2,7 +2,6 @@ import { useTranslate } from '@/hooks/common-hooks';
 import { cn } from '@/lib/utils';
 import { forwardRef } from 'react';
 import { useFormContext } from 'react-hook-form';
-import NumberInput from '../originui/number-input';
 import { SingleFormSlider } from '../ui/dual-range-slider';
 import {
   FormControl,
@@ -11,6 +10,7 @@ import {
   FormLabel,
   FormMessage,
 } from '../ui/form';
+import { NumberInput } from '../ui/input';
 import { Switch } from '../ui/switch';
 
 type SliderInputSwitchFormFieldProps = {
@@ -95,12 +95,14 @@ export const SliderInputSwitchFormField = forwardRef<
               <FormControl>
                 <NumberInput
                   disabled={disabled}
-                  className={cn('h-6 w-16', numberInputClassName)}
+                  className={cn(
+                    'h-6 w-10 p-1 border border-border-button rounded-sm',
+                    numberInputClassName,
+                  )}
                   max={max}
                   min={min}
                   step={step}
                   {...field}
-                  hideIcons
                   onChange={(value: number) => {
                     onChange?.(value);
                     field.onChange(value);

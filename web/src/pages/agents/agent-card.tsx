@@ -1,7 +1,6 @@
 import { HomeCard } from '@/components/home-card';
 import { MoreButton } from '@/components/more-button';
 import { SharedBadge } from '@/components/shared-badge';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { AgentCategory } from '@/constants/agent';
 import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
@@ -13,23 +12,6 @@ import { useRenameAgent } from './use-rename-agent';
 export type DatasetCardProps = {
   data: IFlow;
 } & Pick<ReturnType<typeof useRenameAgent>, 'showAgentRenameModal'>;
-
-function AgentTags({ tags }: { tags?: string }) {
-  const list = (tags || '')
-    .split(',')
-    .map((t) => t.trim())
-    .filter(Boolean);
-  if (list.length === 0) return null;
-  return (
-    <div className="flex flex-wrap gap-1 mt-1">
-      {list.map((tag) => (
-        <Badge key={tag} variant="secondary" className="text-xs font-normal">
-          {tag}
-        </Badge>
-      ))}
-    </div>
-  );
-}
 
 export function AgentCard({ data, showAgentRenameModal }: DatasetCardProps) {
   const { navigateToAgent } = useNavigatePage();
@@ -62,7 +44,6 @@ export function AgentCard({ data, showAgentRenameModal }: DatasetCardProps) {
           </Button>
         )
       }
-      extra={<AgentTags tags={data.tags} />}
       showReleaseTime
     />
   );

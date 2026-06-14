@@ -6,10 +6,14 @@ import { BeginQuery } from '../interface';
 import { buildBeginQueryWithObject } from '../utils';
 type IAwaitCompentData = {
   derivedMessages: IMessage[];
-  sendFormMessage: (params: { inputs: Record<string, BeginQuery> }) => void;
+  sendFormMessage: (params: {
+    inputs: Record<string, BeginQuery>;
+    id: string;
+  }) => void;
+  canvasId: string;
 };
-const useAwaitComponentData = (props: IAwaitCompentData) => {
-  const { derivedMessages, sendFormMessage } = props;
+const useAwaitCompentData = (props: IAwaitCompentData) => {
+  const { derivedMessages, sendFormMessage, canvasId } = props;
 
   const getInputs = useCallback((message: Message) => {
     return get(message, 'data.inputs', {}) as Record<string, BeginQuery>;
@@ -33,12 +37,13 @@ const useAwaitComponentData = (props: IAwaitCompentData) => {
       const nextInputs = buildBeginQueryWithObject(inputs, values);
       sendFormMessage({
         inputs: nextInputs,
+        id: canvasId,
       });
     },
-    [getInputs, sendFormMessage],
+    [getInputs, sendFormMessage, canvasId],
   );
 
-  const isWaiting = useMemo(() => {
+  const isWaitting = useMemo(() => {
     const temp = derivedMessages?.some((message, i) => {
       const flag =
         message.role === MessageType.Assistant &&
@@ -48,7 +53,7 @@ const useAwaitComponentData = (props: IAwaitCompentData) => {
     });
     return temp;
   }, [derivedMessages]);
-  return { getInputs, buildInputList, handleOk, isWaiting };
+  return { getInputs, buildInputList, handleOk, isWaitting };
 };
 
-export { useAwaitComponentData };
+export { useAwaitCompentData };

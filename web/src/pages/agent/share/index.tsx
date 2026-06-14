@@ -6,12 +6,12 @@ import PdfSheet from '@/components/pdf-drawer';
 import { useClickDrawer } from '@/components/pdf-drawer/hooks';
 import { useSyncThemeFromParams } from '@/components/theme-provider';
 import { MessageType } from '@/constants/chat';
-import { useUploadAgentFileWithProgress } from '@/hooks/use-agent-request';
+import { useUploadCanvasFileWithProgress } from '@/hooks/use-agent-request';
 import { cn } from '@/lib/utils';
 import i18n, { changeLanguageAsync } from '@/locales/config';
 import DebugContent from '@/pages/agent/debug-content';
 import { useCacheChatLog } from '@/pages/agent/hooks/use-cache-chat-log';
-import { useAwaitComponentData } from '@/pages/agent/hooks/use-chat-logic';
+import { useAwaitCompentData } from '@/pages/agent/hooks/use-chat-logic';
 import { buildMessageUuidWithRole } from '@/utils/chat';
 import { isEmpty } from 'lodash';
 import React, { forwardRef, useCallback } from 'react';
@@ -33,8 +33,8 @@ const ChatContainer = () => {
   const { visible, hideModal, documentId, selectedChunk, clickDocumentButton } =
     useClickDrawer();
 
-  const { uploadAgentFile, loading } =
-    useUploadAgentFileWithProgress(conversationId);
+  const { uploadCanvasFile, loading } =
+    useUploadCanvasFileWithProgress(conversationId);
   const {
     addEventList,
     setCurrentMessageId,
@@ -64,9 +64,10 @@ const ChatContainer = () => {
     resetSession,
   } = useSendNextSharedMessage(addEventList);
 
-  const { buildInputList, handleOk, isWaiting } = useAwaitComponentData({
+  const { buildInputList, handleOk, isWaitting } = useAwaitCompentData({
     derivedMessages,
     sendFormMessage,
+    canvasId: conversationId as string,
   });
   const sendDisabled = useSendButtonDisabled(value);
 
@@ -79,10 +80,10 @@ const ChatContainer = () => {
   const handleUploadFile: NonNullable<FileUploadProps['onUpload']> =
     useCallback(
       async (files, options) => {
-        const ret = await uploadAgentFile({ files, options });
+        const ret = await uploadCanvasFile({ files, options });
         appendUploadResponseList(ret.data, files);
       },
-      [appendUploadResponseList, uploadAgentFile],
+      [appendUploadResponseList, uploadCanvasFile],
     );
 
   React.useEffect(() => {
@@ -190,8 +191,8 @@ const ChatContainer = () => {
                 <NextMessageInput
                   isShared
                   value={value}
-                  disabled={hasError || isWaiting}
-                  sendDisabled={sendDisabled || isWaiting}
+                  disabled={hasError || isWaitting}
+                  sendDisabled={sendDisabled || isWaitting}
                   resize="vertical"
                   conversationId={conversationId}
                   onInputChange={handleInputChange}
@@ -199,7 +200,7 @@ const ChatContainer = () => {
                   sendLoading={sendLoading}
                   stopOutputMessage={stopOutputMessage}
                   onUpload={handleUploadFile}
-                  isUploading={loading || isWaiting}
+                  isUploading={loading || isWaitting}
                 ></NextMessageInput>
               </div>
             </div>

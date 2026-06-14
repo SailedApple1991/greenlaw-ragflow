@@ -1,4 +1,4 @@
-import { useFetchDefaultModelDictionary } from '@/hooks/use-llm-request';
+import { useFetchModelId } from '@/hooks/logic-hooks';
 import { Connection, Node, Position, ReactFlowInstance } from '@xyflow/react';
 import humanId from 'human-id';
 import { t } from 'i18next';
@@ -13,7 +13,6 @@ import {
   initialArXivValues,
   initialBeginValues,
   initialBingValues,
-  initialBrowserValues,
   initialCategorizeValues,
   initialCodeValues,
   initialCrawlerValues,
@@ -76,7 +75,7 @@ const GroupStartNodeMap = {
       name: Operator.IterationStart,
       form: initialIterationStartValues,
     },
-    extent: 'parent' as const,
+    extent: 'parent' as 'parent',
   },
   [Operator.Loop]: {
     id: `${Operator.LoopStart}:${humanId()}`,
@@ -87,7 +86,7 @@ const GroupStartNodeMap = {
       name: Operator.LoopStart,
       form: {},
     },
-    extent: 'parent' as const,
+    extent: 'parent' as 'parent',
   },
 };
 
@@ -123,17 +122,13 @@ function useAddGroupNode() {
   return { addGroupNode };
 }
 export const useInitializeOperatorParams = () => {
-  const defaultModelDictionary = useFetchDefaultModelDictionary();
-  const llmId = defaultModelDictionary.llm_id;
+  const llmId = useFetchModelId();
 
   const initialFormValuesMap = useMemo(() => {
     return {
       [Operator.Begin]: initialBeginValues,
       [Operator.Retrieval]: initialRetrievalValues,
-      [Operator.Categorize]: {
-        ...initialCategorizeValues,
-        llm_id: llmId,
-      },
+      [Operator.Categorize]: { ...initialCategorizeValues, llm_id: llmId },
       [Operator.RewriteQuestion]: {
         ...initialRewriteQuestionValues,
         llm_id: llmId,
@@ -186,7 +181,6 @@ export const useInitializeOperatorParams = () => {
       [Operator.LoopStart]: {},
       [Operator.ExitLoop]: {},
       [Operator.DocGenerator]: initialDocGeneratorValues,
-      [Operator.Browser]: { ...initialBrowserValues, llm_id: llmId },
       [Operator.ExcelProcessor]: {},
     };
   }, [llmId]);

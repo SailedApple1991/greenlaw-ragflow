@@ -109,7 +109,6 @@ export enum Operator {
   StringTransform = 'StringTransform',
   SearXNG = 'SearXNG',
   DocGenerator = 'DocGenerator',
-  Browser = 'Browser',
   Placeholder = 'Placeholder',
   DataOperations = 'DataOperations',
   ListOperations = 'ListOperations',

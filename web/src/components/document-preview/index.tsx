@@ -1,6 +1,5 @@
 import { memo } from 'react';
 
-import { Images } from '@/constants/common';
 import CSVFileViewer from './csv-preview';
 import { DocPreviewer } from './doc-preview';
 import { ExcelCsvPreviewer } from './excel-preview';
@@ -16,13 +15,13 @@ type PreviewProps = {
   className?: string;
   url: string;
 };
-const DocumentPreview = function ({
+const Preview = ({
   fileType,
   className,
   highlights,
   setWidthAndHeight,
   url,
-}: PreviewProps & Partial<IProps>) {
+}: PreviewProps & Partial<IProps>) => {
   return (
     <>
       {fileType === 'pdf' && highlights && setWidthAndHeight && (
@@ -45,7 +44,9 @@ const DocumentPreview = function ({
           <TxtPreviewer className={className} url={url} />
         </section>
       )}
-      {Images.indexOf(fileType) > -1 && (
+      {['jpg', 'png', 'gif', 'jpeg', 'svg', 'bmp', 'ico', 'tif'].indexOf(
+        fileType,
+      ) > -1 && (
         <section>
           <ImagePreviewer className={className} url={url} />
         </section>
@@ -90,4 +91,4 @@ const DocumentPreview = function ({
     </>
   );
 };
-export default memo(DocumentPreview);
+export default memo(Preview);

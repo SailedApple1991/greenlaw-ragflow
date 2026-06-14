@@ -3,7 +3,6 @@ import AgentForm from '../form/agent-form';
 import ArXivForm from '../form/arxiv-form';
 import BeginForm from '../form/begin-form';
 import BingForm from '../form/bing-form';
-import BrowserForm from '../form/browser-use-form';
 import CategorizeForm from '../form/categorize-form';
 import CodeForm from '../form/code-form';
 import CrawlerForm from '../form/crawler-form';
@@ -114,9 +113,6 @@ export const FormConfigMap = {
   },
   [Operator.DocGenerator]: {
     component: DocGeneratorForm,
-  },
-  [Operator.Browser]: {
-    component: BrowserForm,
   },
   [Operator.Note]: {
     component: () => <></>,

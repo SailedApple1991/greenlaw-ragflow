@@ -8,7 +8,6 @@ import {
   LanguageAbbreviationMap,
 } from '@/constants/common';
 import { useTranslate } from '@/hooks/common-hooks';
-import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
 import { useCallback, useMemo, useState } from 'react';
 
 type IEmbedAppModalProps = {
@@ -17,14 +16,13 @@ type IEmbedAppModalProps = {
   token: string;
   from: string;
   setOpen: (e: any) => void;
+  tenantId: string;
   beta?: string;
 };
 
 const EmbedAppModal = (props: IEmbedAppModalProps) => {
   const { t } = useTranslate('search');
-  const { data: tenantInfo } = useFetchTenantInfo();
-  const tenantId = tenantInfo.tenant_id;
-  const { open, setOpen, token = '', from, url, beta = '' } = props;
+  const { open, setOpen, token = '', from, url, tenantId, beta = '' } = props;
 
   const [hideAvatar, setHideAvatar] = useState(false);
   const [locale, setLocale] = useState('');

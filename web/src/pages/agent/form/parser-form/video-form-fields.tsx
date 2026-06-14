@@ -1,39 +1,38 @@
+import { LlmModelType } from '@/constants/knowledge';
+import { useComposeLlmOptionsByModelTypes } from '@/hooks/use-llm-request';
 import {
-  ModelTreeSelectFormField,
-  ModelTypeMap,
-} from '@/components/model-tree-select';
-import { useTranslation } from 'react-i18next';
-import { OutputFormatFormFieldProps } from './common-form-fields';
-import { buildFieldNameWithPrefix } from './utils';
+  LargeModelFormField,
+  OutputFormatFormFieldProps,
+} from './common-form-fields';
 
 export function AudioFormFields({ prefix }: OutputFormatFormFieldProps) {
-  const { t } = useTranslation();
+  const modelOptions = useComposeLlmOptionsByModelTypes([
+    LlmModelType.Speech2text,
+  ]);
 
   return (
     <>
       {/* Multimodal Model */}
-      <ModelTreeSelectFormField
-        name={buildFieldNameWithPrefix('vlm.llm_id', prefix)}
-        label={t('chat.model')}
-        modelTypes={ModelTypeMap.asr_id}
-        allowClear
-      />
+      <LargeModelFormField
+        prefix={prefix}
+        options={modelOptions}
+      ></LargeModelFormField>
     </>
   );
 }
 
 export function VideoFormFields({ prefix }: OutputFormatFormFieldProps) {
-  const { t } = useTranslation();
+  const modelOptions = useComposeLlmOptionsByModelTypes([
+    LlmModelType.Image2text,
+  ]);
 
   return (
     <>
       {/* Multimodal Model */}
-      <ModelTreeSelectFormField
-        name={buildFieldNameWithPrefix('vlm.llm_id', prefix)}
-        label={t('chat.model')}
-        modelTypes={ModelTypeMap.img2txt_id}
-        allowClear
-      />
+      <LargeModelFormField
+        prefix={prefix}
+        options={modelOptions}
+      ></LargeModelFormField>
     </>
   );
 }
