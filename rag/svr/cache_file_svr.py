@@ -15,12 +15,9 @@
 #
 import logging
 import time
-import traceback
 
 from api.db.db_models import close_connection
 from api.db.services.task_service import TaskService
-from rag.utils.redis_conn import REDIS_CONN
-from common import settings
 
 
 def collect():
@@ -33,26 +30,13 @@ def collect():
 
 
 def main():
+    # Redis file caching removed: task_executor reads directly from object
+    # storage via settings.STORAGE_IMPL.get(), so pre-caching files in Redis
+    # was redundant (no consumer ever read from the cache).
     locations = collect()
     if not locations:
         return
     logging.info(f"TASKS: {len(locations)}")
-    for kb_id, loc in locations:
-        try:
-            if REDIS_CONN.is_alive():
-                try:
-                    key = "{}/{}".format(kb_id, loc)
-                    if REDIS_CONN.exist(key):
-                        continue
-                    file_bin = settings.STORAGE_IMPL.get(kb_id, loc)
-                    REDIS_CONN.transaction(key, file_bin, 12 * 60)
-                    logging.info("CACHE: {}".format(loc))
-                except Exception as e:
-                    logging.error(f"Error to get data from REDIS: {e}")
-                    traceback.print_stack()
-        except Exception as e:
-            logging.error(f"Error to check REDIS connection: {e}")
-            traceback.print_stack()
 
 
 if __name__ == "__main__":
