@@ -563,13 +563,19 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
         task_names.append("keyword")
 
     if need_meta_filter:
-        metas = DocMetadataService.get_flatted_meta_by_kbs(dialog.kb_ids)
+        # Pushdown-aware: pass kb_ids + lazy metas_loader so the ES push-down
+        # path (DocMetadataService.filter_doc_ids_by_meta_pushdown) can skip the
+        # expensive get_flatted_meta_by_kbs round-trip; the loader is only
+        # invoked on the in-memory fallback. Kept inside the fork's parallel
+        # asyncio.gather block so it still runs alongside cross_lang/keyword.
         parallel_tasks.append(apply_meta_data_filter(
             dialog.meta_data_filter,
-            metas,
+            None,
             questions[-1],
             chat_mdl,
             attachments,
+            kb_ids=dialog.kb_ids,
+            metas_loader=lambda: DocMetadataService.get_flatted_meta_by_kbs(dialog.kb_ids),
         ))
         task_names.append("meta_filter")
 
@@ -1386,8 +1392,15 @@ async def async_ask(question, kb_ids, tenant_id, chat_llm_name=None, search_conf
     tenant_ids = list(set([kb.tenant_id for kb in kbs]))
 
     if meta_data_filter:
-        metas = DocMetadataService.get_flatted_meta_by_kbs(kb_ids)
-        doc_ids = await apply_meta_data_filter(meta_data_filter, metas, question, chat_mdl, doc_ids)
+        doc_ids = await apply_meta_data_filter(
+            meta_data_filter,
+            None,
+            question,
+            chat_mdl,
+            doc_ids,
+            kb_ids=kb_ids,
+            metas_loader=lambda: DocMetadataService.get_flatted_meta_by_kbs(kb_ids),
+        )
 
     kbinfos = await retriever.retrieval(
         question=question,
@@ -1462,8 +1475,15 @@ async def gen_mindmap(question, kb_ids, tenant_id, search_config={}):
         rerank_mdl = LLMBundle(tenant_id, LLMType.RERANK, rerank_id)
 
     if meta_data_filter:
-        metas = DocMetadataService.get_flatted_meta_by_kbs(kb_ids)
-        doc_ids = await apply_meta_data_filter(meta_data_filter, metas, question, chat_mdl, doc_ids)
+        doc_ids = await apply_meta_data_filter(
+            meta_data_filter,
+            None,
+            question,
+            chat_mdl,
+            doc_ids,
+            kb_ids=kb_ids,
+            metas_loader=lambda: DocMetadataService.get_flatted_meta_by_kbs(kb_ids),
+        )
 
     ranks = await settings.retriever.retrieval(
         question=question,
