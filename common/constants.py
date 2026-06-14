@@ -66,6 +66,11 @@ class StatusEnum(Enum):
     INVALID = "0"
 
 
+class ActiveStatusEnum(Enum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+
+
 class ActiveEnum(Enum):
     ACTIVE = "1"
     INACTIVE = "0"
@@ -256,4 +261,9 @@ PADDLEOCR_DEFAULT_CONFIG = {
     "PADDLEOCR_API_URL": "",
     "PADDLEOCR_ACCESS_TOKEN": None,
     "PADDLEOCR_ALGORITHM": "PaddleOCR-VL",
+}
+
+OPENDATALOADER_ENV_KEYS = ["OPENDATALOADER_APISERVER"]
+OPENDATALOADER_DEFAULT_CONFIG = {
+    "OPENDATALOADER_APISERVER": "",
 }
