@@ -48,6 +48,7 @@ from common.constants import SANDBOX_ARTIFACT_BUCKET, VALID_TASK_STATUS, ParserT
 from common.file_utils import get_project_base_directory
 from common.metadata_utils import convert_conditions, meta_filter, turn2jsonschema
 from common.misc_utils import get_uuid, thread_pool_exec
+from common.ssrf_guard import assert_url_is_safe
 from deepdoc.parser.html_parser import RAGFlowHtmlParser
 from rag.nlp import rag_tokenizer, search
 
@@ -1004,6 +1005,7 @@ async def upload_info():
 
     try:
         if url and not file_objs:
+            assert_url_is_safe(url)
             return get_json_result(data=FileService.upload_info(current_user.id, None, url))
 
         if len(file_objs) == 1:
