@@ -28,7 +28,7 @@ import json_repair
 import litellm
 import openai
 from openai import AsyncOpenAI, OpenAI
-from strenum import StrEnum
+from enum import StrEnum
 
 from common.token_utils import num_tokens_from_string, total_token_count_from_response
 from rag.llm import FACTORY_DEFAULT_BASE_URL, LITELLM_PROVIDER_PREFIX, SupportedLiteLLMProvider
