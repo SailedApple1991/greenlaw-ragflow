@@ -645,11 +645,27 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
     else:
         questions = questions[-1:]
 
-    if prompt_config.get("cross_languages"):
-        questions = [await cross_languages(dialog.tenant_id, dialog.llm_id, questions[0], prompt_config["cross_languages"])]
+    # fork perf: run cross_languages, keyword_extraction, and meta_data_filter in
+    # parallel — they are independent operations on the refined question (a49da39a8).
+    need_cross_lang = prompt_config.get("cross_languages")
+    need_keyword = prompt_config.get("keyword", False)
+    need_meta_filter = dialog.meta_data_filter
 
-    if dialog.meta_data_filter:
-        attachments = await apply_meta_data_filter(
+    parallel_tasks = []
+    task_names = []
+
+    if need_cross_lang:
+        parallel_tasks.append(cross_languages(dialog.tenant_id, dialog.llm_id, questions[0], prompt_config["cross_languages"]))
+        task_names.append("cross_languages")
+
+    if need_keyword:
+        parallel_tasks.append(keyword_extraction(chat_mdl, questions[-1]))
+        task_names.append("keyword")
+
+    if need_meta_filter:
+        # pushdown-aware (v0.26): lazy metas_loader so ES push-down can skip the
+        # expensive get_flatted_meta_by_kbs round-trip; still inside the parallel block.
+        parallel_tasks.append(apply_meta_data_filter(
             dialog.meta_data_filter,
             None,
             questions[-1],
@@ -657,10 +673,34 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             attachments,
             kb_ids=dialog.kb_ids,
             metas_loader=lambda: DocMetadataService.get_flatted_meta_by_kbs(dialog.kb_ids),
-        )
+        ))
+        task_names.append("meta_filter")
 
-    if prompt_config.get("keyword", False):
-        questions[-1] = questions[-1] + "," + await keyword_extraction(chat_mdl, questions[-1])
+    if parallel_tasks:
+        results = await asyncio.gather(*parallel_tasks, return_exceptions=True)
+        result_map = dict(zip(task_names, results))
+
+        if "cross_languages" in result_map:
+            cl_result = result_map["cross_languages"]
+            if cl_result and not isinstance(cl_result, Exception):
+                questions = [cl_result]
+            elif isinstance(cl_result, Exception):
+                logging.warning("cross_languages failed, using original question: %s", cl_result)
+
+        if "keyword" in result_map:
+            kw_result = result_map["keyword"]
+            if kw_result and not isinstance(kw_result, Exception):
+                questions[-1] = questions[-1] + "," + kw_result
+            elif isinstance(kw_result, Exception):
+                logging.warning("keyword_extraction failed, skipping: %s", kw_result)
+
+        if "meta_filter" in result_map:
+            mf_result = result_map["meta_filter"]
+            if not isinstance(mf_result, Exception):
+                attachments = mf_result
+            else:
+                logging.warning("meta_data_filter failed, using original attachments: %s", mf_result)
+
     refine_question_ts = timer()
 
     thought = ""
