@@ -1,0 +1,12 @@
+# RunPod Serverless PaddleOCR Worker Dependencies
+# ================================================
+
+# RunPod SDK
+runpod>=1.6.0
+
+# Image processing
+opencv-python-headless>=4.8.0
+numpy>=1.24.0
+
+# Note: paddlepaddle-gpu and paddleocr are installed separately in Dockerfile
+# to ensure correct CUDA version compatibility
