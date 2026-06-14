@@ -36,6 +36,12 @@ services:
       # (#15154 default), 1=dry-run compare. Start at 2, flip to 0 after a
       # TE_RUN_MODE=1 dry-run confirms the refactored engine matches.
       - TE_RUN_MODE=${TE_RUN_MODE:-2}
+      # SSE write-timeout protection for the Python/Quart backend (the server
+      # actually used in this deploy; the Go #15852 fix only covers hybrid/golang
+      # mode). Align the Quart response/body timeouts with nginx's 3600s so a
+      # long-lived chat/agent stream is never cut by the app before nginx.
+      - QUART_RESPONSE_TIMEOUT=${QUART_RESPONSE_TIMEOUT:-3600}
+      - QUART_BODY_TIMEOUT=${QUART_BODY_TIMEOUT:-3600}
     networks:
       - ragflow
     restart: on-failure
