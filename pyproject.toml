@@ -268,6 +268,10 @@ filterwarnings = [
     "error",  # Treat warnings as errors
     "ignore::DeprecationWarning",  # Ignore specific warnings
     "ignore:pkg_resources is deprecated:UserWarning",
+    # tablestore (transitive via mem0/agent-memory) ships an ots_sdk C++ ext
+    # built for the pre-3.13 ABI; on Python 3.13 it emits a benign ImportWarning
+    # and falls back to the pure-Python client. Don't let it fail collection.
+    'ignore:OTS C\+\+ SDK extension:ImportWarning',
 ]
 
 # Command line options
