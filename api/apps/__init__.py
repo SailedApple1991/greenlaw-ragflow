@@ -263,10 +263,8 @@ def search_pages_path(page_path):
     app_path_list = [
         path for path in page_path.glob("*_app.py") if not path.name.startswith(".")
     ]
-    api_path_list = [
-        path for path in page_path.glob("*sdk/*.py") if not path.name.startswith(".")
-    ]
-    app_path_list.extend(api_path_list)
+    # api/apps/sdk/ was removed in the 0.26 sync; its endpoints are now served
+    # from api/apps/restful_apis/. (kept sdk out of discovery on purpose)
     restful_api_path_list = [
         path for path in page_path.glob("*restful_apis/*.py") if not path.name.startswith(".")
     ]
@@ -303,7 +301,6 @@ pages_dir = [
     Path(__file__).parent,
     Path(__file__).parent.parent / "api" / "apps",
     Path(__file__).parent.parent / "api" / "apps" / "restful_apis",
-    Path(__file__).parent.parent / "api" / "apps" / "sdk",
 ]
 
 client_urls_prefix = [
