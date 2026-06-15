@@ -42,6 +42,10 @@ services:
       # long-lived chat/agent stream is never cut by the app before nginx.
       - QUART_RESPONSE_TIMEOUT=${QUART_RESPONSE_TIMEOUT:-3600}
       - QUART_BODY_TIMEOUT=${QUART_BODY_TIMEOUT:-3600}
+      # Pin OpenAI-API-Compatible embedding output dim. silra.cn Qwen3-Embedding-8B
+      # returns 1024 for small batches and 4096 for large ones unless dimensions is
+      # set; existing indices are 4096, so pin 4096 to keep index+query consistent.
+      - OPENAI_API_EMBED_DIMENSIONS=${OPENAI_API_EMBED_DIMENSIONS:-4096}
     networks:
       - ragflow
     restart: on-failure
