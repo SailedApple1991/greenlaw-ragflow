@@ -546,7 +546,11 @@ async def gen_json(system_prompt: str, user_prompt: str, chat_mdl, gen_conf={}, 
     from rag.graphrag.utils import get_llm_cache, set_llm_cache
     cached = get_llm_cache(chat_mdl.llm_name, system_prompt, user_prompt, gen_conf)
     if cached:
-        return json_repair.loads(cached)
+        res = json_repair.loads(cached)
+        # json_repair is lenient and may return a str/None for a malformed cached
+        # value; only trust structured results, otherwise regenerate below.
+        if isinstance(res, (dict, list)):
+            return res
     _, msg = message_fit_in(form_message(system_prompt, user_prompt), chat_mdl.max_length)
     err = ""
     ans = ""
@@ -557,11 +561,19 @@ async def gen_json(system_prompt: str, user_prompt: str, chat_mdl, gen_conf={}, 
         ans = re.sub(r"(^.*</think>|```json\n|```\n*$)", "", ans, flags=re.DOTALL)
         try:
             res = json_repair.loads(ans)
+            # Callers expect a JSON object/array; a lenient parse can yield a bare
+            # str/None which then crashes on `.get(...)`. Treat that as a failure
+            # and retry instead of returning an unusable type.
+            if not isinstance(res, (dict, list)):
+                raise ValueError(f"Expected JSON object/array, got {type(res).__name__}")
             set_llm_cache(chat_mdl.llm_name, system_prompt, ans, user_prompt, gen_conf)
             return res
         except Exception as e:
             logging.exception(f"Loading json failure: {ans}")
             err += str(e)
+    # All retries failed: return an empty object so callers can safely use
+    # `.get(...)` / iteration instead of crashing on None or a raw string.
+    return {}
 
 
 TOC_DETECTION = load_prompt("toc_detection")

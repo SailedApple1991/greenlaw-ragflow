@@ -118,6 +118,8 @@ class TreeStructuredQueryDecompositionRetrieval:
         if callback:
             await callback("Checking the sufficiency for retrieved information.")
         suff = await sufficiency_check(self.chat_mdl, question, ret)
+        if not isinstance(suff, dict):
+            suff = {}
         if suff.get("is_sufficient"):
             if callback:
                 await callback(f"Yes, the retrieved information is sufficient for '{question}'.")
@@ -126,10 +128,15 @@ class TreeStructuredQueryDecompositionRetrieval:
         #if callback:
         #    await callback("The retrieved information is not sufficient. Planing next steps...")
         succ_question_info = await multi_queries_gen(self.chat_mdl, question, query, suff.get("missing_information", []), ret)
+        sub_questions = succ_question_info.get("questions", []) if isinstance(succ_question_info, dict) else []
+        if not sub_questions:
+            # No further decomposition available; return what we have so deep
+            # research degrades gracefully instead of erroring out.
+            return ret
         if callback:
-            await callback("Next step is to search for the following questions:</br> - " + "</br> - ".join(step["question"] for step in succ_question_info["questions"]))
+            await callback("Next step is to search for the following questions:</br> - " + "</br> - ".join(step["question"] for step in sub_questions))
         steps = []
-        for step in succ_question_info["questions"]:
+        for step in sub_questions:
             steps.append(asyncio.create_task(self._research(chunk_info, step["question"], step["query"], depth-1, callback)))
         results = await asyncio.gather(*steps, return_exceptions=True)
         return "\n".join([str(r) for r in results])
