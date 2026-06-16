@@ -12,6 +12,7 @@ services:
     command:
       - --enable-adminserver
       - --init-model-provider-tables
+      - --workers=${TASK_EXECUTOR_WORKERS:-3}
     depends_on:
       - redis
     mem_limit: 13g
