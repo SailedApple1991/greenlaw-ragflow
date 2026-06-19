@@ -214,6 +214,13 @@ class Base(ABC):
         reasoning_start = False
 
         request_kwargs = {"model": self.model_name, "messages": history, "stream": True, **gen_conf}
+        # Apply model-family request policies (e.g. Qwen3 -> enable_thinking=False).
+        # _clean_conf drops these because it only keeps gen_conf, so on the streaming
+        # path Qwen3 would otherwise stream its full <think> reasoning: slow and, for
+        # grounded RAG answers, no accuracy gain (verified by A/B test).
+        _, _policy_kwargs = _apply_model_family_policies(self.model_name, backend="base", request_kwargs={})
+        if _policy_kwargs.get("extra_body"):
+            request_kwargs["extra_body"] = {**request_kwargs.get("extra_body", {}), **_policy_kwargs["extra_body"]}
         stop = kwargs.get("stop")
         if stop:
             request_kwargs["stop"] = stop
