@@ -39,7 +39,13 @@ GRAPH_FIELD_SEP = "<SEP>"
 
 ErrorHandlerFn = Callable[[BaseException | None, str | None, dict | None], None]
 
-chat_limiter = LoopLocalSemaphore(int(os.environ.get("MAX_CONCURRENT_CHATS", 10)))
+chat_limiter = LoopLocalSemaphore(int(os.environ.get("MAX_CONCURRENT_CHATS", 20)))
+
+# Concurrency cap for GraphRAG node/edge embedding. Previously the embedding tasks
+# were gathered with NO limit, so a doc whose merged graph has e.g. 1500 nodes fired
+# 1500 simultaneous embedding requests at the gateway -> connection-pool starvation
+# and stalls. Bound it (default 16) for stable, faster throughput.
+_EMBED_CONCURRENCY = max(1, int(os.environ.get("GRAPHRAG_EMBED_CONCURRENCY", 16)))
 
 # Doc-store insert batching for GraphRAG subgraph/node/edge/community_report
 # chunks.  Defaults (64 docs per batch, up to 4 batches in flight) mirror the
@@ -552,12 +558,22 @@ async def set_graph(tenant_id: str, kb_id: str, embd_mdl, graph: nx.Graph, chang
             }
         )
 
+    _embed_sem = asyncio.Semaphore(_EMBED_CONCURRENCY)
+
+    async def _bounded_node(*a):
+        async with _embed_sem:
+            return await graph_node_to_chunk(*a)
+
+    async def _bounded_edge(*a):
+        async with _embed_sem:
+            return await graph_edge_to_chunk(*a)
+
     tasks = []
     for ii, node in enumerate(change.added_updated_nodes):
         node_attrs = graph.nodes[node]
         nhop_neighbors = n_neighbor(graph, node)
         tasks.append(asyncio.create_task(
-            graph_node_to_chunk(kb_id, embd_mdl, node, node_attrs, chunks, nhop_neighbors)
+            _bounded_node(kb_id, embd_mdl, node, node_attrs, chunks, nhop_neighbors)
         ))
         if ii % 100 == 9 and callback:
             callback(msg=f"Get embedding of nodes: {ii}/{len(change.added_updated_nodes)}")
@@ -576,7 +592,7 @@ async def set_graph(tenant_id: str, kb_id: str, embd_mdl, graph: nx.Graph, chang
         if not edge_attrs:
             continue
         tasks.append(asyncio.create_task(
-            graph_edge_to_chunk(kb_id, embd_mdl, from_node, to_node, edge_attrs, chunks)
+            _bounded_edge(kb_id, embd_mdl, from_node, to_node, edge_attrs, chunks)
         ))
         if ii % 100 == 9 and callback:
             callback(msg=f"Get embedding of edges: {ii}/{len(change.added_updated_edges)}")
