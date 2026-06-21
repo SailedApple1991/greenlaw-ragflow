@@ -6,7 +6,6 @@ Reference:
  - [graphrag](https://github.com/microsoft/graphrag)
 """
 
-import logging
 import re
 from typing import Any
 from dataclasses import dataclass
@@ -139,21 +138,13 @@ class GraphExtractor(Extractor):
             [self._prompt_variables[self._record_delimiter_key], self._prompt_variables[self._completion_delimiter_key]],
         )
         rcds = []
-        skipped = 0
         for record in records:
-            match = re.search(r"\((.*)\)", record)
-            if match is None:
-                skipped += 1
+            record = re.search(r"\((.*)\)", record)
+            if record is None:
                 continue
-            rcds.append(match.group(1))
-        if skipped > 0 or not rcds:
-            logging.info(
-                f"Chunk {chunk_seq}: LLM response {len(results)} chars, "
-                f"split into {len(records)} records, {len(rcds)} with parens, {skipped} skipped. "
-                f"Response sample: {results[:500]}"
-            )
+            rcds.append(record.group(1))
         records = rcds
         maybe_nodes, maybe_edges = self._entities_and_relations(chunk_key, records, self._prompt_variables[self._tuple_delimiter_key])
         out_results.append((maybe_nodes, maybe_edges, token_count))
         if self.callback:
-            self.callback(0.5+0.1*len(out_results)/num_chunks, msg = f"Entities extraction of chunk {chunk_seq} {len(out_results)}/{num_chunks} done, {len(maybe_nodes)} nodes, {len(maybe_edges)} edges, {token_count} tokens.")
+            self.callback(0.5+0.1*len(out_results)/num_chunks, msg = f"Entities extraction of chunk {chunk_seq+1} {len(out_results)}/{num_chunks} done, {len(maybe_nodes)} nodes, {len(maybe_edges)} edges, {token_count} tokens.")

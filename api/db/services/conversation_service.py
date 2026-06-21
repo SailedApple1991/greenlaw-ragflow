@@ -14,6 +14,7 @@
 #  limitations under the License.
 #
 import time
+import logging
 from uuid import uuid4
 from common.constants import StatusEnum
 from api.db.db_models import Conversation, DB
@@ -24,6 +25,9 @@ from common.misc_utils import get_uuid
 import json
 
 from rag.prompts.generator import chunks_format
+
+
+logger = logging.getLogger(__name__)
 
 
 class ConversationService(CommonService):
@@ -181,42 +185,12 @@ async def async_completion(tenant_id, chat_id, question, name="New session", ses
     conv.message.append({"role": "assistant", "content": "", "id": message_id})
     conv.reference.append({"chunks": [], "doc_aggs": []})
 
-    # L1 cache check
-    prompt_config = dia.prompt_config if hasattr(dia, 'prompt_config') else {}
-    enable_cache = prompt_config.get("enable_cache", False)
-    cache_ttl = prompt_config.get("cache_ttl", 5184000)  # default 60 days
-    question_text = question["content"]
-
-    if enable_cache:
-        from api.db.services.cache_service import get_l1_cache
-        cached = get_l1_cache(chat_id, question_text)
-        if cached:
-            cached["id"] = message_id
-            cached["session_id"] = session_id
-            cached["audio_binary"] = None
-            cached["final"] = True
-            if stream:
-                yield "data:" + json.dumps({"code": 0, "data": structure_answer(conv, cached, message_id, session_id)}, ensure_ascii=False) + "\n\n"
-                ConversationService.update_by_id(conv.id, conv.to_dict())
-                yield "data:" + json.dumps({"code": 0, "data": True}, ensure_ascii=False) + "\n\n"
-                return
-            else:
-                answer = structure_answer(conv, cached, message_id, session_id)
-                ConversationService.update_by_id(conv.id, conv.to_dict())
-                yield answer
-                return
-
     if stream:
         try:
             async for ans in async_chat(dia, msg, True, **kwargs):
                 ans = structure_answer(conv, ans, message_id, session_id)
                 yield "data:" + json.dumps({"code": 0, "data": ans}, ensure_ascii=False) + "\n\n"
             ConversationService.update_by_id(conv.id, conv.to_dict())
-            final_content = conv.message[-1].get("content", "") if conv.message else ""
-            if enable_cache and final_content:
-                from api.db.services.cache_service import set_l1_cache
-                final_response = {"answer": final_content, "reference": conv.reference[-1] if conv.reference else {}}
-                set_l1_cache(chat_id, question_text, final_response, cache_ttl)
         except Exception as e:
             yield "data:" + json.dumps({"code": 500, "message": str(e),
                                         "data": {"answer": "**ERROR**: " + str(e), "reference": []}},
@@ -228,17 +202,26 @@ async def async_completion(tenant_id, chat_id, question, name="New session", ses
         async for ans in async_chat(dia, msg, False, **kwargs):
             answer = structure_answer(conv, ans, message_id, session_id)
             ConversationService.update_by_id(conv.id, conv.to_dict())
-            final_content = conv.message[-1].get("content", "") if conv.message else ""
-            if enable_cache and final_content:
-                from api.db.services.cache_service import set_l1_cache
-                final_response = {"answer": final_content, "reference": conv.reference[-1] if conv.reference else {}}
-                set_l1_cache(chat_id, question_text, final_response, cache_ttl)
             break
         yield answer
 
-async def async_iframe_completion(dialog_id, question, session_id=None, stream=True, **kwargs):
-    e, dia = DialogService.get_by_id(dialog_id)
-    assert e, "Dialog not found"
+async def async_iframe_completion(dialog_id, question, session_id=None, stream=True, tenant_id=None, **kwargs):
+    if tenant_id:
+        exists, dia = DialogService.get_by_id(dialog_id)
+        if (not exists
+                or getattr(dia, "tenant_id", None) != tenant_id
+                or str(getattr(dia, "status", "")) != StatusEnum.VALID.value):
+            logger.warning(
+                "Dialog lookup failed for tenant-scoped iframe completion: "
+                "tenant_id=%s dialog_id=%s required_status=%s",
+                tenant_id,
+                dialog_id,
+                StatusEnum.VALID.value,
+            )
+            raise AssertionError("Dialog not found")
+    else:
+        e, dia = DialogService.get_by_id(dialog_id)
+        assert e, "Dialog not found"
     if not session_id:
         session_id = get_uuid()
         conv = {
@@ -263,6 +246,7 @@ async def async_iframe_completion(dialog_id, question, session_id=None, stream=T
         session_id = session_id
         e, conv = API4ConversationService.get_by_id(session_id)
         assert e, "Session not found!"
+        assert conv.dialog_id == dialog_id, "Session does not belong to this dialog"
 
     if not conv.message:
         conv.message = []

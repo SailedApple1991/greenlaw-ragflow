@@ -18,6 +18,7 @@ import os
 import re
 import time
 from collections import defaultdict
+from copy import deepcopy
 from hashlib import md5
 from typing import Any, Callable, Set, Tuple
 
@@ -28,17 +29,95 @@ from networkx.readwrite import json_graph
 
 from common.misc_utils import get_uuid
 from common.connection_utils import timeout
+from common.asyncio_utils import LoopLocalSemaphore
 from rag.nlp import rag_tokenizer, search
 from rag.utils.redis_conn import REDIS_CONN
 from common import settings
-from common.token_utils import truncate_field_by_bytes
 from common.doc_store.doc_store_base import OrderByExpr
 
 GRAPH_FIELD_SEP = "<SEP>"
 
 ErrorHandlerFn = Callable[[BaseException | None, str | None, dict | None], None]
 
-chat_limiter = asyncio.Semaphore(int(os.environ.get("MAX_CONCURRENT_CHATS", 10)))
+chat_limiter = LoopLocalSemaphore(int(os.environ.get("MAX_CONCURRENT_CHATS", 20)))
+
+# Concurrency cap for GraphRAG node/edge embedding. Previously the embedding tasks
+# were gathered with NO limit, so a doc whose merged graph has e.g. 1500 nodes fired
+# 1500 simultaneous embedding requests at the gateway -> connection-pool starvation
+# and stalls. Bound it (default 16) for stable, faster throughput.
+_EMBED_CONCURRENCY = max(1, int(os.environ.get("GRAPHRAG_EMBED_CONCURRENCY", 16)))
+
+# Doc-store insert batching for GraphRAG subgraph/node/edge/community_report
+# chunks.  Defaults (64 docs per batch, up to 4 batches in flight) mirror the
+# regular ingest pipeline in document_service.py while still keeping the total
+# number of simultaneous requests to ES/Infinity bounded.  Override with
+# GRAPHRAG_INSERT_BULK_SIZE and GRAPHRAG_INSERT_CONCURRENCY.
+_INSERT_BULK_SIZE = max(1, int(os.environ.get("GRAPHRAG_INSERT_BULK_SIZE", 64)))
+_INSERT_CONCURRENCY = max(1, int(os.environ.get("GRAPHRAG_INSERT_CONCURRENCY", 4)))
+
+
+async def insert_chunks_bounded(chunks, tenant_id, kb_id, *, callback=None, label="Insert chunks"):
+    """Insert ``chunks`` into the doc store in batches with bounded concurrency and retries.
+
+    Batch size is controlled by ``GRAPHRAG_INSERT_BULK_SIZE`` (default 64) and
+    the number of batches in flight by ``GRAPHRAG_INSERT_CONCURRENCY``
+    (default 4).  Each batch has the same retry / timeout behaviour as the
+    previous hand-rolled loop (3 attempts, exponential backoff).
+
+    Raises the first unrecoverable error; other in-flight batches are then
+    cancelled by ``asyncio.gather``.
+    """
+    if not chunks:
+        return
+    enable_timeout_assertion = os.environ.get("ENABLE_TIMEOUT_ASSERTION")
+    sem = asyncio.Semaphore(_INSERT_CONCURRENCY)
+    total = len(chunks)
+    progress = {"done": 0, "next_report": 100}
+    progress_lock = asyncio.Lock()
+
+    async def _one(offset: int) -> None:
+        batch = chunks[offset : offset + _INSERT_BULK_SIZE]
+        timeout_s = 3 if enable_timeout_assertion else 30000000
+        max_retries = 3
+        async with sem:
+            for attempt in range(max_retries):
+                try:
+                    result = await asyncio.wait_for(
+                        thread_pool_exec(
+                            settings.docStoreConn.insert,
+                            batch,
+                            search.index_name(tenant_id),
+                            kb_id,
+                        ),
+                        timeout=timeout_s,
+                    )
+                    if result:
+                        raise Exception(f"Insert chunk error: {result}, please check log file and Elasticsearch/Infinity status!")
+                    break
+                except asyncio.TimeoutError:
+                    if attempt < max_retries - 1:
+                        wait = 2 ** attempt
+                        logging.warning(f"Insert batch at offset {offset}/{total} attempt {attempt + 1} timed out, retrying in {wait}s")
+                        await asyncio.sleep(wait)
+                    else:
+                        raise
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        wait = 2 ** attempt
+                        logging.warning(f"Insert batch at offset {offset}/{total} attempt {attempt + 1} failed: {e}, retrying in {wait}s")
+                        await asyncio.sleep(wait)
+                    else:
+                        raise
+        if callback:
+            async with progress_lock:
+                progress["done"] += len(batch)
+                if progress["done"] >= progress["next_report"] or progress["done"] == total:
+                    callback(msg=f"{label}: {progress['done']}/{total}")
+                    progress["next_report"] = progress["done"] + 100
+
+    await asyncio.gather(*(asyncio.create_task(_one(o)) for o in range(0, total, _INSERT_BULK_SIZE)))
 
 
 @dataclasses.dataclass
@@ -298,7 +377,7 @@ def chunk_id(chunk):
     return xxhash.xxh64((chunk["content_with_weight"] + chunk["kb_id"]).encode("utf-8")).hexdigest()
 
 
-async def graph_node_to_chunk(kb_id, embd_mdl, ent_name, meta, chunks):
+async def graph_node_to_chunk(kb_id, embd_mdl, ent_name, meta, chunks, nhop_neighbors=None):
     global chat_limiter
     enable_timeout_assertion = os.environ.get("ENABLE_TIMEOUT_ASSERTION")
     chunk = {
@@ -311,6 +390,11 @@ async def graph_node_to_chunk(kb_id, embd_mdl, ent_name, meta, chunks):
         "content_with_weight": json.dumps(meta, ensure_ascii=False),
         "content_ltks": rag_tokenizer.tokenize(meta["description"]),
         "source_id": meta["source_id"],
+        # pagerank drives the P(E|Q) = pagerank * sim ranking in KGSearch; the
+        # n-hop neighbour paths feed its relation-enrichment step.  Both are read
+        # back as `rank_flt` / `n_hop_with_weight` in rag/graphrag/search.py.
+        "rank_flt": float(meta.get("pagerank", 0) or 0),
+        "n_hop_with_weight": json.dumps(nhop_neighbors or [], ensure_ascii=False),
         "kb_id": kb_id,
         "available_int": 0,
     }
@@ -436,107 +520,25 @@ async def get_graph(tenant_id, kb_id, exclude_rebuild=None):
     return result
 
 
-def _truncate_graph_to_fit(graph: nx.Graph, max_bytes: int, callback=None) -> str | None:
-    """Iteratively truncate node/edge descriptions so that the serialized graph fits within max_bytes.
-
-    Returns the serialized JSON string if successful, or None if still over limit after max iterations.
-    """
-    for attempt in range(4):
-        json_str = json.dumps(nx.node_link_data(graph, edges="edges"), ensure_ascii=False)
-        size = len(json_str.encode("utf-8"))
-        if size <= max_bytes:
-            return json_str
-        if callback:
-            callback(msg=f"Graph JSON is {size} bytes (limit {max_bytes}), truncating descriptions (attempt {attempt + 1})...")
-        # Collect all descriptions with their sizes and truncate the longest ones
-        items: list[tuple[str, dict]] = []
-        for node, attrs in graph.nodes(data=True):
-            desc = attrs.get("description", "")
-            if len(desc.encode("utf-8")) > 256:
-                items.append((node, attrs))
-        for src, tgt, attrs in graph.edges(data=True):
-            desc = attrs.get("description", "")
-            if len(desc.encode("utf-8")) > 256:
-                items.append((f"{src}->{tgt}", attrs))
-        items.sort(key=lambda x: len(x[1].get("description", "").encode("utf-8")), reverse=True)
-        # Truncate the top half of longest descriptions by half
-        count = max(len(items) // 2, 1)
-        for _, attrs in items[:count]:
-            desc = attrs.get("description", "")
-            half = len(desc.encode("utf-8")) // 2
-            attrs["description"] = truncate_field_by_bytes(desc, half)
-    # Final attempt after max iterations
-    json_str = json.dumps(nx.node_link_data(graph, edges="edges"), ensure_ascii=False)
-    if len(json_str.encode("utf-8")) <= max_bytes:
-        return json_str
-    return None
-
-
 async def set_graph(tenant_id: str, kb_id: str, embd_mdl, graph: nx.Graph, change: GraphChange, callback):
     global chat_limiter
     start = asyncio.get_running_loop().time()
 
-    await thread_pool_exec(
-        settings.docStoreConn.delete,
-        {"knowledge_graph_kwd": ["graph", "subgraph"]},
-        search.index_name(tenant_id),
-        kb_id
-    )
-
-    if change.removed_nodes:
-        await thread_pool_exec(
-            settings.docStoreConn.delete,
-            {"knowledge_graph_kwd": ["entity"], "entity_kwd": sorted(change.removed_nodes)},
-            search.index_name(tenant_id),
-            kb_id
-        )
-
-    if change.removed_edges:
-
-        async def del_edges(from_node, to_node):
-            async with chat_limiter:
-                await thread_pool_exec(
-                    settings.docStoreConn.delete,
-                    {"knowledge_graph_kwd": ["relation"], "from_entity_kwd": from_node, "to_entity_kwd": to_node},
-                    search.index_name(tenant_id),
-                    kb_id
-                )
-
-        tasks = []
-        for from_node, to_node in change.removed_edges:
-            tasks.append(asyncio.create_task(del_edges(from_node, to_node)))
-
-        try:
-            await asyncio.gather(*tasks, return_exceptions=False)
-        except Exception as e:
-            logging.error(f"Error while deleting edges: {e}")
-            for t in tasks:
-                t.cancel()
-            await asyncio.gather(*tasks, return_exceptions=True)
-            raise
-
-    now = asyncio.get_running_loop().time()
-    if callback:
-        callback(msg=f"set_graph removed {len(change.removed_nodes)} nodes and {len(change.removed_edges)} edges from index in {now - start:.2f}s.")
-    start = now
-
-    max_field_bytes = settings.DOC_FIELD_MAX_SIZE
-
-    # Serialize the main graph with byte-size guard
-    graph_json = _truncate_graph_to_fit(graph, max_field_bytes, callback)
-    chunks = []
-    if graph_json is not None:
-        chunks.append({
+    # Build all new chunks first (graph, subgraphs, node/edge embeddings) before
+    # deleting anything.  This ensures that if embedding generation or any other
+    # step crashes, the old graph and per-doc subgraph checkpoints remain intact
+    # so the pipeline can resume without re-running earlier phases.
+    chunks = [
+        {
             "id": get_uuid(),
-            "content_with_weight": graph_json,
+            "content_with_weight": json.dumps(nx.node_link_data(graph, edges="edges"), ensure_ascii=False),
             "knowledge_graph_kwd": "graph",
             "kb_id": kb_id,
             "source_id": graph.graph.get("source_id", []),
             "available_int": 0,
             "removed_kwd": "N",
-        })
-    else:
-        logging.warning(f"Graph for kb {kb_id} exceeds {max_field_bytes} bytes even after truncation, skipping graph chunk.")
+        }
+    ]
 
     # generate updated subgraphs
     for source in graph.graph["source_id"]:
@@ -544,25 +546,34 @@ async def set_graph(tenant_id: str, kb_id: str, embd_mdl, graph: nx.Graph, chang
         subgraph.graph["source_id"] = [source]
         for n in subgraph.nodes:
             subgraph.nodes[n]["source_id"] = [source]
-        subgraph_json = _truncate_graph_to_fit(subgraph, max_field_bytes, callback)
-        if subgraph_json is not None:
-            chunks.append({
+        chunks.append(
+            {
                 "id": get_uuid(),
-                "content_with_weight": subgraph_json,
+                "content_with_weight": json.dumps(nx.node_link_data(subgraph, edges="edges"), ensure_ascii=False),
                 "knowledge_graph_kwd": "subgraph",
                 "kb_id": kb_id,
                 "source_id": [source],
                 "available_int": 0,
                 "removed_kwd": "N",
-            })
-        else:
-            logging.warning(f"Subgraph for source {source} in kb {kb_id} exceeds {max_field_bytes} bytes after truncation, skipping.")
+            }
+        )
+
+    _embed_sem = asyncio.Semaphore(_EMBED_CONCURRENCY)
+
+    async def _bounded_node(*a):
+        async with _embed_sem:
+            return await graph_node_to_chunk(*a)
+
+    async def _bounded_edge(*a):
+        async with _embed_sem:
+            return await graph_edge_to_chunk(*a)
 
     tasks = []
     for ii, node in enumerate(change.added_updated_nodes):
         node_attrs = graph.nodes[node]
+        nhop_neighbors = n_neighbor(graph, node)
         tasks.append(asyncio.create_task(
-            graph_node_to_chunk(kb_id, embd_mdl, node, node_attrs, chunks)
+            _bounded_node(kb_id, embd_mdl, node, node_attrs, chunks, nhop_neighbors)
         ))
         if ii % 100 == 9 and callback:
             callback(msg=f"Get embedding of nodes: {ii}/{len(change.added_updated_nodes)}")
@@ -581,7 +592,7 @@ async def set_graph(tenant_id: str, kb_id: str, embd_mdl, graph: nx.Graph, chang
         if not edge_attrs:
             continue
         tasks.append(asyncio.create_task(
-            graph_edge_to_chunk(kb_id, embd_mdl, from_node, to_node, edge_attrs, chunks)
+            _bounded_edge(kb_id, embd_mdl, from_node, to_node, edge_attrs, chunks)
         ))
         if ii % 100 == 9 and callback:
             callback(msg=f"Get embedding of edges: {ii}/{len(change.added_updated_edges)}")
@@ -599,43 +610,72 @@ async def set_graph(tenant_id: str, kb_id: str, embd_mdl, graph: nx.Graph, chang
         callback(msg=f"set_graph converted graph change to {len(chunks)} chunks in {now - start:.2f}s.")
     start = now
 
-    enable_timeout_assertion = os.environ.get("ENABLE_TIMEOUT_ASSERTION")
-    es_bulk_size = 4
-    skipped_chunks = 0
-    for b in range(0, len(chunks), es_bulk_size):
-        batch = chunks[b : b + es_bulk_size]
-        try:
-            timeout_val = 3 if enable_timeout_assertion else 30000000
-            doc_store_result = await asyncio.wait_for(
-                thread_pool_exec(
-                    settings.docStoreConn.insert,
-                    batch,
-                    search.index_name(tenant_id),
-                    kb_id
-                ),
-                timeout=timeout_val
+    # All new chunks are ready.  Now delete old data and insert the new data.
+    # Deleting only after chunks are built ensures that a crash during embedding
+    # generation above does not destroy the old graph/subgraph checkpoints.
+    await thread_pool_exec(
+        settings.docStoreConn.delete,
+        {"knowledge_graph_kwd": ["graph", "subgraph"]},
+        search.index_name(tenant_id),
+        kb_id
+    )
+
+    if change.removed_nodes:
+        BATCH_SIZE = 100
+        sorted_nodes = sorted(change.removed_nodes)
+        for i in range(0, len(sorted_nodes), BATCH_SIZE):
+            batch = sorted_nodes[i:i + BATCH_SIZE]
+            await thread_pool_exec(
+                settings.docStoreConn.delete,
+                {"knowledge_graph_kwd": ["entity"], "entity_kwd": batch},
+                search.index_name(tenant_id),
+                kb_id
             )
-            if b % 100 == es_bulk_size and callback:
-                callback(msg=f"Insert chunks: {b}/{len(chunks)}")
-            if doc_store_result:
-                skipped_chunks += len(batch)
-                chunk_types = [c.get("knowledge_graph_kwd", "unknown") for c in batch]
-                logging.warning(f"Insert chunk error in set_graph (types={chunk_types}): {doc_store_result}, skipping batch.")
-                if callback:
-                    callback(msg=f"Skipped {len(batch)} chunk(s) due to insert error: {doc_store_result}")
+
+    if change.removed_edges:
+
+        async def del_edges(from_node, to_node):
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    async with chat_limiter:
+                        await thread_pool_exec(
+                            settings.docStoreConn.delete,
+                            {"knowledge_graph_kwd": ["relation"], "from_entity_kwd": from_node, "to_entity_kwd": to_node},
+                            search.index_name(tenant_id),
+                            kb_id
+                        )
+                    return
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        wait = 2 ** attempt
+                        logging.warning(f"del_edges({from_node}, {to_node}) attempt {attempt + 1} failed: {e}, retrying in {wait}s")
+                        await asyncio.sleep(wait)
+                    else:
+                        raise
+
+        tasks = []
+        for from_node, to_node in change.removed_edges:
+            tasks.append(asyncio.create_task(del_edges(from_node, to_node)))
+
+        try:
+            await asyncio.gather(*tasks, return_exceptions=False)
         except Exception as e:
-            skipped_chunks += len(batch)
-            logging.warning(f"Exception inserting batch at offset {b} in set_graph: {e}, skipping.")
-            if callback:
-                callback(msg=f"Skipped {len(batch)} chunk(s) due to exception: {e}")
-    if skipped_chunks == len(chunks) and len(chunks) > 0:
-        raise Exception(f"All {len(chunks)} chunks failed to insert in set_graph for kb {kb_id}.")
+            logging.error(f"Error while deleting edges: {e}")
+            for t in tasks:
+                t.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
+
+    del_now = asyncio.get_running_loop().time()
+    if callback:
+        callback(msg=f"set_graph removed {len(change.removed_nodes)} nodes and {len(change.removed_edges)} edges from index in {del_now - start:.2f}s.")
+    start = del_now
+
+    await insert_chunks_bounded(chunks, tenant_id, kb_id, callback=callback, label="Insert chunks")
     now = asyncio.get_running_loop().time()
     if callback:
-        msg = f"set_graph added/updated {len(change.added_updated_nodes)} nodes and {len(change.added_updated_edges)} edges from index in {now - start:.2f}s."
-        if skipped_chunks:
-            msg += f" ({skipped_chunks} chunk(s) skipped due to errors.)"
-        callback(msg=msg)
+        callback(msg=f"set_graph added/updated {len(change.added_updated_nodes)} nodes and {len(change.added_updated_edges)} edges from index in {now - start:.2f}s.")
 
 
 def is_continuous_subsequence(subseq, seq):
@@ -678,6 +718,41 @@ def merge_tuples(list1, list2):
             if not already_match_flag:
                 result.append(tup)
     return result
+
+
+def n_neighbor(graph: nx.Graph, node, n_hop: int = 2):
+    """Enumerate paths of up to ``n_hop`` edges starting at ``node`` together
+    with the edge weight along each step.
+
+    Returns a list of ``{"path": (n0, n1, ...), "weights": [w0, w1, ...]}``
+    dicts (``len(weights) == len(path) - 1``).  This is the structure consumed
+    by :class:`rag.graphrag.search.KGSearch` for n-hop relation enrichment and
+    is stored per entity chunk as ``n_hop_with_weight``.
+    """
+    source_edge = list(graph.edges(node))
+    if not source_edge:
+        return []
+    count = 1
+    while count < n_hop:
+        count += 1
+        sc_edge = deepcopy(source_edge)
+        source_edge = []
+        for pair in sc_edge:
+            append_edge = list(graph.edges(pair[-1]))
+            for tuples in merge_tuples([pair], append_edge):
+                source_edge.append(tuples)
+    wts = nx.get_edge_attributes(graph, "weight")
+    nbrs = []
+    for path in source_edge:
+        nbr = {"path": path, "weights": []}
+        for i in range(len(path) - 1):
+            f, t = path[i], path[i + 1]
+            w = wts.get((f, t))
+            if w is None:
+                w = wts.get((t, f), 0)
+            nbr["weights"].append(w)
+        nbrs.append(nbr)
+    return nbrs
 
 
 async def get_entity_type2samples(idxnms, kb_ids: list):

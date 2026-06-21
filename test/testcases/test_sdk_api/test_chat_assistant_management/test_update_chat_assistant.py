@@ -15,6 +15,7 @@
 #
 
 import pytest
+from common import valid_chat_llm_id
 from configs import CHAT_ASSISTANT_NAME_LIMIT
 from utils import encode_avatar
 from utils.file_utils import create_image_file
@@ -75,8 +76,8 @@ class TestChatAssistantUpdate:
             pytest.param({"name": "a" * (CHAT_ASSISTANT_NAME_LIMIT + 1)}, "", marks=pytest.mark.skip(reason="issues/")),
             pytest.param({"name": 1}, "", marks=pytest.mark.skip(reason="issues/")),
             pytest.param({"name": ""}, "`name` cannot be empty.", marks=pytest.mark.p3),
-            pytest.param({"name": "test_chat_assistant_1"}, "Duplicated chat name in updating chat.", marks=pytest.mark.p3),
-            pytest.param({"name": "TEST_CHAT_ASSISTANT_1"}, "Duplicated chat name in updating chat.", marks=pytest.mark.p3),
+            pytest.param({"name": "test_chat_assistant_1"}, "Duplicated chat name.", marks=pytest.mark.p3),
+            pytest.param({"name": "TEST_CHAT_ASSISTANT_1"}, "Duplicated chat name.", marks=pytest.mark.p3),
         ],
     )
     def test_name(self, client, add_chat_assistants_func, payload, expected_message):
@@ -109,7 +110,7 @@ class TestChatAssistantUpdate:
     @pytest.mark.parametrize(
         "llm_setting, expected_message",
         [
-            ({"model_name": "glm-4"}, ""),
+            ({"model_name": valid_chat_llm_id}, ""),
             ({"model_name": "unknown"}, "`llm_id` unknown doesn't exist"),
             ({"temperature": 0}, ""),
             ({"temperature": 1}, ""),
@@ -142,7 +143,10 @@ class TestChatAssistantUpdate:
     def test_llm_setting(self, client, add_chat_assistants_func, llm_setting, expected_message):
         dataset, _, chat_assistants = add_chat_assistants_func
         chat_assistant = chat_assistants[0]
+        llm_setting = dict(llm_setting)
         llm_id = llm_setting.pop("model_name", None)
+        if callable(llm_id):
+            llm_id = llm_id(client)
         payload = {"name": "llm_test", "dataset_ids": [dataset.id], "llm_setting": llm_setting}
         if llm_id is not None:
             payload["llm_id"] = llm_id

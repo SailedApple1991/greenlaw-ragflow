@@ -19,7 +19,8 @@ import functools
 import inspect
 import json
 import logging
-import os
+from werkzeug.exceptions import Unauthorized as WerkzeugUnauthorized
+from api.db.db_models import APIToken
 import sys
 import time
 from copy import deepcopy
@@ -28,12 +29,11 @@ from typing import Any
 
 import requests
 from quart import (
-    Response,
     jsonify,
     request,
     has_app_context,
 )
-from werkzeug.exceptions import BadRequest as WerkzeugBadRequest, Unauthorized as WerkzeugUnauthorized
+from werkzeug.exceptions import BadRequest as WerkzeugBadRequest
 
 try:
     from quart.exceptions import BadRequest as QuartBadRequest
@@ -42,8 +42,7 @@ except ImportError:  # pragma: no cover - optional dependency
 
 from peewee import OperationalError
 
-from common.constants import ActiveEnum
-from api.db.db_models import APIToken
+from common.constants import ActiveEnum, LLMType
 from api.utils.json_encode import CustomJSONEncoder
 from common.mcp_tool_call_conn import MCPToolCallSession, close_multiple_mcp_toolcall_sessions
 from api.db.services.tenant_llm_service import LLMFactoriesService
@@ -148,6 +147,9 @@ def server_error_response(e):
     if repr(e).find("index_not_found_exception") >= 0:
         return get_json_result(code=RetCode.EXCEPTION_ERROR, message="No chunk found, please upload file and parse it.")
 
+    if "not_found" in str(e):
+        return get_error_data_result(message="No chunk found! Check the chunk status please!")
+
     return get_json_result(code=RetCode.EXCEPTION_ERROR, message=repr(e))
 
 
@@ -250,28 +252,6 @@ def get_json_result(code: RetCode = RetCode.SUCCESS, message="success", data=Non
     return _safe_jsonify(response)
 
 
-def apikey_required(func):
-    @wraps(func)
-    async def decorated_function(*args, **kwargs):
-        authorization = request.headers.get("Authorization")
-        if not authorization:
-            return build_error_result(message="Authorization header is missing!", code=RetCode.FORBIDDEN)
-        parts = authorization.split()
-        if len(parts) < 2:
-            return build_error_result(message="Please check your authorization format.", code=RetCode.FORBIDDEN)
-        token = parts[1]
-        objs = APIToken.query(token=token)
-        if not objs:
-            return build_error_result(message="API-KEY is invalid!", code=RetCode.FORBIDDEN)
-        kwargs["tenant_id"] = objs[0].tenant_id
-        if inspect.iscoroutinefunction(func):
-            return await func(*args, **kwargs)
-
-        return func(*args, **kwargs)
-
-    return decorated_function
-
-
 def build_error_result(code=RetCode.FORBIDDEN, message="success"):
     response = {"code": code, "message": message}
     response = _safe_jsonify(response)
@@ -284,44 +264,6 @@ def construct_json_result(code: RetCode = RetCode.SUCCESS, message="success", da
     if data is None:
         return _safe_jsonify({"code": code, "message": message})
     return _safe_jsonify({"code": code, "message": message, "data": data})
-
-
-def token_required(func):
-    @wraps(func)
-    async def wrapper(*args, **kwargs):
-        # Validate the token (API Key)
-        if os.environ.get("DISABLE_SDK"):
-            err = WerkzeugUnauthorized(description="`Authorization` can't be empty")
-            err.code = RetCode.SUCCESS
-            raise err
-
-        authorization_str = request.headers.get("Authorization")
-        if not authorization_str:
-            err = WerkzeugUnauthorized(description="`Authorization` can't be empty")
-            err.code = RetCode.SUCCESS
-            raise err
-
-        authorization_list = authorization_str.split()
-        if len(authorization_list) < 2:
-            err = WerkzeugUnauthorized(description="Please check your authorization format.")
-            err.code = RetCode.AUTHENTICATION_ERROR
-            raise err
-
-        token = authorization_list[1]
-        objs = APIToken.query(token=token)
-        if not objs:
-            err = WerkzeugUnauthorized(description="Authentication error: API key is invalid!")
-            err.code = RetCode.AUTHENTICATION_ERROR
-            raise err
-
-        # On success, inject tenant_id into the route function's kwargs
-        kwargs["tenant_id"] = objs[0].tenant_id
-        result = func(*args, **kwargs)
-        if inspect.iscoroutine(result):
-            return await result
-        return result
-
-    return wrapper
 
 
 def get_result(code=RetCode.SUCCESS, message="", data=None, total=None):
@@ -391,7 +333,7 @@ def get_parser_config(chunk_method, parser_config):
     key_mapping = {
         "naive": {
             "layout_recognize": "DeepDOC",
-            "chunk_token_num": 1024,
+            "chunk_token_num": 512,
             "delimiter": "\n",
             "auto_keywords": 0,
             "auto_questions": 0,
@@ -415,6 +357,16 @@ def get_parser_config(chunk_method, parser_config):
                     "category",
                 ],
                 "method": "light",
+                "batch_chunk_token_size": 4096,
+                "retry_attempts": 2,
+                "retry_backoff_seconds": 2.0,
+                "retry_backoff_max_seconds": 60.0,
+                "build_subgraph_timeout_per_chunk_seconds": 300,
+                "build_subgraph_min_timeout_seconds": 600,
+                "merge_timeout_seconds": 180,
+                "resolution_timeout_seconds": 1800,
+                "community_timeout_seconds": 1800,
+                "lock_acquire_timeout_seconds": 600,
             },
             "parent_child": {
                 "use_parent_child": False,
@@ -542,8 +494,7 @@ def check_duplicate_ids(ids, id_type="item"):
 
 
 def verify_embedding_availability(embd_id: str, tenant_id: str) -> tuple[bool, str | None]:
-    from api.db.services.llm_service import LLMService
-    from api.db.services.tenant_llm_service import TenantLLMService
+    from api.db.joint_services.tenant_model_service import get_model_config_from_provider_instance
 
     """
     Verifies availability of an embedding model for a specific tenant.
@@ -579,21 +530,15 @@ def verify_embedding_availability(embd_id: str, tenant_id: str) -> tuple[bool, s
         (False, {'code': 101, 'message': "Unsupported model: <invalid_model>"})
     """
     try:
-        llm_name, llm_factory = TenantLLMService.split_model_name_and_factory(embd_id)
-        in_llm_service = bool(LLMService.query(llm_name=llm_name, fid=llm_factory, model_type="embedding"))
-
-        tenant_llms = TenantLLMService.get_my_llms(tenant_id=tenant_id)
-        is_tenant_model = any(llm["llm_name"] == llm_name and llm["llm_factory"] == llm_factory and llm["model_type"] == "embedding" for llm in tenant_llms)
-
-        is_builtin_model = llm_factory == "Builtin"
-        if not (is_builtin_model or is_tenant_model or in_llm_service):
-            return False, f"Unsupported model: <{embd_id}>"
-
-        if not (is_builtin_model or is_tenant_model):
-            return False, f"Unauthorized model: <{embd_id}>"
+        get_model_config_from_provider_instance(tenant_id, LLMType.EMBEDDING, embd_id)
+    except LookupError as e:
+        return False, str(e)
     except OperationalError as e:
         logging.exception(e)
         return False, "Database operation failed"
+    except Exception as e:
+        logging.exception(e)
+        return False, "Internal server error"
 
     return True, None
 
@@ -767,3 +712,65 @@ def get_allowed_llm_factories() -> list:
         return factories
 
     return [factory for factory in factories if factory.name in settings.ALLOWED_LLM_FACTORIES]
+
+# --- fork: token_required (API-token auth for legacy sdk/*_app.py /v1 routes; coexists with v0.26 login_required) ---
+def token_required(func):
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        # Validate the token (API Key)
+        if os.environ.get("DISABLE_SDK"):
+            err = WerkzeugUnauthorized(description="`Authorization` can't be empty")
+            err.code = RetCode.SUCCESS
+            raise err
+
+        authorization_str = request.headers.get("Authorization")
+        if not authorization_str:
+            err = WerkzeugUnauthorized(description="`Authorization` can't be empty")
+            err.code = RetCode.SUCCESS
+            raise err
+
+        authorization_list = authorization_str.split()
+        if len(authorization_list) < 2:
+            err = WerkzeugUnauthorized(description="Please check your authorization format.")
+            err.code = RetCode.AUTHENTICATION_ERROR
+            raise err
+
+        token = authorization_list[1]
+        objs = APIToken.query(token=token)
+        if not objs:
+            err = WerkzeugUnauthorized(description="Authentication error: API key is invalid!")
+            err.code = RetCode.AUTHENTICATION_ERROR
+            raise err
+
+        # On success, inject tenant_id into the route function's kwargs
+        kwargs["tenant_id"] = objs[0].tenant_id
+        result = func(*args, **kwargs)
+        if inspect.iscoroutine(result):
+            return await result
+        return result
+
+    return wrapper
+
+# --- fork: apikey_required (legacy API-key auth decorator) ---
+def apikey_required(func):
+    @wraps(func)
+    async def decorated_function(*args, **kwargs):
+        authorization = request.headers.get("Authorization")
+        if not authorization:
+            return build_error_result(message="Authorization header is missing!", code=RetCode.FORBIDDEN)
+        parts = authorization.split()
+        if len(parts) < 2:
+            return build_error_result(message="Please check your authorization format.", code=RetCode.FORBIDDEN)
+        token = parts[1]
+        objs = APIToken.query(token=token)
+        if not objs:
+            return build_error_result(message="API-KEY is invalid!", code=RetCode.FORBIDDEN)
+        kwargs["tenant_id"] = objs[0].tenant_id
+        if inspect.iscoroutinefunction(func):
+            return await func(*args, **kwargs)
+
+        return func(*args, **kwargs)
+
+    return decorated_function
+
+

@@ -37,12 +37,10 @@ from rag.graphrag.utils import (
     set_llm_cache,
     split_string_by_multi_markers,
 )
+from common.misc_utils import thread_pool_exec
 from rag.llm.chat_model import Base as CompletionLLM
 from rag.prompts.generator import message_fit_in
 from common.exceptions import TaskCanceledException
-from common.misc_utils import thread_pool_exec
-
-_CHAT_TIMEOUT = 60 * 20  # 20 minutes
 
 GRAPH_FIELD_SEP = "<SEP>"
 DEFAULT_ENTITY_TYPES = ["organization", "person", "geo", "event", "category"]
@@ -85,8 +83,9 @@ class Extractor:
         if response:
             return response
         _, system_msg = message_fit_in([{"role": "system", "content": system}], int(self._llm.max_length * 0.92))
-        # Disable thinking mode for Qwen3 during extraction to avoid
-        # wasting tokens on <think> reasoning instead of structured output
+        # fork: disable thinking mode for Qwen3 during extraction to avoid wasting
+        # tokens on <think> reasoning instead of structured output (87af807a5).
+        # Adapted to v0.26 LLMBundle attribute llm_name (was model_name).
         kwargs = {}
         if self._llm.llm_name.lower().find("qwen3") >= 0:
             kwargs["extra_body"] = {
@@ -102,7 +101,7 @@ class Extractor:
             try:
                 response = await asyncio.wait_for(
                     self._llm.async_chat(system_msg[0]["content"], hist, conf, **kwargs),
-                    timeout=_CHAT_TIMEOUT,
+                    timeout=60 * 20,
                 )
                 response = self._normalize_response_text(response)
                 response = re.sub(r"^.*</think>", "", response, flags=re.DOTALL)
@@ -112,9 +111,8 @@ class Extractor:
                     await thread_pool_exec(set_llm_cache, self._llm.llm_name, system, response, history, gen_conf)
                 break
             except asyncio.TimeoutError:
-                logging.warning(f"_async_chat timeout on attempt {attempt + 1}/3")
-                if attempt == 2:
-                    raise TimeoutError(f"_async_chat timed out after 3 attempts of {_CHAT_TIMEOUT}s each")
+                logging.warning("_async_chat timed out after 20 minutes")
+                raise  # timeout is not a transient error; do not retry
             except Exception as e:
                 logging.exception(e)
                 if attempt == 2:
@@ -126,43 +124,17 @@ class Extractor:
         maybe_nodes = defaultdict(list)
         maybe_edges = defaultdict(list)
         ent_types = [t.lower() for t in self._entity_types]
-        entity_parse_fail = 0
-        entity_type_mismatch = 0
-        relation_parse_fail = 0
         for record in records:
             record_attributes = split_string_by_multi_markers(record, [tuple_delimiter])
 
             if_entities = handle_single_entity_extraction(record_attributes, chunk_key)
-            if if_entities is not None:
-                if if_entities.get("entity_type", "unknown").lower() in ent_types:
-                    maybe_nodes[if_entities["entity_name"]].append(if_entities)
-                    continue
-                else:
-                    entity_type_mismatch += 1
-                    continue
+            if if_entities is not None and if_entities.get("entity_type", "unknown").lower() in ent_types:
+                maybe_nodes[if_entities["entity_name"]].append(if_entities)
+                continue
 
             if_relation = handle_single_relationship_extraction(record_attributes, chunk_key)
             if if_relation is not None:
                 maybe_edges[(if_relation["src_id"], if_relation["tgt_id"])].append(if_relation)
-            else:
-                # Neither entity nor relation - log first few failures for debugging
-                if entity_parse_fail + relation_parse_fail < 3:
-                    logging.debug(
-                        f"Record parse fail: attrs={record_attributes[:5]}, "
-                        f"tuple_delim='{tuple_delimiter}', raw='{record[:200]}'"
-                    )
-                entity_parse_fail += 1
-
-        if not maybe_nodes and not maybe_edges:
-            logging.warning(
-                f"0 entities/relations from {len(records)} records. "
-                f"entity_type_mismatch={entity_type_mismatch}, parse_fail={entity_parse_fail}, "
-                f"configured_types={ent_types[:10]}{'...' if len(ent_types) > 10 else ''}"
-            )
-        elif entity_type_mismatch > 0:
-            logging.info(
-                f"Entity type mismatch: {entity_type_mismatch}/{len(records)} records had unrecognized types"
-            )
         return dict(maybe_nodes), dict(maybe_edges)
 
     async def __call__(self, doc_id: str, chunks: list[str], callback: Callable | None = None, task_id: str = ""):
@@ -356,7 +328,10 @@ class Extractor:
             node1_attrs = graph.nodes[node1]
             node0_attrs["description"] += f"{GRAPH_FIELD_SEP}{node1_attrs['description']}"
             node0_attrs["source_id"] = sorted(set(node0_attrs["source_id"] + node1_attrs["source_id"]))
-            for neighbor in graph.neighbors(node1):
+            # Snapshot neighbors before mutation; otherwise networkx raises
+            # "dictionary keys changed during iteration" when concurrent merges
+            # or graph.add_edge/remove_node below touch the same adjacency dict.
+            for neighbor in list(graph.neighbors(node1)):
                 change.removed_edges.add(get_from_to(node1, neighbor))
                 if neighbor not in nodes_set:
                     edge1_attrs = graph.get_edge_data(node1, neighbor)
@@ -372,6 +347,10 @@ class Extractor:
                         graph.add_edge(nodes[0], neighbor, **edge0_attrs)
                     else:
                         graph.add_edge(nodes[0], neighbor, **edge1_attrs)
+                        # Track the redirected neighbour so a later node1 in this
+                        # merge that also points to it takes the merge branch
+                        # above instead of overwriting the edge we just added.
+                        node0_neighbors.add(neighbor)
             graph.remove_node(node1)
         node0_attrs["description"] = await self._handle_entity_relation_summary(nodes[0], node0_attrs["description"], task_id=task_id)
         graph.nodes[nodes[0]].update(node0_attrs)

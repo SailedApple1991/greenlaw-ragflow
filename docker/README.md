@@ -78,8 +78,8 @@ The [.env](./.env) file contains important environment variables for Docker.
 
 - `SVR_HTTP_PORT`  
   The port used to expose RAGFlow's HTTP API service to the host machine, allowing **external** access to the service running inside the Docker container. Defaults to `9380`.
-- `RAGFLOW-IMAGE`  
-  The Docker image edition. Defaults to `infiniflow/ragflow:v0.24.0`. The RAGFlow Docker image does not include embedding models.
+- `RAGFLOW_IMAGE`  
+  The Docker image edition. Defaults to `infiniflow/ragflow:v0.26.0`. The RAGFlow Docker image does not include embedding models.
 
   
 > [!TIP]  
@@ -87,7 +87,7 @@ The [.env](./.env) file contains important environment variables for Docker.
 > 
 > - For the `nightly` edition:  
 >   - `RAGFLOW_IMAGE=swr.cn-north-4.myhuaweicloud.com/infiniflow/ragflow:nightly` or,
->   - `RAGFLOW_IMAGE=infiniflow-registry.cn-shanghai.cr.aliyuncs.com/infiniflow/ragflow:nightly`.
+>   - `RAGFLOW_IMAGE=registry.cn-hangzhou.aliyuncs.com/infiniflow/ragflow:nightly`.
 
 ### Timezone
 
@@ -118,6 +118,46 @@ The [.env](./.env) file contains important environment variables for Docker.
 
 - `EMBEDDING_BATCH_SIZE`  
   The number of text chunks processed in a single batch during embedding vectorization. Defaults to `16`.
+
+### OceanBase prerequisites
+
+Before setting `DOC_ENGINE=oceanbase`, make sure the host OS allows the file descriptor and core dump limits OceanBase expects.
+
+1. Set host limits:
+
+   ```bash
+   sudo tee /etc/security/limits.d/99-oceanbase.conf >/dev/null <<'EOF'
+   root soft nofile 655350
+   root hard nofile 655350
+   * soft nofile 655350
+   * hard nofile 655350
+   * soft core unlimited
+   * hard core unlimited
+   EOF
+   ```
+
+2. Make sure PAM limits are enabled:
+
+   ```bash
+   grep -E 'pam_limits\.so' /etc/pam.d/common-session /etc/pam.d/common-session-noninteractive
+   ```
+
+   If missing, add them:
+
+   ```bash
+   echo 'session required pam_limits.so' | sudo tee -a /etc/pam.d/common-session
+   echo 'session required pam_limits.so' | sudo tee -a /etc/pam.d/common-session-noninteractive
+   ```
+
+3. Log out and log back in, or reboot.
+
+4. Verify the effective limit:
+
+   ```bash
+   ulimit -n
+   ```
+
+   Expected: `655350`, or at least `20000`.
 
 ## 🐋 Service configuration
 

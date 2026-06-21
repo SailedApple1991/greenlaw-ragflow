@@ -35,25 +35,16 @@ RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
     apt update && \
     apt --no-install-recommends install -y ca-certificates; \
     if [ "$NEED_MIRROR" == "1" ]; then \
-        sed -i 's|http://archive.ubuntu.com/ubuntu|https://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources; \
-        sed -i 's|http://security.ubuntu.com/ubuntu|https://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources; \
+        sed -i 's|http://archive.ubuntu.com/ubuntu|https://mirrors.aliyun.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources; \
+        sed -i 's|http://security.ubuntu.com/ubuntu|https://mirrors.aliyun.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources; \
     fi; \
     rm -f /etc/apt/apt.conf.d/docker-clean && \
     echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache && \
     chmod 1777 /tmp && \
     apt update && \
-    apt install -y build-essential libglib2.0-0 libglx-mesa0 libgl1 && \
-    apt install -y pkg-config libicu-dev libgdiplus && \
-    apt install -y default-jdk && \
-    apt install -y libatk-bridge2.0-0 && \
-    apt install -y libpython3-dev libgtk-4-1 libnss3 xdg-utils libgbm-dev && \
-    apt install -y libjemalloc-dev && \
-    apt install -y gnupg unzip curl wget git vim less && \
-    apt install -y ghostscript && \
-    apt install -y pandoc && \
-    apt install -y texlive && \
-    apt install -y fonts-freefont-ttf fonts-noto-cjk && \
-    apt install -y postgresql-client
+    apt install -y \
+    libglib2.0-0 libglx-mesa0 libgl1 pkg-config libgdiplus default-jdk libatk-bridge2.0-0 libgtk-4-1 libnss3 xdg-utils libjemalloc-dev gnupg unzip curl wget git vim less ghostscript pandoc texlive texlive-latex-extra texlive-xetex texlive-lang-chinese fonts-freefont-ttf fonts-noto-cjk postgresql-client && \
+    rm -rf /var/lib/apt/lists/*
 
 # Download resource from GitHub to /usr/share/infinity
 RUN mkdir -p /usr/share/infinity/resource && \
@@ -65,14 +56,15 @@ RUN mkdir -p /usr/share/infinity/resource && \
     cp -r /tmp/resource/* /usr/share/infinity/resource && \
     rm -rf /tmp/resource
 
-ARG NGINX_VERSION=1.29.5-1~noble
+ARG NGINX_VERSION=1.31.0-1~noble
 RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
     mkdir -p /etc/apt/keyrings && \
-    curl -fsSL https://nginx.org/keys/nginx_signing.key | gpg --dearmor -o /etc/apt/keyrings/nginx-archive-keyring.gpg && \
+    curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL https://nginx.org/keys/nginx_signing.key | gpg --dearmor -o /etc/apt/keyrings/nginx-archive-keyring.gpg && \
     echo "deb [signed-by=/etc/apt/keyrings/nginx-archive-keyring.gpg] https://nginx.org/packages/mainline/ubuntu/ noble nginx" > /etc/apt/sources.list.d/nginx.list && \
-    apt update && \
-    apt install -y nginx=${NGINX_VERSION} && \
-    apt-mark hold nginx
+    apt -o Acquire::Retries=5 update && \
+    apt -o Acquire::Retries=5 install -y nginx=${NGINX_VERSION} && \
+    apt-mark hold nginx && \
+    rm -rf /var/lib/apt/lists/*
 
 # Install uv
 RUN --mount=type=bind,from=infiniflow/ragflow_deps:latest,source=/,target=/deps \
@@ -80,7 +72,7 @@ RUN --mount=type=bind,from=infiniflow/ragflow_deps:latest,source=/,target=/deps 
         mkdir -p /etc/uv && \
         echo 'python-install-mirror = "https://registry.npmmirror.com/-/binary/python-build-standalone/"' > /etc/uv/uv.toml && \
         echo '[[index]]' >> /etc/uv/uv.toml && \
-        echo 'url = "https://pypi.tuna.tsinghua.edu.cn/simple"' >> /etc/uv/uv.toml && \
+        echo 'url = "https://mirrors.aliyun.com/pypi/simple"' >> /etc/uv/uv.toml && \
         echo 'default = true' >> /etc/uv/uv.toml; \
     fi; \
     arch="$(uname -m)"; \
@@ -88,9 +80,11 @@ RUN --mount=type=bind,from=infiniflow/ragflow_deps:latest,source=/,target=/deps 
     tar xzf "/deps/uv-${uv_arch}-unknown-linux-gnu.tar.gz" \
     && cp "uv-${uv_arch}-unknown-linux-gnu/"* /usr/local/bin/ \
     && rm -rf "uv-${uv_arch}-unknown-linux-gnu" \
-    && uv python install 3.12
+    && uv python install 3.13
 
-ENV PYTHONDONTWRITEBYTECODE=1 DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
+ENV PYTHONDONTWRITEBYTECODE=1 DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 \
+    UV_HTTP_TIMEOUT=200 \
+    UV_HTTP_RETRIES=3
 ENV PATH=/root/.local/bin:$PATH
 
 # nodejs 12.22 on Ubuntu 22.04 is too old
@@ -99,7 +93,8 @@ RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
     apt purge -y nodejs npm && \
     apt autoremove -y && \
     apt update && \
-    apt install -y nodejs
+    apt install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
 
 # Add msssql ODBC driver
 # macOS ARM64 environment, install msodbcsql18.
@@ -115,7 +110,8 @@ RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
     else \
         # x86_64 or others \
         ACCEPT_EULA=Y apt install -y unixodbc-dev msodbcsql17; \
-    fi || \
+    fi && \
+    rm -rf /var/lib/apt/lists/* || \
     { echo "Failed to install ODBC driver"; exit 1; }
 
 
@@ -144,6 +140,13 @@ USER root
 
 WORKDIR /ragflow
 
+# Install build-only dependencies for compiling Python C extensions.
+# These are not inherited from base to keep the production image smaller.
+RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
+    apt update && \
+    apt install -y build-essential libpython3-dev libicu-dev libgbm-dev && \
+    rm -rf /var/lib/apt/lists/*
+
 # install dependencies from uv.lock file
 COPY pyproject.toml uv.lock ./
 
@@ -151,19 +154,26 @@ COPY pyproject.toml uv.lock ./
 # uv records index url into uv.lock but doesn't failover among multiple indexes
 RUN --mount=type=cache,id=ragflow_uv,target=/root/.cache/uv,sharing=locked \
     if [ "$NEED_MIRROR" == "1" ]; then \
-        sed -i 's|pypi.org|pypi.tuna.tsinghua.edu.cn|g' uv.lock; \
+        sed -i 's|pypi.org|mirrors.aliyun.com/pypi|g' uv.lock; \
     else \
-        sed -i 's|pypi.tuna.tsinghua.edu.cn|pypi.org|g' uv.lock; \
+        sed -i 's|mirrors.aliyun.com/pypi|pypi.org|g' uv.lock; \
+        sed -i 's|gitee.com|github.com|g' uv.lock; \
     fi; \
-    uv sync --python 3.12 --frozen && \
+    uv sync --python 3.13 --frozen && \
     # Ensure pip is available in the venv for runtime package installation (fixes #12651)
     .venv/bin/python3 -m ensurepip --upgrade
 
+# Install frontend dependencies — depends only on package manifests so
+# web source / docs changes don't invalidate this layer.
+COPY web/package.json web/package-lock.json web/.npmrc ./web/
+RUN --mount=type=cache,id=ragflow_npm,target=/root/.npm,sharing=locked \
+    cd web && NODE_OPTIONS="--max-old-space-size=8192" npm install
+
+# Copy full web source and docs for the frontend build.
 COPY web web
 COPY docs docs
 RUN --mount=type=cache,id=ragflow_npm,target=/root/.npm,sharing=locked \
-    export NODE_OPTIONS="--max-old-space-size=4096" && \
-    cd web && npm install && npm run build
+    cd web && NODE_OPTIONS="--max-old-space-size=8192" VITE_BUILD_SOURCEMAP=false VITE_MINIFY=esbuild npm run build
 
 COPY .git /ragflow/.git
 
@@ -185,7 +195,6 @@ ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
 
 ENV PYTHONPATH=/ragflow/
 
-COPY web web
 COPY admin admin
 COPY api api
 COPY conf conf
@@ -197,10 +206,33 @@ COPY mcp mcp
 COPY common common
 COPY memory memory
 COPY bin bin
+COPY tools/scripts tools/scripts
 
 COPY docker/service_conf.yaml.template ./conf/service_conf.yaml.template
 COPY docker/entrypoint.sh ./
 RUN chmod +x ./entrypoint*.sh
+
+# fork: optionally install PaddleOCR into the venv (OCR_PROVIDER=paddleocr).
+# Default ON; set --build-arg ENABLE_PADDLEOCR=0 to skip (deepdoc OCR needs none).
+ARG ENABLE_PADDLEOCR="1"
+RUN if [ "$ENABLE_PADDLEOCR" = "1" ]; then \
+        uv pip install --no-cache \
+            "paddlepaddle==3.2.2" \
+            -i https://www.paddlepaddle.org.cn/packages/stable/cpu/ && \
+        uv pip install --no-cache \
+            "paddleocr>=2.7.0" && \
+        paddleocr install_hpi_deps cpu && \
+        SITE_PKG=$(python -c "import site; print(site.getsitepackages()[0])") && \
+        sed -i 's/from langchain.docstore.document/from langchain_community.docstore.document/g' $SITE_PKG/paddlex/inference/pipelines/components/retriever/base.py && \
+        sed -i 's/from langchain.text_splitter/from langchain_text_splitters/g' $SITE_PKG/paddlex/inference/pipelines/components/retriever/base.py; \
+    fi
+
+# Copy nginx configuration for frontend serving
+COPY docker/nginx/ragflow.conf.golang docker/nginx/ragflow.conf.python docker/nginx/ragflow.conf.hybrid docker/nginx/nginx.conf docker/nginx/proxy.conf /etc/nginx/
+RUN mv /etc/nginx/ragflow.conf.golang /etc/nginx/conf.d/ragflow.conf.golang && \
+    mv /etc/nginx/ragflow.conf.python /etc/nginx/conf.d/ragflow.conf.python && \
+    mv /etc/nginx/ragflow.conf.hybrid /etc/nginx/conf.d/ragflow.conf.hybrid && \
+    rm -f /etc/nginx/sites-enabled/default
 
 # Copy compiled web pages
 COPY --from=builder /ragflow/web/dist /ragflow/web/dist

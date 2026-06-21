@@ -10,8 +10,10 @@ import {
   useRef,
   useState,
 } from 'react';
-interface TextareaProps
-  extends Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, 'autoSize'> {
+interface TextareaProps extends Omit<
+  TextareaHTMLAttributes<HTMLTextAreaElement>,
+  'autoSize'
+> {
   autoSize?: {
     minRows?: number;
     maxRows?: number;
@@ -95,9 +97,10 @@ const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
         )}
         rows={autoSize?.minRows ?? props.rows ?? undefined}
         style={{
-          maxHeight: autoSize?.maxRows && !resizable
-            ? `${autoSize.maxRows * 20}px`
-            : undefined,
+          maxHeight:
+            autoSize?.maxRows && !resizable
+              ? `${autoSize.maxRows * 20}px`
+              : undefined,
           resize,
         }}
         ref={textareaRef}

@@ -25,11 +25,12 @@ from flask_login import current_user, login_required, logout_user
 
 from auth import login_verify, login_admin, check_admin_auth
 from responses import success_response, error_response
-from services import UserMgr, ServiceMgr, UserServiceMgr, SettingsMgr, ConfigMgr, EnvironmentsMgr, SandboxMgr, CacheMgr
+from services import UserMgr, ServiceMgr, UserServiceMgr, SettingsMgr, ConfigMgr, EnvironmentsMgr, SandboxMgr
 from roles import RoleMgr
 from api.common.exceptions import AdminException
 from common.versions import get_ragflow_version
 from api.utils.api_utils import generate_confirmation_token
+from common.log_utils import get_log_levels, set_log_level
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/api/v1/admin")
 
@@ -420,7 +421,7 @@ def get_user_permission(user_name: str):
 def set_variable():
     try:
         data = request.get_json()
-        if not data and "var_name" not in data:
+        if not data or "var_name" not in data:
             return error_response("Var name is required", 400)
 
         if "var_value" not in data:
@@ -448,7 +449,7 @@ def get_variable():
 
         # get var
         data = request.get_json()
-        if not data and "var_name" not in data:
+        if not data or "var_name" not in data:
             return error_response("Var name is required", 400)
         var_name: str = data["var_name"]
         res = SettingsMgr.get_by_name(var_name)
@@ -654,179 +655,37 @@ def test_sandbox_connection():
         return error_response(str(e), 500)
 
 
-# ---- Cache Management ----
-
-@admin_bp.route("/cache/stats", methods=["GET"])
+@admin_bp.route("/log_levels", methods=["GET"])
 @login_required
 @check_admin_auth
-def get_cache_stats():
-    """Get L1/L2 cache statistics."""
+def get_logger_levels():
+    """Get current log levels for all packages."""
     try:
-        stats = CacheMgr.get_cache_stats()
-        return success_response(stats, "Get cache stats", 0)
-    except AdminException as e:
-        return error_response(e.message, e.code)
+        res = get_log_levels()
+        return success_response(res, "Get log levels", 0)
     except Exception as e:
         return error_response(str(e), 500)
 
 
-@admin_bp.route("/cache/tenants", methods=["GET"])
+@admin_bp.route("/log_levels", methods=["PUT"])
 @login_required
 @check_admin_auth
-def list_cache_tenants():
-    """List tenants that have cache indices."""
-    try:
-        tenants = CacheMgr.list_tenants_with_cache()
-        return success_response(tenants, "Get cache tenants", 0)
-    except AdminException as e:
-        return error_response(e.message, e.code)
-    except Exception as e:
-        return error_response(str(e), 500)
-
-
-@admin_bp.route("/cache/tenants/<tenant_id>/dialogs", methods=["GET"])
-@login_required
-@check_admin_auth
-def list_cache_dialogs(tenant_id: str):
-    """List dialogs with cached entries for a tenant."""
-    try:
-        dialogs = CacheMgr.list_dialogs_for_tenant(tenant_id)
-        return success_response(dialogs, "Get cache dialogs", 0)
-    except AdminException as e:
-        return error_response(e.message, e.code)
-    except Exception as e:
-        return error_response(str(e), 500)
-
-
-@admin_bp.route("/cache/l2/entries", methods=["GET"])
-@login_required
-@check_admin_auth
-def list_cache_l2_entries():
-    """List L2 cache entries with pagination and filtering."""
-    try:
-        tenant_id = request.args.get("tenant_id")
-        if not tenant_id:
-            return error_response("tenant_id is required", 400)
-
-        dialog_id = request.args.get("dialog_id")
-        question_search = request.args.get("question_search")
-        page = int(request.args.get("page", 1))
-        page_size = int(request.args.get("page_size", 20))
-
-        result = CacheMgr.list_l2_entries(
-            tenant_id=tenant_id,
-            dialog_id=dialog_id,
-            question_search=question_search,
-            page=page,
-            page_size=page_size,
-        )
-        return success_response(result, "Get L2 cache entries", 0)
-    except AdminException as e:
-        return error_response(e.message, e.code)
-    except Exception as e:
-        return error_response(str(e), 500)
-
-
-@admin_bp.route("/cache/l2/entries/<tenant_id>/<entry_id>", methods=["GET"])
-@login_required
-@check_admin_auth
-def get_cache_l2_entry(tenant_id: str, entry_id: str):
-    """Get a single L2 cache entry."""
-    try:
-        entry = CacheMgr.get_l2_entry(tenant_id, entry_id)
-        return success_response(entry, "Get L2 cache entry", 0)
-    except AdminException as e:
-        return error_response(e.message, e.code)
-    except Exception as e:
-        return error_response(str(e), 500)
-
-
-@admin_bp.route("/cache/l2/entries/<tenant_id>/<entry_id>", methods=["PUT"])
-@login_required
-@check_admin_auth
-def update_cache_l2_entry(tenant_id: str, entry_id: str):
-    """Update an L2 cache entry."""
+def set_logger_level():
+    """Set log level for a package."""
     try:
         data = request.get_json()
-        if not data:
-            return error_response("Request body is required", 400)
+        if not data or "pkg_name" not in data or "level" not in data:
+            return error_response("pkg_name and level are required", 400)
 
-        result = CacheMgr.update_l2_entry(tenant_id, entry_id, data)
-        return success_response(result, "L2 cache entry updated")
-    except AdminException as e:
-        return error_response(e.message, e.code)
-    except Exception as e:
-        return error_response(str(e), 500)
+        pkg_name = data["pkg_name"]
+        level = data["level"]
+        if not isinstance(pkg_name, str) or not isinstance(level, str):
+            return error_response("pkg_name and level must be strings", 400)
 
-
-@admin_bp.route("/cache/l2/entries", methods=["POST"])
-@login_required
-@check_admin_auth
-def create_cache_l2_entry():
-    """Create a new L2 cache entry."""
-    try:
-        data = request.get_json()
-        if not data:
-            return error_response("Request body is required", 400)
-
-        tenant_id = data.get("tenant_id")
-        dialog_id = data.get("dialog_id")
-        question_text = data.get("question_text")
-        answer = data.get("answer", "")
-        reference = data.get("reference", "")
-        ttl = int(data.get("ttl", 86400))
-
-        if not tenant_id or not dialog_id or not question_text:
-            return error_response("tenant_id, dialog_id and question_text are required", 400)
-
-        entry = CacheMgr.create_l2_entry(
-            tenant_id=tenant_id,
-            dialog_id=dialog_id,
-            question_text=question_text,
-            answer=answer,
-            reference=reference,
-            ttl=ttl,
-        )
-        return success_response(entry, "L2 cache entry created")
-    except AdminException as e:
-        return error_response(e.message, e.code)
-    except Exception as e:
-        return error_response(str(e), 500)
-
-
-@admin_bp.route("/cache/l2/entries", methods=["DELETE"])
-@login_required
-@check_admin_auth
-def delete_cache_l2_entries():
-    """Batch delete L2 cache entries."""
-    try:
-        data = request.get_json()
-        if not data:
-            return error_response("Request body is required", 400)
-
-        tenant_id = data.get("tenant_id")
-        entry_ids = data.get("entry_ids", [])
-
-        if not tenant_id or not entry_ids:
-            return error_response("tenant_id and entry_ids are required", 400)
-
-        deleted = CacheMgr.delete_l2_entries(tenant_id, entry_ids)
-        return success_response({"deleted": deleted}, "L2 cache entries deleted")
-    except AdminException as e:
-        return error_response(e.message, e.code)
-    except Exception as e:
-        return error_response(str(e), 500)
-
-
-@admin_bp.route("/cache/l1/dialog/<dialog_id>", methods=["DELETE"])
-@login_required
-@check_admin_auth
-def invalidate_cache_l1_dialog(dialog_id: str):
-    """Invalidate all L1 cache for a dialog."""
-    try:
-        count = CacheMgr.invalidate_l1_dialog(dialog_id)
-        return success_response({"count": count}, "L1 cache invalidated")
-    except AdminException as e:
-        return error_response(e.message, e.code)
+        success = set_log_level(pkg_name, level)
+        if success:
+            return success_response({"pkg_name": pkg_name, "level": level}, "Log level updated successfully")
+        else:
+            return error_response(f"Invalid log level: {level}", 400)
     except Exception as e:
         return error_response(str(e), 500)

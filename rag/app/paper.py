@@ -19,7 +19,7 @@ import copy
 import re
 
 from deepdoc.parser.figure_parser import vision_figure_parser_pdf_wrapper
-from common.constants import ParserType
+from common.constants import ParserType, MAXIMUM_PAGE_NUMBER
 from rag.nlp import rag_tokenizer, tokenize, tokenize_table, add_positions, bullets_category, title_frequency, \
     tokenize_chunks, attach_media_context
 from deepdoc.parser import PdfParser
@@ -29,12 +29,12 @@ from common.parser_config_utils import normalize_layout_recognizer
 
 
 class Pdf(PdfParser):
-    def __init__(self, ocr_provider: str | None = None):
-        self.model_speciess = ParserType.PAPER.value
-        super().__init__(ocr_provider=ocr_provider)
+    def __init__(self):
+        self.model_species = ParserType.PAPER.value
+        super().__init__()
 
     def __call__(self, filename, binary=None, from_page=0,
-                 to_page=100000, zoomin=3, callback=None):
+                 to_page=MAXIMUM_PAGE_NUMBER, zoomin=3, callback=None):
         from timeit import default_timer as timer
         start = timer()
         callback(msg="OCR started")
@@ -99,10 +99,15 @@ class Pdf(PdfParser):
                     title = ""
                     break
                 for j in range(3):
-                    if _begin(self.boxes[i + j]["text"]):
+                    next_idx = i + j
+                    if next_idx >= len(self.boxes):
                         break
-                    authors.append(self.boxes[i + j]["text"])
-                    break
+                    candidate = self.boxes[next_idx]["text"]
+                    if _begin(candidate):
+                        break
+                    if "@" in candidate:
+                        break
+                    authors.append(candidate)
                 break
         # get abstract
         abstr = ""
@@ -141,7 +146,7 @@ class Pdf(PdfParser):
         }
 
 
-def chunk(filename, binary=None, from_page=0, to_page=100000,
+def chunk(filename, binary=None, from_page=0, to_page=MAXIMUM_PAGE_NUMBER,
           lang="Chinese", callback=None, **kwargs):
     """
         Only pdf is supported.
@@ -158,18 +163,12 @@ def chunk(filename, binary=None, from_page=0, to_page=100000,
         if isinstance(layout_recognizer, bool):
             layout_recognizer = "DeepDOC" if layout_recognizer else "Plain Text"
 
-        # Handle special "DeepDOC (PaddleOCR)" selection from frontend
-        ocr_provider = parser_config.get("ocr_provider")
-        if layout_recognizer.lower() == "deepdoc (paddleocr)":
-            layout_recognizer = "DeepDOC"
-            ocr_provider = "paddleocr"
-
         name = layout_recognizer.strip().lower()
         pdf_parser = PARSERS.get(name, by_plaintext)
         callback(0.1, "Start to parse.")
 
         if name == "deepdoc":
-            pdf_parser = Pdf(ocr_provider=ocr_provider)
+            pdf_parser = Pdf()
             paper = pdf_parser(filename if not binary else binary,
                                from_page=from_page, to_page=to_page, callback=callback)
             sections = paper.get("sections", [])
@@ -187,7 +186,6 @@ def chunk(filename, binary=None, from_page=0, to_page=100000,
                 layout_recognizer=layout_recognizer,
                 mineru_llm_name=parser_model_name,
                 parse_method="paper",
-                ocr_provider=ocr_provider,
                 **kwargs
             )
 
@@ -259,6 +257,7 @@ def chunk(filename, binary=None, from_page=0, to_page=100000,
     image_ctx = max(0, int(parser_config.get("image_context_size", 0) or 0))
     if table_ctx or image_ctx:
         attach_media_context(res, table_ctx, image_ctx)
+    
     return res
 
 

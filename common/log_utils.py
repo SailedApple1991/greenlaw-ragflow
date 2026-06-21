@@ -21,10 +21,10 @@ from logging.handlers import RotatingFileHandler
 from common.file_utils import get_project_base_directory
 
 initialized_root_logger = False
-pkg_levels = {}
+pkg_levels = {}  # module-level to allow runtime modification
 
 def init_root_logger(logfile_basename: str, log_format: str = "%(asctime)-15s %(levelname)-8s %(process)d %(message)s"):
-    global initialized_root_logger
+    global initialized_root_logger, pkg_levels
     if initialized_root_logger:
         return
     initialized_root_logger = True
@@ -46,9 +46,7 @@ def init_root_logger(logfile_basename: str, log_format: str = "%(asctime)-15s %(
 
     logging.captureWarnings(True)
 
-    global pkg_levels
     LOG_LEVELS = os.environ.get("LOG_LEVELS", "")
-    pkg_levels = {}
     for pkg_name_level in LOG_LEVELS.split(","):
         terms = pkg_name_level.split("=")
         if len(terms)!= 2:

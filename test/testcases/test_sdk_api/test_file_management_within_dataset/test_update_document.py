@@ -64,10 +64,11 @@ class TestDocumentsUpdated:
                 assert expected_message in str(exception_info.value), str(exception_info.value)
         else:
             document.update({"name": name})
-            updated_doc = dataset.list_documents(id=document.id)[0]
+            docs = dataset.list_documents(id=document.id)
+            updated_doc = [doc for doc in docs if doc.id == document.id][0]
             assert updated_doc.name == name, str(updated_doc)
 
-    @pytest.mark.p3
+    @pytest.mark.p2
     @pytest.mark.parametrize(
         "meta_fields, expected_message",
         [
@@ -85,6 +86,14 @@ class TestDocumentsUpdated:
             assert expected_message in str(exception_info.value), str(exception_info.value)
         else:
             document.update({"meta_fields": meta_fields})
+
+    @pytest.mark.p2
+    def test_meta_fields_invalid_type_guard_p2(self, add_documents):
+        _, documents = add_documents
+        document = documents[0]
+        with pytest.raises(Exception) as exception_info:
+            document.update({"meta_fields": "not-a-dict"})
+        assert "meta_fields must be a dictionary" in str(exception_info.value), str(exception_info.value)
 
     @pytest.mark.p2
     @pytest.mark.parametrize(
@@ -130,7 +139,8 @@ class TestDocumentsUpdated:
                 assert expected_message in str(exception_info.value), str(exception_info.value)
         else:
             document.update({"chunk_method": chunk_method})
-            updated_doc = dataset.list_documents(id=document.id)[0]
+            docs = dataset.list_documents()
+            updated_doc = [doc for doc in docs if doc.id == document.id][0]
             assert updated_doc.chunk_method == chunk_method, str(updated_doc)
 
     @pytest.mark.p3
@@ -230,27 +240,82 @@ class TestDocumentsUpdated:
             document.update(payload)
         assert expected_message in str(exception_info.value), str(exception_info.value)
 
-    @pytest.mark.p3
-    def test_immutable_fields_chunk_count(self, add_document):
-        document, _ = add_document  # Unpack the tuple to get the document object
-        with pytest.raises(Exception) as exception_info:
-            document.update({"chunk_count": 999})  # Attempt to change immutable field
-        assert "Can't change `chunk_count`" in str(exception_info.value), str(exception_info.value)
+    @pytest.mark.p2
+    @pytest.mark.parametrize(
+        "payload, expected_message",
+        [
+            ({"chunk_count": 1}, "Can't change `chunk_count`"),
+        ],
+    )
+    def test_immutable_fields_chunk_count(self, add_documents, payload, expected_message):
+        _, documents = add_documents
+        document = documents[0]
 
-    @pytest.mark.p3
-    def test_immutable_fields_token_count(self, add_document):
-        document, _ = add_document  # Unpack the tuple to get the document object
         with pytest.raises(Exception) as exception_info:
-            document.update({"token_count": 9999})  # Attempt to change immutable field
-        assert "Can't change `token_num`" in str(exception_info.value), str(exception_info.value)
+            document.update(payload)
+        assert expected_message in str(exception_info.value), str(exception_info.value)
 
-    @pytest.mark.p3
-    def test_immutable_fields_progress(self, add_document):
-        document, _ = add_document  # Unpack the tuple to get the document object
+    @pytest.mark.p2
+    @pytest.mark.parametrize(
+        "payload, expected_message",
+        [
+            ({"token_count": 9999}, "Can't change `token_count`"),  # Attempt to change immutable field
+        ],
+    )
+    def test_immutable_fields_token_count(self, add_documents, payload, expected_message):
+        _, documents = add_documents
+        document = documents[0]
+
         with pytest.raises(Exception) as exception_info:
-            document.update({"progress": 0.5})  # Attempt to change immutable field
-        assert "Can't change `progress`" in str(exception_info.value), str(exception_info.value)
+            document.update(payload)
+        assert expected_message in str(exception_info.value), str(exception_info.value)
 
+    @pytest.mark.p2
+    @pytest.mark.parametrize(
+        "payload, expected_message",
+        [
+            ({"progress": 0.5}, "Can't change `progress`"),  # Attempt to change immutable field
+            ({"progress": 1.5}, "Field: <progress> - Message: <Input should be less than or equal to 1> - Value: <1.5>"),  # Attempt to change immutable field
+        ],
+    )
+    def test_immutable_fields_progress(self, add_documents, payload, expected_message):
+        _, documents = add_documents
+        document = documents[0]
+
+        with pytest.raises(Exception) as exception_info:
+            document.update(payload)
+        assert expected_message in str(exception_info.value), str(exception_info.value)
+
+
+DEFAULT_PARSER_CONFIG_FOR_TEST = {
+    "layout_recognize": "DeepDOC",
+    "chunk_token_num": 512,
+    "delimiter": "\n",
+    "auto_keywords": 0,
+    "auto_questions": 0,
+    "html4excel": False,
+    "topn_tags": 3,
+    "raptor": {
+        "use_raptor": True,
+        "prompt": "Please summarize the following paragraphs. Be careful with the numbers, do not make things up. Paragraphs as following:\n      {cluster_content}\nThe above is the content you need to summarize.",
+        "max_token": 256,
+        "threshold": 0.1,
+        "max_cluster": 64,
+        "random_seed": 0,
+    },
+    "graphrag": {
+        "use_graphrag": True,
+        "entity_types": [
+            "organization",
+            "person",
+            "geo",
+            "event",
+            "category",
+        ],
+        "method": "light",
+        "batch_chunk_token_size": 4096,
+    },
+}
 
 class TestUpdateDocumentParserConfig:
     @pytest.mark.p2
@@ -260,15 +325,14 @@ class TestUpdateDocumentParserConfig:
             ("naive", {}, ""),
             pytest.param(
                 "naive",
-                DEFAULT_PARSER_CONFIG,
+                DEFAULT_PARSER_CONFIG_FOR_TEST,
                 "",
                 marks=pytest.mark.skip(reason="DEFAULT_PARSER_CONFIG contains fields not allowed in document update API"),
             ),
             pytest.param(
                 "naive",
                 {"chunk_token_num": -1},
-                "chunk_token_num should be in range from 1 to 100000000",
-                marks=pytest.mark.skip(reason="issues/6098"),
+                "Field: <parser_config.chunk_token_num> - Message: <Input should be greater than or equal to 1> - Value: <-1>",
             ),
             (
                 "naive",
@@ -319,8 +383,7 @@ class TestUpdateDocumentParserConfig:
             pytest.param(
                 "naive",
                 {"task_page_size": 100000000},
-                "task_page_size should be in range from 1 to 100000000",
-                marks=pytest.mark.skip(reason="API validation differs from expected message"),
+                "",
             ),
             (
                 "naive",
@@ -352,8 +415,7 @@ class TestUpdateDocumentParserConfig:
             pytest.param(
                 "naive",
                 {"auto_keywords": 32},
-                "auto_keywords should be in range from 0 to 32",
-                marks=pytest.mark.skip(reason="API validation differs from expected message"),
+                "",
             ),
             (
                 "naive",
@@ -373,8 +435,7 @@ class TestUpdateDocumentParserConfig:
             pytest.param(
                 "naive",
                 {"auto_questions": 10},
-                "auto_questions should be in range from 0 to 10",
-                marks=pytest.mark.skip(reason="API validation differs from expected message"),
+                "",
             ),
             (
                 "naive",
@@ -394,8 +455,7 @@ class TestUpdateDocumentParserConfig:
             pytest.param(
                 "naive",
                 {"topn_tags": 10},
-                "topn_tags should be in range from 0 to 10",
-                marks=pytest.mark.skip(reason="API validation differs from expected message"),
+                "",
             ),
             (
                 "naive",
@@ -422,7 +482,8 @@ class TestUpdateDocumentParserConfig:
             assert expected_message in str(exception_info.value), str(exception_info.value)
         else:
             document.update(update_data)
-            updated_doc = dataset.list_documents(id=document.id)[0]
+            docs = dataset.list_documents(id=document.id)
+            updated_doc = [doc for doc in docs if doc.id == document.id][0]
             if parser_config:
                 for k, v in parser_config.items():
                     if isinstance(v, dict):

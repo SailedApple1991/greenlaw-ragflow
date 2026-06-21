@@ -31,6 +31,10 @@ os:
   hosts: 'http://${OS_HOST:-opensearch01}:9201'
   username: '${OS_USER:-admin}'
   password: '${OPENSEARCH_PASSWORD:-infini_rag_flow_OS_01}'
+  # Optional hybrid (BM25 + KNN) search tuning. The connector self-provisions the
+  # normalization search pipeline on start-up (requires OpenSearch >= 2.10).
+  # hybrid_search_pipeline: 'ragflow_hybrid_pipeline'
+  # hybrid_search_weights: [0.5, 0.5]   # [text/BM25 leg, vector/KNN leg]
 infinity:
   uri: '${INFINITY_HOST:-infinity}:23817'
   postgres_port: 5432
@@ -55,7 +59,7 @@ redis:
   db: 1
   username: '${REDIS_USERNAME:-}'
   password: '${REDIS_PASSWORD:-infini_rag_flow}'
-  host: '${REDIS_HOST:-redis}:${REDIS_PORT:-6379}'
+  host: '${REDIS_HOST:-redis}:6379'
   ssl: ${REDIS_SSL:-false}
 user_default_llm:
   default_models:
@@ -70,14 +74,13 @@ user_default_llm:
 #   port: 5432
 #   max_connections: 100
 #   stale_timeout: 30
+# fork: AWS S3 storage (IAM-role based; only read when STORAGE_IMPL_TYPE=AWS_S3)
 s3:
-  access_key: '${ACCESS_KEY}'
-  secret_key: '${SECRET_KEY}'
   region: '${REGION}'
   endpoint_url: '${ENDPOINT}'
   bucket: '${BUCKET}'
-  signature_version: 'v4'
-  addressing_style: 'virtual'
+#   signature_version: 'v4'
+#   addressing_style: 'path'
 # oss:
 #   access_key: '${ACCESS_KEY}'
 #   secret_key: '${SECRET_KEY}'
@@ -144,12 +147,13 @@ s3:
 #     client_secret: "your_client_secret"
 #     redirect_uri: "https://your-app.com/v1/user/oauth/callback/github"
 # authentication:
-#   client:
-#     switch: false
-#     http_app_key:
-#     http_secret_key:
-#   site:
-#     switch: false
+#  client:
+#    switch: false
+#    http_app_key:
+#    http_secret_key:
+#  site:
+#    switch: false
+#  disable_password_login: false
 # permission:
 #   switch: false
 #   component: false

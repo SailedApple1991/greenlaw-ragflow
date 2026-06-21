@@ -20,8 +20,9 @@ import logging
 import re
 from copy import deepcopy
 from typing import Tuple
-import jinja2
+from jinja2.sandbox import SandboxedEnvironment
 import json_repair
+
 from common.misc_utils import hash_str2int
 from rag.nlp import rag_tokenizer
 from rag.prompts.template import load_prompt
@@ -58,6 +59,7 @@ def chunks_format(reference):
             "term_similarity": chunk.get("term_similarity"),
             "row_id": chunk.get("row_id"),
             "doc_type": get_value(chunk, "doc_type_kwd", "doc_type"),
+            "document_metadata": chunk.get("document_metadata"),
         }
         for chunk in raw_chunks
         if isinstance(chunk, dict)
@@ -75,6 +77,10 @@ def message_fit_in(msg, max_length=4000):
             total += m["count"]
         return total
 
+    def trim_content(content, limit):
+        limit = max(0, limit)
+        return encoder.decode(encoder.encode(content)[:limit])
+
     c = count()
     if c < max_length:
         return c, msg
@@ -89,22 +95,37 @@ def message_fit_in(msg, max_length=4000):
 
     ll = num_tokens_from_string(msg_[0]["content"])
     ll2 = num_tokens_from_string(msg_[-1]["content"])
-    if ll / (ll + ll2) > 0.8:
-        m = msg_[0]["content"]
-        m = encoder.decode(encoder.encode(m)[: max_length - ll2])
-        msg[0]["content"] = m
-        return max_length, msg
+    total = ll + ll2
+    if total <= 0:
+        logging.debug(
+            "message_fit_in degenerate token counts total=%s max_length=%s ll=%s ll2=%s preserved_roles=%s",
+            total,
+            max_length,
+            ll,
+            ll2,
+            [m.get("role") for m in msg],
+        )
+        return 0, msg
 
-    m = msg_[-1]["content"]
-    m = encoder.decode(encoder.encode(m)[: max_length - ll2])
-    msg[-1]["content"] = m
-    return max_length, msg
+    if len(msg) == 1:
+        msg[0]["content"] = trim_content(msg[0]["content"], max_length)
+        return count(), msg
+
+    if ll / total > 0.8:
+        preserved_last = min(ll2, max_length)
+        msg[-1]["content"] = trim_content(msg_[-1]["content"], preserved_last)
+        remaining = max(0, max_length - preserved_last)
+        msg[0]["content"] = trim_content(msg_[0]["content"], remaining)
+        return count(), msg
+
+    preserved_system = min(ll, max_length)
+    msg[0]["content"] = trim_content(msg_[0]["content"], preserved_system)
+    remaining = max(0, max_length - preserved_system)
+    msg[-1]["content"] = trim_content(msg_[-1]["content"], remaining)
+    return count(), msg
 
 
 def kb_prompt(kbinfos, max_tokens, hash_id=False):
-    from api.db.services.document_service import DocumentService
-    from api.db.services.doc_metadata_service import DocMetadataService
-
     knowledges = [get_value(ck, "content", "content_with_weight") for ck in kbinfos["chunks"]]
     kwlg_len = len(knowledges)
     used_token_count = 0
@@ -119,14 +140,6 @@ def kb_prompt(kbinfos, max_tokens, hash_id=False):
             logging.warning(f"Not all the retrieval into prompt: {len(knowledges)}/{kwlg_len}")
             break
 
-    docs = DocumentService.get_by_ids([get_value(ck, "doc_id", "document_id") for ck in kbinfos["chunks"][:chunks_num]])
-
-    docs_with_meta = {}
-    for d in docs:
-        meta = DocMetadataService.get_document_metadata(d.id)
-        docs_with_meta[d.id] = meta if meta else {}
-    docs = docs_with_meta
-
     def draw_node(k, line):
         if line is not None and not isinstance(line, str):
             line = str(line)
@@ -138,8 +151,9 @@ def kb_prompt(kbinfos, max_tokens, hash_id=False):
     for i, ck in enumerate(kbinfos["chunks"][:chunks_num]):
         cnt = "\nID: {}".format(i if not hash_id else hash_str2int(get_value(ck, "id", "chunk_id"), 500))
         cnt += draw_node("Title", get_value(ck, "docnm_kwd", "document_name"))
-        cnt += draw_node("URL", ck['url']) if "url" in ck else ""
-        for k, v in docs.get(get_value(ck, "doc_id", "document_id"), {}).items():
+        cnt += draw_node("URL", ck.get('url', ''))
+        meta = ck.get("document_metadata") or {}
+        for k, v in meta.items():
             cnt += draw_node(k, v)
         cnt += "\n└── Content:\n"
         cnt += get_value(ck, "content", "content_with_weight")
@@ -183,7 +197,9 @@ RANK_MEMORY = load_prompt("rank_memory")
 META_FILTER = load_prompt("meta_filter")
 ASK_SUMMARY = load_prompt("ask_summary")
 
-PROMPT_JINJA_ENV = jinja2.Environment(autoescape=False, trim_blocks=True, lstrip_blocks=True)
+PROMPT_JINJA_ENV = SandboxedEnvironment(
+    autoescape=False, trim_blocks=True, lstrip_blocks=True
+)
 
 
 def citation_prompt(user_defined_prompts: dict = {}) -> str:
@@ -229,13 +245,15 @@ async def question_proposal(chat_mdl, content, topn=3):
 async def full_question(tenant_id=None, llm_id=None, messages=[], language=None, chat_mdl=None):
     from common.constants import LLMType
     from api.db.services.llm_service import LLMBundle
-    from api.db.services.tenant_llm_service import TenantLLMService
+    from api.db.joint_services.tenant_model_service import get_model_config_from_provider_instance, get_model_type_by_name
 
     if not chat_mdl:
-        if TenantLLMService.llm_id2llm_type(llm_id) == "image2text":
-            chat_mdl = LLMBundle(tenant_id, LLMType.IMAGE2TEXT, llm_id)
+        model_types = get_model_type_by_name(tenant_id, llm_id)
+        if "image2text" in model_types:
+            chat_model_config = get_model_config_from_provider_instance(tenant_id, LLMType.IMAGE2TEXT, llm_id)
         else:
-            chat_mdl = LLMBundle(tenant_id, LLMType.CHAT, llm_id)
+            chat_model_config = get_model_config_from_provider_instance(tenant_id, LLMType.CHAT, llm_id)
+        chat_mdl = LLMBundle(tenant_id, chat_model_config)
     conv = []
     for m in messages:
         if m["role"] not in ["user", "assistant"]:
@@ -260,28 +278,31 @@ async def full_question(tenant_id=None, llm_id=None, messages=[], language=None,
     return ans if ans.find("**ERROR**") < 0 else messages[-1]["content"]
 
 
-async def cross_languages(tenant_id, llm_id, query, languages=[], chat_mdl=None):
+async def cross_languages(tenant_id, llm_id, query, languages=[]):
     from common.constants import LLMType
     from api.db.services.llm_service import LLMBundle
-    from api.db.services.tenant_llm_service import TenantLLMService
+    from api.db.joint_services.tenant_model_service import get_model_config_from_provider_instance, get_tenant_default_model_by_type, get_model_type_by_name
 
-    if chat_mdl is None:
-        if llm_id and TenantLLMService.llm_id2llm_type(llm_id) == "image2text":
-            chat_mdl = LLMBundle(tenant_id, LLMType.IMAGE2TEXT, llm_id)
-        elif llm_id:
-            chat_mdl = LLMBundle(tenant_id, LLMType.CHAT, llm_id)
+    if llm_id and "image2text" in get_model_type_by_name(tenant_id, llm_id) :
+        chat_model_config = get_model_config_from_provider_instance(tenant_id, LLMType.IMAGE2TEXT, llm_id)
+    else:
+        if not llm_id:
+            chat_model_config = get_tenant_default_model_by_type(tenant_id, LLMType.CHAT)
         else:
-            chat_mdl = LLMBundle(tenant_id, LLMType.CHAT)
+            chat_model_config = get_model_config_from_provider_instance(tenant_id, LLMType.CHAT, llm_id)
+    chat_mdl = LLMBundle(tenant_id, chat_model_config)
     rendered_sys_prompt = PROMPT_JINJA_ENV.from_string(CROSS_LANGUAGES_SYS_PROMPT_TEMPLATE).render()
     rendered_user_prompt = PROMPT_JINJA_ENV.from_string(CROSS_LANGUAGES_USER_PROMPT_TEMPLATE).render(query=query,
                                                                                                      languages=languages)
 
     ans = await chat_mdl.async_chat(rendered_sys_prompt, [{"role": "user", "content": rendered_user_prompt}],
                                     {"temperature": 0.2})
-    ans = re.sub(r"^.*</think>", "", ans, flags=re.DOTALL)
     if ans.find("**ERROR**") >= 0:
+        logging.info("[cross_languages] LLM returned error, falling back to original query")
         return query
-    return "\n".join([a for a in re.sub(r"(^Output:|\n+)", "", ans, flags=re.DOTALL).split("===") if a.strip()])
+    ans = re.sub(r"^.*\*\*ERROR\*\*", "", ans, flags=re.DOTALL)
+    result = "\n".join([a for a in re.sub(r"(^Output:|\n+)", "", ans, flags=re.DOTALL).split("===") if a.strip()])
+    return result
 
 
 async def content_tagging(chat_mdl, content, all_tags, examples, topn=3):
@@ -475,6 +496,28 @@ async def rank_memories_async(chat_mdl, goal: str, sub_goal: str, tool_call_summ
 
 
 async def gen_meta_filter(chat_mdl, meta_data: dict, query: str, constraints: dict = None) -> dict:
+    """Generate metadata filter conditions from a user query using an LLM.
+
+    Args:
+        chat_mdl: LLM bundle for generating filters
+        meta_data: Dict of {key: set of values} - e.g. {"character": {"Caocao", "Liubei"}, "year": {2026}}
+        query: User question (e.g. "Caocao in 2026")
+        constraints: Optional dict of {key: operator} to constrain which op to use for a key
+
+    Returns:
+        Dict with "logic" ("and"/"or") and "conditions" list.
+        Example return value:
+            {
+                "logic": "and",
+                "conditions": [
+                    {"key": "year", "value": "2026", "op": "="},
+                    {"key": "character", "value": "Caocao", "op": "="}
+                ]
+            }
+
+    The LLM is prompted with the available metadata keys and values, and is asked to
+    generate filter conditions that match the user's query semantics.
+    """
     meta_data_structure = {}
     for key, values in meta_data.items():
         meta_data_structure[key] = list(values.keys()) if isinstance(values, dict) else values
@@ -503,7 +546,11 @@ async def gen_json(system_prompt: str, user_prompt: str, chat_mdl, gen_conf={}, 
     from rag.graphrag.utils import get_llm_cache, set_llm_cache
     cached = get_llm_cache(chat_mdl.llm_name, system_prompt, user_prompt, gen_conf)
     if cached:
-        return json_repair.loads(cached)
+        res = json_repair.loads(cached)
+        # json_repair is lenient and may return a str/None for a malformed cached
+        # value; only trust structured results, otherwise regenerate below.
+        if isinstance(res, (dict, list)):
+            return res
     _, msg = message_fit_in(form_message(system_prompt, user_prompt), chat_mdl.max_length)
     err = ""
     ans = ""
@@ -514,11 +561,19 @@ async def gen_json(system_prompt: str, user_prompt: str, chat_mdl, gen_conf={}, 
         ans = re.sub(r"(^.*</think>|```json\n|```\n*$)", "", ans, flags=re.DOTALL)
         try:
             res = json_repair.loads(ans)
+            # Callers expect a JSON object/array; a lenient parse can yield a bare
+            # str/None which then crashes on `.get(...)`. Treat that as a failure
+            # and retry instead of returning an unusable type.
+            if not isinstance(res, (dict, list)):
+                raise ValueError(f"Expected JSON object/array, got {type(res).__name__}")
             set_llm_cache(chat_mdl.llm_name, system_prompt, ans, user_prompt, gen_conf)
             return res
         except Exception as e:
             logging.exception(f"Loading json failure: {ans}")
             err += str(e)
+    # All retries failed: return an empty object so callers can safely use
+    # `.get(...)` / iteration instead of crashing on None or a raw string.
+    return {}
 
 
 TOC_DETECTION = load_prompt("toc_detection")
@@ -846,6 +901,23 @@ async def run_toc_from_text(chunks, chat_mdl, callback=None):
     if not toc_with_levels:
         return []
 
+    # Normalize TOC items to ensure consistent dict format
+    normalized_levels = []
+    for item in toc_with_levels:
+        if isinstance(item, dict):
+            # Already in correct format
+            normalized_levels.append(item)
+        elif isinstance(item, (list, tuple)) and len(item) >= 2:
+            # Convert ["level", "title"] or similar to dict
+            normalized_levels.append({"level": str(item[0]), "title": str(item[1])})
+        else:
+            logging.warning(f"Unexpected TOC item format (type={type(item).__name__}), skipping: {item}")
+
+    toc_with_levels = normalized_levels
+    if not toc_with_levels:
+        logging.warning("No valid TOC items after normalization.")
+        return []
+
     # Merge structure and content (by index)
     prune = len(toc_with_levels) > 512
     max_lvl = "0"
@@ -895,6 +967,11 @@ async def relevant_chunks_with_toc(query: str, toc: list[dict], chat_mdl, topn: 
 
 META_DATA = load_prompt("meta_data")
 async def gen_metadata(chat_mdl, schema: dict, content: str):
+    if not schema:
+        return ""
+    if "properties" not in schema:
+        logging.warning("gen_metadata: schema has no 'properties' key: %s", schema)
+        return ""
     template = PROMPT_JINJA_ENV.from_string(META_DATA)
     for k, desc in schema["properties"].items():
         if "enum" in desc and not desc.get("enum"):

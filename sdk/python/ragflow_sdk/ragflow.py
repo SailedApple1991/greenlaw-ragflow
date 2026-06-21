@@ -13,7 +13,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from typing import Optional
+from typing import Optional, Any
 
 import requests
 
@@ -62,6 +62,7 @@ class RAGFlow:
         permission: str = "me",
         chunk_method: str = "naive",
         parser_config: Optional[DataSet.ParserConfig] = None,
+        auto_metadata_config: Optional[dict[str, Any]] = None,
     ) -> DataSet:
         payload = {
             "name": name,
@@ -73,6 +74,8 @@ class RAGFlow:
         }
         if parser_config is not None:
             payload["parser_config"] = parser_config.to_json()
+        if auto_metadata_config is not None:
+            payload["auto_metadata_config"] = auto_metadata_config
 
         res = self.post("/datasets", payload)
         res = res.json()
@@ -80,8 +83,8 @@ class RAGFlow:
             return DataSet(self, res["data"])
         raise Exception(res["message"])
 
-    def delete_datasets(self, ids: list[str] | None = None):
-        res = self.delete("/datasets", {"ids": ids})
+    def delete_datasets(self, ids: list[str] | None = None, delete_all: bool = False):
+        res = self.delete("/datasets", {"ids": ids, "delete_all": delete_all})
         res = res.json()
         if res.get("code") != 0:
             raise Exception(res["message"])
@@ -136,8 +139,8 @@ class RAGFlow:
             return Chat(self, res["data"])
         raise Exception(res["message"])
 
-    def delete_chats(self, ids: list[str] | None = None):
-        res = self.delete("/chats", {"ids": ids})
+    def delete_chats(self, ids: list[str] | None = None, delete_all: bool = False):
+        res = self.delete("/chats", {"ids": ids, "delete_all": delete_all})
         res = res.json()
         if res.get("code") != 0:
             raise Exception(res["message"])
@@ -227,7 +230,7 @@ class RAGFlow:
             return chunks
         raise Exception(res.get("message"))
 
-    def list_agents(self, page: int = 1, page_size: int = 30, orderby: str = "update_time", desc: bool = True, id: str | None = None, title: str | None = None) -> list[Agent]:
+    def list_agents(self, page: int = 1, page_size: int = 30, orderby: str = "update_time", desc: bool = True) -> list[Agent]:
         res = self.get(
             "/agents",
             {
@@ -235,23 +238,39 @@ class RAGFlow:
                 "page_size": page_size,
                 "orderby": orderby,
                 "desc": desc,
-                "id": id,
-                "title": title,
             },
         )
         res = res.json()
         result_list = []
         if res.get("code") == 0:
-            for data in res["data"]:
+            data = res.get("data") or {}
+            data_list = data.get("canvas", [])
+            for data in data_list:
                 result_list.append(Agent(self, data))
             return result_list
         raise Exception(res["message"])
 
-    def create_agent(self, title: str, dsl: dict, description: str | None = None) -> None:
+    def get_agent(self, agent_id: str) -> Agent:
+        res = self.get(f"/agents/{agent_id}")
+        res = res.json()
+        if res.get("code") == 0:
+            return Agent(self, res["data"])
+        raise Exception(res["message"])
+
+    def create_agent(
+        self,
+        title: str,
+        dsl: dict,
+        description: str | None = None,
+        canvas_type: str | None = None,
+    ) -> None:
         req = {"title": title, "dsl": dsl}
 
         if description is not None:
             req["description"] = description
+
+        if canvas_type is not None:
+            req["canvas_type"] = canvas_type
 
         res = self.post("/agents", req)
         res = res.json()
@@ -259,7 +278,14 @@ class RAGFlow:
         if res.get("code") != 0:
             raise Exception(res["message"])
 
-    def update_agent(self, agent_id: str, title: str | None = None, description: str | None = None, dsl: dict | None = None) -> None:
+    def update_agent(
+        self,
+        agent_id: str,
+        title: str | None = None,
+        description: str | None = None,
+        dsl: dict | None = None,
+        canvas_type: str | None = None,
+    ) -> None:
         req = {}
 
         if title is not None:
@@ -270,6 +296,9 @@ class RAGFlow:
 
         if dsl is not None:
             req["dsl"] = dsl
+
+        if canvas_type is not None:
+            req["canvas_type"] = canvas_type
 
         res = self.put(f"/agents/{agent_id}", req)
         res = res.json()
@@ -324,6 +353,7 @@ class RAGFlow:
             raise Exception(res["message"])
 
     def add_message(self, memory_id: list[str], agent_id: str, session_id: str, user_input: str, agent_response: str, user_id: str = "") -> str:
+        """Append messages to memories; ``user_id`` is forwarded only for API-key auth (external subject)."""
         payload = {
             "memory_id": memory_id,
             "agent_id": agent_id,
@@ -338,12 +368,13 @@ class RAGFlow:
             raise Exception(res["message"])
         return res["message"]
 
-    def search_message(self, query: str, memory_id: list[str], agent_id: str=None, session_id: str=None, similarity_threshold: float=0.2, keywords_similarity_weight: float=0.7, top_n: int=10) -> list[dict]:
+    def search_message(self, query: str, memory_id: list[str], agent_id: str=None, session_id: str=None, user_id: str=None, similarity_threshold: float=0.2, keywords_similarity_weight: float=0.7, top_n: int=10) -> list[dict]:
         params = {
             "query": query,
             "memory_id": memory_id,
             "agent_id": agent_id,
             "session_id": session_id,
+            "user_id": user_id,
             "similarity_threshold": similarity_threshold,
             "keywords_similarity_weight": keywords_similarity_weight,
             "top_n": top_n

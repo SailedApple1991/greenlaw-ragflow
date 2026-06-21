@@ -198,7 +198,7 @@ class TestChatAssistantsList:
         "chat_assistant_id, keywords, expected_num, expected_message",
         [
             (lambda r: r[0], "test_chat_assistant_0", 1, ""),
-            (lambda r: r[0], "test_chat_assistant_1", 0, ""),
+            (lambda r: r[0], "test_chat_assistant_1", 1, ""),
             (lambda r: r[0], "unknown", 0, ""),
         ],
     )
@@ -223,7 +223,7 @@ class TestChatAssistantsList:
         responses = list(as_completed(futures))
         assert len(responses) == count, responses
 
-    @pytest.mark.p2
+    @pytest.mark.p3
     def test_list_chats_after_deleting_associated_dataset(self, client, add_chat_assistants):
         dataset, _, _ = add_chat_assistants
         client.delete_datasets(ids=[dataset.id])

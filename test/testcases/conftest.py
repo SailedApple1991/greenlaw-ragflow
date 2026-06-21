@@ -14,9 +14,86 @@
 #  limitations under the License.
 #
 
+import importlib
+import sys
+import types
+
+
+def _make_stub_getattr(module_name):
+    def __getattr__(attr_name):
+        message = f"{module_name}.{attr_name} is stubbed in tests"
+
+        class _Stub:
+            def __init__(self, *_args, **_kwargs):
+                raise RuntimeError(message)
+
+            def __call__(self, *_args, **_kwargs):
+                raise RuntimeError(message)
+
+            def __getattr__(self, _name):
+                raise RuntimeError(message)
+
+        setattr(sys.modules[module_name], attr_name, _Stub)
+        return _Stub
+
+    return __getattr__
+
+
+def _install_rag_llm_stubs():
+    rag_llm = sys.modules.get("rag.llm")
+    if rag_llm is not None and getattr(rag_llm, "_rag_llm_stubbed", False):
+        return
+
+    try:
+        rag_pkg = importlib.import_module("rag")
+    except Exception:
+        rag_pkg = types.ModuleType("rag")
+        rag_pkg.__path__ = []
+        rag_pkg.__package__ = "rag"
+        rag_pkg.__file__ = __file__
+        sys.modules["rag"] = rag_pkg
+
+    llm_pkg = types.ModuleType("rag.llm")
+    llm_pkg.__path__ = []
+    llm_pkg.__package__ = "rag.llm"
+    llm_pkg.__file__ = __file__
+    sys.modules["rag.llm"] = llm_pkg
+    rag_pkg.llm = llm_pkg
+
+    llm_pkg.__getattr__ = _make_stub_getattr("rag.llm")
+
+    for submodule in ("cv_model", "chat_model"):
+        full_name = f"rag.llm.{submodule}"
+        sub_mod = sys.modules.get(full_name)
+        if sub_mod is None or not isinstance(sub_mod, types.ModuleType):
+            sub_mod = types.ModuleType(full_name)
+            sys.modules[full_name] = sub_mod
+        sub_mod.__package__ = "rag.llm"
+        sub_mod.__file__ = __file__
+        sub_mod.__getattr__ = _make_stub_getattr(full_name)
+        setattr(llm_pkg, submodule, sub_mod)
+
+    llm_pkg._rag_llm_stubbed = True
+
+
+def _install_scholarly_stub():
+    if "scholarly" in sys.modules:
+        return
+    stub = types.ModuleType("scholarly")
+
+    def _stub(*_args, **_kwargs):
+        raise RuntimeError("scholarly is stubbed in tests")
+
+    stub.scholarly = _stub
+    sys.modules["scholarly"] = stub
+
+
+_install_rag_llm_stubs()
+_install_scholarly_stub()
+
 import pytest
 import requests
-from configs import EMAIL, HOST_ADDRESS, PASSWORD, VERSION, ZHIPU_AI_API_KEY
+from configs import EMAIL, HOST_ADDRESS, PASSWORD, VERSION, ZHIPU_AI_API_KEY, SILICONFLOW_API_KEY
 
 MARKER_EXPRESSIONS = {
     "p1": "p1",
@@ -51,7 +128,7 @@ def pytest_configure(config: pytest.Config) -> None:
 
 
 def register():
-    url = HOST_ADDRESS + f"/{VERSION}/user/register"
+    url = HOST_ADDRESS + f"/api/{VERSION}/users"
     name = "qa"
     register_data = {"email": EMAIL, "nickname": name, "password": PASSWORD}
     res = requests.post(url=url, json=register_data)
@@ -61,7 +138,7 @@ def register():
 
 
 def login():
-    url = HOST_ADDRESS + f"/{VERSION}/user/login"
+    url = HOST_ADDRESS + f"/api/{VERSION}/auth/login"
     login_data = {"email": EMAIL, "password": PASSWORD}
     response = requests.post(url=url, json=login_data)
     res = response.json()
@@ -83,16 +160,18 @@ def auth():
 
 @pytest.fixture(scope="session")
 def token(auth):
-    url = HOST_ADDRESS + f"/{VERSION}/system/new_token"
+    url = HOST_ADDRESS + f"/api/{VERSION}/system/tokens"
     auth = {"Authorization": auth}
     response = requests.post(url=url, headers=auth)
     res = response.json()
     if res.get("code") != 0:
-        raise Exception(res.get("message"))
+        error_msg = f"access: {url}, POST method, error code: {res.get('code')}, message: {res.get('message')}"
+        raise Exception(error_msg)
     return res["data"].get("token")
 
 
 def get_my_llms(auth, name):
+    # todo deprecated
     url = HOST_ADDRESS + f"/{VERSION}/llm/my_llms"
     authorization = {"Authorization": auth}
     response = requests.get(url=url, headers=authorization)
@@ -104,7 +183,48 @@ def get_my_llms(auth, name):
     return False
 
 
+def get_added_models(auth, factory_name):
+    url = HOST_ADDRESS + "/api/v1/models"
+    authorization = {"Authorization": auth}
+    response = requests.get(url=url, headers=authorization)
+    res = response.json()
+    if res.get("code") != 0:
+        raise Exception(res.get("message"))
+    added_factory = {model["provider_name"] for model in res.get("data", [])}
+    if factory_name in added_factory:
+        return True
+    return False
+
+
+def get_tenant_llm_added(auth, factory_name, model_name, model_type="rerank"):
+    """
+    Check whether a specific (factory, model_name, model_type) tenant_llm row exists.
+
+    Legacy /v1/llm/my_llms response shape:
+        {
+            "ZHIPU-AI":     {"tags": ..., "llm": [{"name": ..., "type": ...}, ...]},
+            "SILICONFLOW":  {"tags": ..., "llm": [{"name": ..., "type": ...}, ...]},
+        }
+    so we navigate by factory key first, then look through its llm list.
+    """
+    url = HOST_ADDRESS + f"/{VERSION}/llm/my_llms"
+    authorization = {"Authorization": auth}
+    response = requests.get(url=url, headers=authorization)
+    res = response.json()
+    if res.get("code") != 0:
+        return False
+    data = res.get("data") or {}
+    factory_data = data.get(factory_name) or {}
+    for m in factory_data.get("llm", []) or []:
+        if m.get("name") != model_name:
+            continue
+        if model_type is None or m.get("type") == model_type:
+            return True
+    return False
+
+
 def add_models(auth):
+    # todo deprecated
     url = HOST_ADDRESS + f"/{VERSION}/llm/set_api_key"
     authorization = {"Authorization": auth}
     models_info = {
@@ -119,8 +239,94 @@ def add_models(auth):
                 pytest.exit(f"Critical error in add_models: {res.get('message')}")
 
 
+def add_model_instance(auth):
+    add_provider_api = HOST_ADDRESS + "/api/v1/providers"
+    authorization = {"Authorization": auth}
+
+    providers = [
+        ("ZHIPU-AI", ZHIPU_AI_API_KEY),
+        ("SILICONFLOW", SILICONFLOW_API_KEY),
+    ]
+
+    for provider_name, api_key in providers:
+        if not get_added_models(auth, provider_name):
+            add_provider_response = requests.put(url=add_provider_api, headers=authorization, json={"provider_name": provider_name})
+            add_provider_res = add_provider_response.json()
+            if add_provider_res.get("code") != 0:
+                pytest.exit(f"Critical error in add model provider: {add_provider_res.get('message')}")
+
+        # Register both "CI" (used by glm-4-flash@CI@ZHIPU-AI in configs.py
+        # and BAAI/bge-reranker-v2-m3@CI@SILICONFLOW) and "default".
+        for instance_name in ("CI", "default"):
+            add_instance_api = HOST_ADDRESS + f"/api/v1/providers/{provider_name}/instances"
+            add_instance_response = requests.post(url=add_instance_api, headers=authorization, json={
+                "instance_name": instance_name,
+                "api_key": api_key,
+                "region": "default",
+                "base_url": ""
+            })
+            add_instance_res = add_instance_response.json()
+            if add_instance_res.get("code") != 0:
+                msg = add_instance_res.get("message", "")
+                # Instance may already exist with a different API key from a
+                # prior test run; that's fine — skip instead of failing.
+                if "Already exist instance" in msg or "already exist" in msg.lower():
+                    print(f"Note: {provider_name}/{instance_name} already exists, skipping")
+                    continue
+                # Python API blocks creating instances named "default".
+                # The test_retrieval_parity test handles this by inserting
+                # "default" directly into the DB for SILICONFLOW.
+                if "cannot be 'default'" in msg:
+                    print(f"Note: {provider_name}/{instance_name} blocked by API (name reserved), skipping")
+                    continue
+                pytest.exit(
+                    f"Critical error in add model instance {provider_name}/{instance_name}: "
+                    f"{msg}"
+                )
+
+        add_success = get_added_models(auth, provider_name)
+        if not add_success:
+            pytest.exit(f"Critical error in check added model: {provider_name} add model failed")
+
+
+def add_siliconflow_rerank_llm(auth):
+    """
+    Register the BAAI/bge-reranker-v2-m3 rerank model under factory=SILICONFLOW / instance=CI.
+
+    This is the model referenced as `BAAI/bge-reranker-v2-m3@CI@SILICONFLOW` in
+    test_retrieval_parity.py. The /v1/llm/add_llm endpoint validates the key by
+    issuing a real rerank request, so the call requires network access to SiliconFlow
+    and a valid SILICONFLOW_API_KEY.
+    """
+    factory = "SILICONFLOW"
+    model_name = "BAAI/bge-reranker-v2-m3"
+    if get_tenant_llm_added(auth, factory, model_name, "rerank"):
+        return
+
+    url = HOST_ADDRESS + f"/{VERSION}/llm/add_llm"
+    authorization = {"Authorization": auth}
+    payload = {
+        "llm_factory": factory,
+        "llm_name": model_name,
+        "model_type": "rerank",
+        "api_key": SILICONFLOW_API_KEY,
+        "api_base": "",
+    }
+    response = requests.post(url=url, headers=authorization, json=payload)
+    res = response.json()
+    if res.get("code") != 0:
+        pytest.exit(
+            f"Critical error adding {factory} rerank model {model_name}: "
+            f"code={res.get('code')} message={res.get('message')} data={res.get('data')}"
+        )
+
+    if not get_tenant_llm_added(auth, factory, model_name, "rerank"):
+        pytest.exit(f"Failed to confirm {factory}/{model_name} rerank row was added")
+
+
 def get_tenant_info(auth):
-    url = HOST_ADDRESS + f"/{VERSION}/user/tenant_info"
+    # todo deprecated
+    url = HOST_ADDRESS + f"/api/{VERSION}/users/me/models"
     authorization = {"Authorization": auth}
     response = requests.get(url=url, headers=authorization)
     res = response.json()
@@ -131,23 +337,57 @@ def get_tenant_info(auth):
 
 @pytest.fixture(scope="session", autouse=True)
 def set_tenant_info(auth):
-    tenant_id = None
-    try:
-        add_models(auth)
-        tenant_id = get_tenant_info(auth)
-    except Exception as e:
-        pytest.exit(f"Error in set_tenant_info: {str(e)}")
-    url = HOST_ADDRESS + f"/{VERSION}/user/set_tenant_info"
+    if not get_added_models(auth, "ZHIPU-AI") or not get_added_models(auth, "SILICONFLOW"):
+        try:
+            add_model_instance(auth)
+        except Exception as e:
+            pytest.exit(f"Error in set_tenant_info: {str(e)}")
+    url = HOST_ADDRESS + "/api/v1/models/default"
     authorization = {"Authorization": auth}
-    tenant_info = {
-        "tenant_id": tenant_id,
-        "llm_id": "glm-4-flash@ZHIPU-AI",
-        "embd_id": "BAAI/bge-small-en-v1.5@Builtin",
-        "img2txt_id": "",
-        "asr_id": "",
-        "tts_id": None,
-    }
-    response = requests.post(url=url, headers=authorization, json=tenant_info)
-    res = response.json()
-    if res.get("code") != 0:
-        raise Exception(res.get("message"))
+    # set chat model
+    set_default_llm_response = requests.patch(
+        url=url,
+        headers=authorization,
+        json={
+            "model_provider": "ZHIPU-AI",
+            "model_instance": "CI",
+            "model_type": "chat",
+            "model_name": "glm-4-flash"
+        })
+    llm_res = set_default_llm_response.json()
+    if llm_res.get("code") != 0:
+        raise Exception(llm_res.get("message"))
+    # set embedding model
+    set_default_embedding_response = requests.patch(
+        url=url,
+        headers=authorization,
+        json={
+            "model_provider": "Builtin",
+            "model_instance": "Local",
+            "model_type": "embedding",
+            "model_name": "BAAI/bge-small-en-v1.5"
+        })
+    embd_res = set_default_embedding_response.json()
+    if embd_res.get("code") != 0:
+        raise Exception(embd_res.get("message"))
+
+
+@pytest.fixture(scope="session", autouse=True)
+def set_tenant_siliconflow_rerank(auth):
+    """
+    Ensure the SiliconFlow BAAI/bge-reranker-v2-m3 rerank model is registered
+    for the test tenant. Used by test_retrieval_parity.py as
+    `BAAI/bge-reranker-v2-m3@CI@SILICONFLOW`.
+
+    Runs after `set_tenant_info` so the SILICONFLOW provider+CI instance
+    already exist when the /add_llm call is made.
+
+    If /add_llm is blocked (e.g. factory not in allowed list), the rerank
+    model config is resolved from FACTORY_LLM_INFOS at search time, so the
+    test can still proceed.
+    """
+    try:
+        add_siliconflow_rerank_llm(auth)
+    except Exception as e:
+        print(f"Note: Could not register SILICONFLOW rerank model via /add_llm: {e}")
+        print("The model config will be resolved from FACTORY_LLM_INFOS at runtime.")

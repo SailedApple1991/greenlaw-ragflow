@@ -36,17 +36,6 @@ from api.utils import health_utils
 from api.common.exceptions import AdminException, UserAlreadyExistsError, UserNotFoundError
 from config import SERVICE_CONFIGS
 
-_CACHE_AVAILABLE = False
-try:
-    from rag.utils.redis_conn import REDIS_CONN
-    from api.db.services.cache_service import (
-        invalidate_dialog_cache, _ensure_cache_index,
-        _cache_index_name, _get_raw_client, CACHE_INDEX_PREFIX,
-    )
-    _CACHE_AVAILABLE = True
-except Exception:
-    logging.warning("Cache dependencies unavailable — cache management disabled")
-
 
 class UserMgr:
     @staticmethod
@@ -342,35 +331,64 @@ class ServiceMgr:
 
 class SettingsMgr:
     @staticmethod
+    def _format_setting(setting):
+        return {
+            "data_type": setting.data_type,
+            "name": setting.name,
+            "setting_type": "config",
+            "value": setting.value,
+        }
+
+    @staticmethod
+    def _validate_value(name: str, data_type: str, value: str):
+        data_type = data_type.lower()
+        value = str(value)
+        if data_type == "string":
+            return
+        if data_type == "integer":
+            try:
+                int(value)
+            except ValueError:
+                raise AdminException(f"Invalid integer value for {name}: {value}")
+            return
+        if data_type in {"bool", "boolean"}:
+            if value not in {"true", "false"}:
+                raise AdminException(f"Invalid bool value for {name}: expected true or false")
+            return
+        if data_type == "json":
+            try:
+                json.loads(value)
+            except json.JSONDecodeError:
+                raise AdminException(f"Invalid JSON value for {name}")
+            return
+        raise AdminException(f"Unsupported data type for {name}: {data_type}")
+
+    @staticmethod
+    def _infer_data_type(name: str):
+        if name.startswith("sandbox."):
+            return "json"
+        if name.endswith(".enabled"):
+            return "bool"
+        return "string"
+
+    @staticmethod
     def get_all():
-        settings = SystemSettingsService.get_all()
+        settings = SystemSettingsService.get_all(reverse=False, order_by="name")
         result = []
         for setting in settings:
-            result.append(
-                {
-                    "name": setting.name,
-                    "source": setting.source,
-                    "data_type": setting.data_type,
-                    "value": setting.value,
-                }
-            )
+            result.append(SettingsMgr._format_setting(setting))
         return result
 
     @staticmethod
     def get_by_name(name: str):
         settings = SystemSettingsService.get_by_name(name)
         if len(settings) == 0:
-            raise AdminException(f"Can't get setting: {name}")
+            settings = SystemSettingsService.get_by_name_prefix(name)
+            if len(settings) == 0:
+                raise AdminException(f"Can't get setting: {name}")
         result = []
         for setting in settings:
-            result.append(
-                {
-                    "name": setting.name,
-                    "source": setting.source,
-                    "data_type": setting.data_type,
-                    "value": setting.value,
-                }
-            )
+            result.append(SettingsMgr._format_setting(setting))
         return result
 
     @staticmethod
@@ -378,6 +396,7 @@ class SettingsMgr:
         settings = SystemSettingsService.get_by_name(name)
         if len(settings) == 1:
             setting = settings[0]
+            SettingsMgr._validate_value(name, setting.data_type, value)
             setting.value = value
             setting_dict = setting.to_dict()
             SystemSettingsService.update_by_name(name, setting_dict)
@@ -387,12 +406,8 @@ class SettingsMgr:
             # Create new setting if it doesn't exist
 
             # Determine data_type based on name and value
-            if name.startswith("sandbox."):
-                data_type = "json"
-            elif name.endswith(".enabled"):
-                data_type = "boolean"
-            else:
-                data_type = "string"
+            data_type = SettingsMgr._infer_data_type(name)
+            SettingsMgr._validate_value(name, data_type, value)
 
             new_setting = {
                 "name": name,
@@ -442,10 +457,20 @@ class SandboxMgr:
 
     # Provider registry with metadata
     PROVIDER_REGISTRY = {
+        "local": {
+            "name": "Local",
+            "description": "Execute code directly on the current host process.",
+            "tags": ["local", "host", "minimal"],
+        },
         "self_managed": {
             "name": "Self-Managed",
             "description": "On-premise deployment using Daytona/Docker",
             "tags": ["self-hosted", "low-latency", "secure"],
+        },
+        "ssh": {
+            "name": "SSH",
+            "description": "Execute code on a remote machine over SSH.",
+            "tags": ["remote", "ssh", "custom-runtime"],
         },
         "aliyun_codeinterpreter": {
             "name": "Aliyun Code Interpreter",
@@ -474,13 +499,17 @@ class SandboxMgr:
     def get_provider_config_schema(provider_id: str):
         """Get configuration schema for a specific provider."""
         from agent.sandbox.providers import (
+            LocalProvider,
             SelfManagedProvider,
+            SSHProvider,
             AliyunCodeInterpreterProvider,
             E2BProvider,
         )
 
         schemas = {
+            "local": LocalProvider.get_config_schema(),
             "self_managed": SelfManagedProvider.get_config_schema(),
+            "ssh": SSHProvider.get_config_schema(),
             "aliyun_codeinterpreter": AliyunCodeInterpreterProvider.get_config_schema(),
             "e2b": E2BProvider.get_config_schema(),
         }
@@ -497,7 +526,6 @@ class SandboxMgr:
             # Get active provider type
             provider_type_settings = SystemSettingsService.get_by_name("sandbox.provider_type")
             if not provider_type_settings:
-                # Return default config if not set
                 provider_type = "self_managed"
             else:
                 provider_type = provider_type_settings[0].value
@@ -511,6 +539,15 @@ class SandboxMgr:
                     provider_config = json.loads(provider_config_settings[0].value)
                 except json.JSONDecodeError:
                     provider_config = {}
+
+            if not provider_config:
+                schema = SandboxMgr.get_provider_config_schema(provider_type)
+                provider_config = {}
+                for field_name, field_schema in schema.items():
+                    if field_schema.get("readonly"):
+                        continue
+                    if field_schema.get("default") is not None:
+                        provider_config[field_name] = field_schema["default"]
 
             return {
                 "provider_type": provider_type,
@@ -535,7 +572,9 @@ class SandboxMgr:
             Dictionary with updated provider_type and config
         """
         from agent.sandbox.providers import (
+            LocalProvider,
             SelfManagedProvider,
+            SSHProvider,
             AliyunCodeInterpreterProvider,
             E2BProvider,
         )
@@ -562,7 +601,7 @@ class SandboxMgr:
                     elif field_type == "string":
                         if not isinstance(config[field_name], str):
                             raise AdminException(f"Field '{field_name}' must be a string")
-                    elif field_type == "bool":
+                    elif field_type == "boolean":
                         if not isinstance(config[field_name], bool):
                             raise AdminException(f"Field '{field_name}' must be a boolean")
 
@@ -577,7 +616,9 @@ class SandboxMgr:
 
             # Provider-specific custom validation
             provider_classes = {
+                "local": LocalProvider,
                 "self_managed": SelfManagedProvider,
+                "ssh": SSHProvider,
                 "aliyun_codeinterpreter": AliyunCodeInterpreterProvider,
                 "e2b": E2BProvider,
             }
@@ -593,6 +634,8 @@ class SandboxMgr:
             # Always update the provider config
             config_json = json.dumps(config)
             SettingsMgr.update_by_name(f"sandbox.{provider_type}", config_json)
+            from agent.sandbox.client import reload_provider
+            reload_provider()
 
             return {"provider_type": provider_type, "config": config}
         except AdminException:
@@ -619,14 +662,18 @@ class SandboxMgr:
         """
         try:
             from agent.sandbox.providers import (
+                LocalProvider,
                 SelfManagedProvider,
+                SSHProvider,
                 AliyunCodeInterpreterProvider,
                 E2BProvider,
             )
 
             # Instantiate provider based on type
             provider_classes = {
+                "local": LocalProvider,
                 "self_managed": SelfManagedProvider,
+                "ssh": SSHProvider,
                 "aliyun_codeinterpreter": AliyunCodeInterpreterProvider,
                 "e2b": E2BProvider,
             }
@@ -642,59 +689,40 @@ class SandboxMgr:
 
             # Create a temporary sandbox instance for testing
             instance = provider.create_instance(template="python")
+            if not instance:
+                raise AdminException("Failed to create sandbox instance.")
 
-            if not instance or instance.status != "READY":
-                raise AdminException(f"Failed to create sandbox instance. Status: {instance.status if instance else 'None'}")
-
-            # Simple test code that exercises basic Python functionality
-            test_code = """
-# Test basic Python functionality
-import sys
+            try:
+                # Simple test code that exercises provider wrapping via main().
+                test_code = """
 import json
 import math
+import sys
 
-print("Python version:", sys.version)
-print("Platform:", sys.platform)
 
-# Test basic calculations
-result = 2 + 2
-print(f"2 + 2 = {result}")
-
-# Test JSON operations
-data = {"test": "data", "value": 123}
-print(f"JSON dump: {json.dumps(data)}")
-
-# Test math operations
-print(f"Math.sqrt(16) = {math.sqrt(16)}")
-
-# Test error handling
-try:
-    x = 1 / 1
-    print("Division test: OK")
-except Exception as e:
-    print(f"Error: {e}")
-
-# Return success indicator
-print("TEST_PASSED")
+def main() -> dict:
+    print("Python version:", sys.version)
+    print("Platform:", sys.platform)
+    print(f"2 + 2 = {2 + 2}")
+    print(f"JSON dump: {json.dumps({'test': 'data', 'value': 123})}")
+    print(f"Math.sqrt(16) = {math.sqrt(16)}")
+    print("TEST_PASSED")
+    return {"ok": True, "provider_test": "TEST_PASSED"}
 """
 
-            # Execute test code with timeout
-            execution_result = provider.execute_code(
-                instance_id=instance.instance_id,
-                code=test_code,
-                language="python",
-                timeout=10  # 10 seconds timeout
-            )
-
-            # Clean up the test instance (if provider supports it)
-            try:
-                if hasattr(provider, 'terminate_instance'):
-                    provider.terminate_instance(instance.instance_id)
+                # Execute test code with timeout
+                execution_result = provider.execute_code(
+                    instance_id=instance.instance_id,
+                    code=test_code,
+                    language="python",
+                    timeout=10,
+                )
+            finally:
+                try:
+                    provider.destroy_instance(instance.instance_id)
                     logging.info(f"Cleaned up test instance {instance.instance_id}")
-                else:
-                    logging.warning(f"Provider {provider_type} does not support terminate_instance, test instance may leak")
-            except Exception as cleanup_error:
-                logging.warning(f"Failed to cleanup test instance {instance.instance_id}: {cleanup_error}")
+                except Exception as cleanup_error:
+                    logging.warning(f"Failed to cleanup test instance {instance.instance_id}: {cleanup_error}")
 
             # Build detailed result message
             success = execution_result.exit_code == 0 and "TEST_PASSED" in execution_result.stdout
@@ -732,305 +760,3 @@ print("TEST_PASSED")
             import traceback
             error_details = traceback.format_exc()
             raise AdminException(f"Connection test failed: {str(e)}\\n\\nStack trace:\\n{error_details}")
-
-
-class CacheMgr:
-    """Manager for L1 (Redis) and L2 (ES) semantic cache operations."""
-
-    @staticmethod
-    def _require_cache():
-        if not _CACHE_AVAILABLE:
-            raise AdminException("Cache service not configured in this environment")
-
-    @staticmethod
-    def get_cache_stats() -> dict:
-        """Return aggregate stats for L1 and L2 caches."""
-        CacheMgr._require_cache()
-        # -- L1 stats (Redis) --
-        redis_alive = REDIS_CONN.is_alive()
-        l1_total_keys = 0
-        l1_dialog_count = 0
-        if redis_alive:
-            try:
-                cursor = "0"
-                while True:
-                    cursor, keys = REDIS_CONN.REDIS.scan(cursor=cursor, match="ragflow:cache:inv:*", count=500)
-                    l1_dialog_count += len(keys)
-                    if int(cursor) == 0:
-                        break
-                cursor = "0"
-                while True:
-                    cursor, keys = REDIS_CONN.REDIS.scan(cursor=cursor, match="ragflow:cache:l1:*", count=500)
-                    l1_total_keys += len(keys)
-                    if int(cursor) == 0:
-                        break
-            except Exception as e:
-                logging.warning("CacheMgr.get_cache_stats L1 error: %s", e)
-
-        # -- L2 stats (ES) --
-        l2_total_entries = 0
-        l2_indices = []
-        try:
-            from common import settings
-            indices_info = _get_raw_client().cat.indices(index="ragflow_cache_*", format="json")
-            for idx_info in indices_info:
-                docs_count = int(idx_info.get("docs.count", 0))
-                l2_total_entries += docs_count
-                l2_indices.append({
-                    "name": idx_info.get("index", ""),
-                    "docs_count": docs_count,
-                    "size": idx_info.get("store.size", "0"),
-                })
-        except Exception as e:
-            logging.warning("CacheMgr.get_cache_stats L2 error: %s", e)
-
-        return {
-            "l1": {
-                "total_keys": l1_total_keys,
-                "dialog_count": l1_dialog_count,
-                "redis_alive": redis_alive,
-            },
-            "l2": {
-                "total_entries": l2_total_entries,
-                "indices": l2_indices,
-            },
-        }
-
-    @staticmethod
-    def list_tenants_with_cache() -> list:
-        """List tenants that have L2 cache indices."""
-        CacheMgr._require_cache()
-        result = []
-        try:
-            from common import settings
-            indices_info = _get_raw_client().cat.indices(index="ragflow_cache_*", format="json")
-            for idx_info in indices_info:
-                index_name = idx_info.get("index", "")
-                tenant_id = index_name.replace(CACHE_INDEX_PREFIX, "", 1)
-                tenant_name = tenant_id
-                try:
-                    tenants = TenantService.query(id=tenant_id)
-                    if tenants:
-                        tenant_name = tenants[0].name
-                except Exception:
-                    pass
-                result.append({
-                    "tenant_id": tenant_id,
-                    "tenant_name": tenant_name,
-                    "index_name": index_name,
-                    "docs_count": int(idx_info.get("docs.count", 0)),
-                })
-        except Exception as e:
-            logging.warning("CacheMgr.list_tenants_with_cache error: %s", e)
-        return result
-
-    @staticmethod
-    def list_dialogs_for_tenant(tenant_id: str) -> list:
-        """List distinct dialogs with cached entries for a tenant."""
-        CacheMgr._require_cache()
-        result = []
-        try:
-            from common import settings
-            from api.db.services.dialog_service import DialogService
-
-            conn = settings.docStoreConn
-            idx = _cache_index_name(tenant_id)
-            if not conn.index_exist(idx, ""):
-                return result
-
-            agg_body = {
-                "size": 0,
-                "aggs": {
-                    "dialogs": {
-                        "terms": {
-                            "field": "dialog_id",
-                            "size": 10000,
-                        }
-                    }
-                },
-            }
-            res = _get_raw_client(conn).search(index=idx, body=agg_body)
-            buckets = res.get("aggregations", {}).get("dialogs", {}).get("buckets", [])
-            for bucket in buckets:
-                dialog_id = bucket["key"]
-                entry_count = bucket["doc_count"]
-                dialog_name = dialog_id
-                try:
-                    dialogs = DialogService.query(id=dialog_id)
-                    if dialogs:
-                        dialog_name = dialogs[0].name
-                except Exception:
-                    pass
-                result.append({
-                    "dialog_id": dialog_id,
-                    "dialog_name": dialog_name,
-                    "entry_count": entry_count,
-                })
-        except Exception as e:
-            logging.warning("CacheMgr.list_dialogs_for_tenant error: %s", e)
-        return result
-
-    @staticmethod
-    def list_l2_entries(tenant_id: str, dialog_id: str | None = None,
-                        question_search: str | None = None,
-                        page: int = 1, page_size: int = 20) -> dict:
-        """Paginated listing of L2 cache entries."""
-        CacheMgr._require_cache()
-        entries = []
-        total = 0
-        try:
-            from common import settings
-            from api.db.services.dialog_service import DialogService
-
-            conn = settings.docStoreConn
-            idx = _cache_index_name(tenant_id)
-            if not conn.index_exist(idx, ""):
-                return {"entries": entries, "total": total, "page": page, "page_size": page_size}
-
-            filters = []
-            if dialog_id:
-                filters.append({"term": {"dialog_id": dialog_id}})
-            must = []
-            if question_search:
-                must.append({"match": {"question_text": question_search}})
-
-            query = {"bool": {}}
-            if filters:
-                query["bool"]["filter"] = filters
-            if must:
-                query["bool"]["must"] = must
-            if not filters and not must:
-                query = {"match_all": {}}
-
-            search_body = {
-                "query": query,
-                "from": (page - 1) * page_size,
-                "size": page_size,
-                "sort": [{"cached_at": "desc"}],
-                "_source": {"excludes": ["q_vec"]},
-            }
-            res = _get_raw_client(conn).search(index=idx, body=search_body)
-            total = res.get("hits", {}).get("total", {}).get("value", 0)
-            # Cache dialog names to avoid repeated lookups
-            dialog_name_cache = {}
-            for hit in res.get("hits", {}).get("hits", []):
-                src = hit["_source"]
-                d_id = src.get("dialog_id", "")
-                if d_id not in dialog_name_cache:
-                    d_name = d_id
-                    try:
-                        dialogs = DialogService.query(id=d_id)
-                        if dialogs:
-                            d_name = dialogs[0].name
-                    except Exception:
-                        pass
-                    dialog_name_cache[d_id] = d_name
-                entries.append({
-                    "id": hit["_id"],
-                    "dialog_id": d_id,
-                    "question_text": src.get("question_text", ""),
-                    "answer_json": src.get("answer_json", ""),
-                    "cached_at": src.get("cached_at"),
-                    "ttl": src.get("ttl"),
-                    "dialog_name": dialog_name_cache[d_id],
-                })
-        except Exception as e:
-            logging.warning("CacheMgr.list_l2_entries error: %s", e)
-        return {"entries": entries, "total": total, "page": page, "page_size": page_size}
-
-    @staticmethod
-    def get_l2_entry(tenant_id: str, entry_id: str) -> dict:
-        """Get a single L2 cache entry by ID."""
-        CacheMgr._require_cache()
-        try:
-            from common import settings
-
-            conn = settings.docStoreConn
-            idx = _cache_index_name(tenant_id)
-            res = _get_raw_client(conn).get(index=idx, id=entry_id, _source_excludes=["q_vec"])
-            entry = res["_source"]
-            entry["id"] = res["_id"]
-            return entry
-        except Exception as e:
-            logging.warning("CacheMgr.get_l2_entry error: %s", e)
-            raise AdminException(f"Cache entry not found: {entry_id}")
-
-    @staticmethod
-    def update_l2_entry(tenant_id: str, entry_id: str, updates: dict) -> bool:
-        """Update fields of an existing L2 cache entry."""
-        CacheMgr._require_cache()
-        try:
-            from common import settings
-
-            conn = settings.docStoreConn
-            idx = _cache_index_name(tenant_id)
-            _get_raw_client(conn).update(index=idx, id=entry_id, body={"doc": updates}, refresh=True)
-            return True
-        except Exception as e:
-            logging.warning("CacheMgr.update_l2_entry error: %s", e)
-            return False
-
-    @staticmethod
-    def create_l2_entry(tenant_id: str, dialog_id: str, question_text: str,
-                        answer: str, reference: str = "", ttl: int = 86400) -> dict:
-        """Create a new L2 cache entry with embedding generation."""
-        CacheMgr._require_cache()
-        try:
-            import time as _time
-            import uuid as _uuid
-            from common import settings
-            from api.db.services.llm_service import LLMBundle
-            from api.db import LLMType
-
-            mdl = LLMBundle(tenant_id, LLMType.EMBEDDING)
-            _, embeddings = mdl.encode([question_text])
-
-            vector_size = len(embeddings[0])
-            _ensure_cache_index(tenant_id, vector_size)
-
-            conn = settings.docStoreConn
-            idx = _cache_index_name(tenant_id)
-
-            doc = {
-                "id": str(_uuid.uuid4()),
-                "dialog_id": dialog_id,
-                "question_text": question_text,
-                "answer_json": answer,
-                "reference_json": reference,
-                "prompt_text": "",
-                "q_vec": embeddings[0],
-                "cached_at": _time.time(),
-                "ttl": ttl,
-            }
-            _get_raw_client(conn).index(index=idx, body=doc, refresh=True)
-            # Return entry without vector
-            result = {k: v for k, v in doc.items() if k != "q_vec"}
-            return result
-        except Exception as e:
-            logging.warning("CacheMgr.create_l2_entry error: %s", e)
-            raise AdminException(f"Failed to create cache entry: {e}")
-
-    @staticmethod
-    def delete_l2_entries(tenant_id: str, entry_ids: list) -> int:
-        """Delete L2 cache entries by IDs."""
-        CacheMgr._require_cache()
-        try:
-            from common import settings
-
-            conn = settings.docStoreConn
-            idx = _cache_index_name(tenant_id)
-            res = _get_raw_client(conn).delete_by_query(
-                index=idx,
-                body={"query": {"ids": {"values": entry_ids}}},
-                refresh=True,
-            )
-            return res.get("deleted", 0)
-        except Exception as e:
-            logging.warning("CacheMgr.delete_l2_entries error: %s", e)
-            return 0
-
-    @staticmethod
-    def invalidate_l1_dialog(dialog_id: str) -> int:
-        """Invalidate all L1 cache entries for a dialog."""
-        CacheMgr._require_cache()
-        return invalidate_dialog_cache(dialog_id)

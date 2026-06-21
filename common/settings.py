@@ -17,6 +17,8 @@ import os
 import json
 import secrets
 import logging
+from datetime import date
+
 from common.constants import RAG_FLOW_SERVICE_NAME
 from common.file_utils import get_project_base_directory
 from common.config_utils import get_base_config, decrypt_database_config
@@ -43,6 +45,8 @@ import memory.utils.es_conn as memory_es_conn
 import memory.utils.infinity_conn as memory_infinity_conn
 import memory.utils.ob_conn as memory_ob_conn
 import memory.utils.opensearch_conn as memory_opensearch_conn
+
+TIMEZONE = os.getenv("TZ", "Asia/Shanghai")
 
 LLM = None
 LLM_FACTORY = None
@@ -93,6 +97,8 @@ kg_retriever = None
 # user registration switch
 REGISTER_ENABLED = 1
 
+# SSO-only mode: hide password login form
+DISABLE_PASSWORD_LOGIN = False
 
 # sandbox-executor-manager
 SANDBOX_HOST = None
@@ -122,24 +128,38 @@ GCS = {}
 DOC_MAXIMUM_SIZE: int = 128 * 1024 * 1024
 DOC_BULK_SIZE: int = 4
 EMBEDDING_BATCH_SIZE: int = 16
-DOC_FIELD_MAX_SIZE: int = 45 * 1024 * 1024
 
 PARALLEL_DEVICES: int = 0
 
 STORAGE_IMPL_TYPE = os.getenv('STORAGE_IMPL', 'MINIO')
 STORAGE_IMPL = None
 
-def get_svr_queue_name(priority: int) -> str:
-    if priority == 0:
-        return SVR_QUEUE_NAME
-    return f"{SVR_QUEUE_NAME}_{priority}"
+def get_svr_queue_name(priority: int, suffix: str = "common") -> str:
+    """
+    Generate queue name with two dimensions: priority and suffix.
+    
+    Args:
+        priority: Task priority (0=low, 1=high)
+        suffix: Task type suffix (common/resume/graphrag/raptor/mindmap)
+               Currently only "common" is used, other suffixes are reserved.
+    
+    Returns:
+        Queue name string
+    
+    Examples:
+        get_svr_queue_name(0, "common") -> "te.0.common"
+        get_svr_queue_name(1, "common") -> "te.1.common"
+        get_svr_queue_name(0) -> "te.0.common"  # default suffix="common"
 
-def get_svr_queue_names():
-    return [get_svr_queue_name(priority) for priority in [1, 0]]
+    """
+    return f"{SVR_QUEUE_NAME}.{priority}.common"
 
-def _get_or_create_secret_key():
-    import logging
 
+def get_svr_queue_names(suffix:str):
+    """Return queue names sorted by priority (high to low)."""
+    return [get_svr_queue_name(priority, suffix) for priority in [1, 0]]
+
+def init_secret_key():
     secret_key = os.environ.get("RAGFLOW_SECRET_KEY")
     if secret_key and len(secret_key) >= 32:
         return secret_key
@@ -148,11 +168,32 @@ def _get_or_create_secret_key():
     configured_key = get_base_config(RAG_FLOW_SERVICE_NAME, {}).get("secret_key")
     if configured_key and configured_key != str(date.today()) and len(configured_key) >= 32:
         return configured_key
+    return None
+
+
+def get_secret_key():
+    global SECRET_KEY
+    if SECRET_KEY is None:
+        return _get_or_create_secret_key()
+    return SECRET_KEY
+
+def _get_or_create_secret_key():
+    # secret_key = os.environ.get("RAGFLOW_SECRET_KEY")
+    # if secret_key and len(secret_key) >= 32:
+    #     return secret_key
+    #
+    # # Check if there's a configured secret key
+    # configured_key = get_base_config(RAG_FLOW_SERVICE_NAME, {}).get("secret_key")
+    # if configured_key and configured_key != str(date.today()) and len(configured_key) >= 32:
+    #     return configured_key
 
     # Generate a new secure key and warn about it
+    import logging
+
     generated_key = secrets.token_hex(32)
     secret_key = REDIS_CONN.get_or_create_secret_key("ragflow:system:secret_key", generated_key)
-    logging.warning("SECURITY WARNING: Using auto-generated SECRET_KEY. Set RAGFLOW_SECRET_KEY env var for persistence.")
+    if generated_key == secret_key:
+        logging.warning("SECURITY WARNING: Using auto-generated SECRET_KEY.")
     return secret_key
 
 class StorageFactory:
@@ -186,6 +227,17 @@ def init_settings():
     global REGISTER_ENABLED
     try:
         REGISTER_ENABLED = int(os.environ.get("REGISTER_ENABLED", "1"))
+    except Exception:
+        pass
+
+    global DISABLE_PASSWORD_LOGIN
+    try:
+        env_val = os.environ.get("DISABLE_PASSWORD_LOGIN", "").lower()
+        if env_val in ("1", "true", "yes"):
+            DISABLE_PASSWORD_LOGIN = True
+        else:
+            authentication_conf = get_base_config("authentication", {})
+            DISABLE_PASSWORD_LOGIN = bool(authentication_conf.get("disable_password_login", False))
     except Exception:
         pass
 
@@ -232,7 +284,7 @@ def init_settings():
     HOST_PORT = get_base_config(RAG_FLOW_SERVICE_NAME, {}).get("http_port")
 
     global SECRET_KEY
-    SECRET_KEY = _get_or_create_secret_key()
+    SECRET_KEY = init_secret_key()
 
 
     # authentication
@@ -247,7 +299,7 @@ def init_settings():
     OAUTH_CONFIG = get_base_config("oauth", {})
 
     global DOC_ENGINE, DOC_ENGINE_INFINITY, DOC_ENGINE_OCEANBASE, docStoreConn, ES, OB, OS, INFINITY
-    DOC_ENGINE = os.environ.get("DOC_ENGINE", "elasticsearch")
+    DOC_ENGINE = os.environ.get("DOC_ENGINE", "elasticsearch").strip()
     DOC_ENGINE_INFINITY = (DOC_ENGINE.lower() == "infinity")
     DOC_ENGINE_OCEANBASE = (DOC_ENGINE.lower() == "oceanbase")
     lower_case_doc_engine = DOC_ENGINE.lower()
@@ -285,10 +337,11 @@ def init_settings():
             "db_name": "default_db"
         })
         msgStoreConn = memory_infinity_conn.InfinityConnection()
-    elif lower_case_doc_engine == "opensearch":
-        msgStoreConn = memory_opensearch_conn.OSConnection()
     elif lower_case_doc_engine in ["oceanbase", "seekdb"]:
         msgStoreConn = memory_ob_conn.OBConnection()
+    elif lower_case_doc_engine == "opensearch":
+        # fork: memory store on OpenSearch (AWS deploy runs DOC_ENGINE=opensearch)
+        msgStoreConn = memory_opensearch_conn.OSConnection()
 
     global AZURE, S3, MINIO, OSS, GCS
     if STORAGE_IMPL_TYPE in ['AZURE_SPN', 'AZURE_SAS']:
@@ -350,11 +403,10 @@ def init_settings():
         MAIL_DEFAULT_SENDER = (mail_default_sender[0], mail_default_sender[1])
     MAIL_FRONTEND_URL = SMTP_CONF.get("mail_frontend_url", "")
 
-    global DOC_MAXIMUM_SIZE, DOC_BULK_SIZE, EMBEDDING_BATCH_SIZE, DOC_FIELD_MAX_SIZE
+    global DOC_MAXIMUM_SIZE, DOC_BULK_SIZE, EMBEDDING_BATCH_SIZE
     DOC_MAXIMUM_SIZE = int(os.environ.get("MAX_CONTENT_LENGTH", 128 * 1024 * 1024))
     DOC_BULK_SIZE = int(os.environ.get("DOC_BULK_SIZE", 4))
     EMBEDDING_BATCH_SIZE = int(os.environ.get("EMBEDDING_BATCH_SIZE", 16))
-    DOC_FIELD_MAX_SIZE = int(os.environ.get("DOC_FIELD_MAX_SIZE", 45 * 1024 * 1024))
 
     os.environ["DOTNET_SYSTEM_GLOBALIZATION_INVARIANT"] = "1"
 
@@ -401,6 +453,5 @@ def _resolve_per_model_config(entry_dict, backup_factory, backup_api_key, backup
 
 def print_rag_settings():
     logging.info(f"MAX_CONTENT_LENGTH: {DOC_MAXIMUM_SIZE}")
-    logging.info(f"DOC_FIELD_MAX_SIZE: {DOC_FIELD_MAX_SIZE}")
     logging.info(f"MAX_FILE_COUNT_PER_USER: {int(os.environ.get('MAX_FILE_NUM_PER_USER', 0))}")
 

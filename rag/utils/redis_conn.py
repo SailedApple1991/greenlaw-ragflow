@@ -137,13 +137,13 @@ class RedisDB:
             if password:
                 conn_params["password"] = password
 
-            # Support SSL/TLS connection for AWS ElastiCache and other managed Redis services
+            # fork: SSL/TLS for AWS ElastiCache and other managed Redis services
             ssl_enabled = self.config.get("ssl", False)
             if isinstance(ssl_enabled, str):
                 ssl_enabled = ssl_enabled.lower() in ("true", "1", "yes")
             if ssl_enabled:
                 conn_params["ssl"] = True
-                conn_params["ssl_cert_reqs"] = None  # Skip certificate verification for managed services
+                conn_params["ssl_cert_reqs"] = None  # managed services: skip cert verify
 
             self.REDIS = redis.StrictRedis(**conn_params)
 
@@ -288,6 +288,17 @@ class RedisDB:
         except Exception as e:
             logging.warning(
                 f"RedisDB.zremrangebyscore {key} got exception: {e}"
+            )
+            self.__open__()
+        return 0
+
+    def zcard(self, key: str):
+        try:
+            res = self.REDIS.zcard(key)
+            return res
+        except Exception as e:
+            logging.warning(
+                f"RedisDB.zcard {key} got exception: {e}"
             )
             self.__open__()
         return 0

@@ -17,7 +17,23 @@
 from io import BytesIO
 
 from pypdf import PdfReader as pdf2_read
+
 from rag.nlp import find_codec
+
+
+def get_text(fnm: str, binary=None) -> str:
+    txt = ""
+    if binary is not None:
+        encoding = find_codec(binary)
+        txt = binary.decode(encoding, errors="ignore")
+    else:
+        with open(fnm, "r") as f:
+            while True:
+                line = f.readline()
+                if not line:
+                    break
+                txt += line
+    return txt
 
 
 def extract_pdf_outlines(source):
@@ -36,18 +52,3 @@ def extract_pdf_outlines(source):
             return outlines
     except Exception:
         return []
-
-
-def get_text(fnm: str, binary=None) -> str:
-    txt = ""
-    if binary is not None:
-        encoding = find_codec(binary)
-        txt = binary.decode(encoding, errors="ignore")
-    else:
-        with open(fnm, "r") as f:
-            while True:
-                line = f.readline()
-                if not line:
-                    break
-                txt += line
-    return txt

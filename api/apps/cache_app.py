@@ -334,6 +334,7 @@ async def create_cache_l2_entry():
         import uuid as _uuid
         from api.db.services.llm_service import LLMBundle
         from api.db import LLMType
+        from api.db.joint_services.tenant_model_service import get_tenant_default_model_by_type
 
         data = await request.json
         if not data:
@@ -349,7 +350,8 @@ async def create_cache_l2_entry():
         if not tenant_id or not dialog_id or not question_text:
             return get_json_result(data=None, message="tenant_id, dialog_id and question_text are required", code=400)
 
-        mdl = LLMBundle(tenant_id, LLMType.EMBEDDING)
+        embd_model_config = get_tenant_default_model_by_type(tenant_id, LLMType.EMBEDDING)
+        mdl = LLMBundle(tenant_id, embd_model_config)
         _, embeddings = mdl.encode([question_text])
 
         vector_size = len(embeddings[0])

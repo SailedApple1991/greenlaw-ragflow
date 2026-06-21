@@ -17,7 +17,7 @@
 
 
 import pytest
-from common import batch_add_chunks
+from common import batch_add_chunks, delete_all_chunks
 from pytest import FixtureRequest
 from ragflow_sdk import Chunk, DataSet, Document
 from utils import wait_for
@@ -25,7 +25,7 @@ from utils import wait_for
 
 @wait_for(30, 1, "Document parsing timeout")
 def condition(_dataset: DataSet):
-    documents = _dataset.list_documents(page_size=1000)
+    documents = _dataset.list_documents(page_size=100)
     for document in documents:
         if document.run != "DONE":
             return False
@@ -33,14 +33,14 @@ def condition(_dataset: DataSet):
 
 @wait_for(30, 1, "Chunk indexing timeout")
 def chunks_visible(_document: Document, _chunk_ids: list[str]):
-    visible_ids = {chunk.id for chunk in _document.list_chunks(page_size=1000)}
+    visible_ids = {chunk.id for chunk in _document.list_chunks(page_size=100)}
     return set(_chunk_ids).issubset(visible_ids)
 
 @pytest.fixture(scope="function")
 def add_chunks_func(request: FixtureRequest, add_document: tuple[DataSet, Document]) -> tuple[DataSet, Document, list[Chunk]]:
     def cleanup():
         try:
-            document.delete_chunks(ids=[])
+            delete_all_chunks(document)
         except Exception:
             pass
 

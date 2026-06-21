@@ -15,6 +15,7 @@
 #
 
 import pytest
+from common import valid_chat_llm_id
 from configs import CHAT_ASSISTANT_NAME_LIMIT
 from utils import encode_avatar
 from utils.file_utils import create_image_file
@@ -49,14 +50,14 @@ class TestChatAssistantCreate:
             chat_assistant = client.create_chat(name=name)
             assert chat_assistant.name == name
 
-    @pytest.mark.p1
+    @pytest.mark.p3
     @pytest.mark.parametrize(
         "dataset_ids, expected_message",
         [
             ([], ""),
             (lambda r: [r], ""),
             (["invalid_dataset_id"], "You don't own the dataset invalid_dataset_id"),
-            ("invalid_dataset_id", "You don't own the dataset i"),
+            ("invalid_dataset_id", "violates type hint list[str] | None"),
         ],
     )
     def test_dataset_ids(self, client, add_chunks, dataset_ids, expected_message):
@@ -127,12 +128,14 @@ class TestChatAssistantCreate:
     @pytest.mark.parametrize(
         "llm_id, expected_message",
         [
-            ("glm-4", ""),
+            (valid_chat_llm_id, ""),
             ("unknown", "`llm_id` unknown doesn't exist"),
         ],
     )
     def test_llm_id(self, client, add_chunks, llm_id, expected_message):
         dataset, _, _ = add_chunks
+        if callable(llm_id):
+            llm_id = llm_id(client)
 
         if expected_message:
             with pytest.raises(Exception) as exception_info:
@@ -186,7 +189,7 @@ class TestChatAssistantCreate:
 
 
 class TestChatAssistantCreate2:
-    @pytest.mark.p2
+    @pytest.mark.p3
     def test_unparsed_document(self, client, add_document):
         dataset, _ = add_document
         with pytest.raises(Exception) as exception_info:
