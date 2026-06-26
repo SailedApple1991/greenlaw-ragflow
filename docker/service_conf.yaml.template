@@ -40,6 +40,14 @@ redis:
   db: 1
   password: '${REDIS_PASSWORD:-infini_rag_flow}'
   host: '${REDIS_HOST:-redis}:6379'
+llm_cache:
+  enabled: ${LLM_CACHE_ENABLED:-false}
+  exact_enabled: ${LLM_CACHE_EXACT_ENABLED:-true}
+  exact_ttl_seconds: ${LLM_CACHE_EXACT_TTL_SECONDS:-3600}
+  cache_streaming: false
+  providers:
+    DeepSeek:
+      exact_enabled: true
 user_default_llm:
   default_models:
     embedding_model:

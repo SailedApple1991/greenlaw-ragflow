@@ -21,6 +21,7 @@ from functools import partial
 from typing import Generator
 from common.constants import LLMType
 from api.db.db_models import LLM
+from api.db.services.llm_cache_service import LLMExactCache
 from api.db.services.common_service import CommonService
 from api.db.services.tenant_llm_service import LLM4Tenant, TenantLLMService
 
@@ -80,6 +81,9 @@ def get_init_tenant_llm(user_id):
 class LLMBundle(LLM4Tenant):
     def __init__(self, tenant_id, llm_type, llm_name=None, lang="Chinese", **kwargs):
         super().__init__(tenant_id, llm_type, llm_name, lang, **kwargs)
+        model_config = TenantLLMService.get_model_config(tenant_id, llm_type, llm_name)
+        self.llm_factory = model_config.get("llm_factory", "")
+        self.effective_llm_name = model_config.get("llm_name", llm_name)
 
     def bind_tools(self, toolcall_session, tools):
         if not self.is_tools:
@@ -236,11 +240,34 @@ class LLMBundle(LLM4Tenant):
             chat_partial = partial(self.mdl.chat_with_tools, system, history, gen_conf, **kwargs)
 
         use_kwargs = self._clean_param(chat_partial, **kwargs)
+        cache_key = None
+        has_tools = bool(self.is_tools and self.mdl.is_tools)
+        if LLMExactCache.is_enabled_for(provider=self.llm_factory, llm_type=self.llm_type, has_tools=has_tools, kwargs=use_kwargs):
+            cache_key = LLMExactCache.build_key(
+                tenant_id=self.tenant_id,
+                provider=self.llm_factory,
+                llm_name=self.effective_llm_name,
+                llm_type=self.llm_type,
+                system=system,
+                history=history,
+                gen_conf=gen_conf,
+                kwargs=use_kwargs,
+            )
+            cached = LLMExactCache.get(cache_key)
+            if cached is not None:
+                if self.langfuse:
+                    generation.update(output={"output": cached}, metadata={"llm_cache": "L0_EXACT_RESPONSE_CACHE"})
+                    generation.end()
+                return cached
+
         txt, used_tokens = chat_partial(**use_kwargs)
         txt = self._remove_reasoning_content(txt)
 
         if not self.verbose_tool_use:
             txt = re.sub(r"<tool_call>.*?</tool_call>", "", txt, flags=re.DOTALL)
+
+        if cache_key and isinstance(txt, str):
+            LLMExactCache.set(cache_key, txt, provider=self.llm_factory, llm_name=self.effective_llm_name, used_tokens=used_tokens)
 
         if isinstance(txt, int) and not TenantLLMService.increase_usage(self.tenant_id, self.llm_type, used_tokens, self.llm_name):
             logging.error("LLMBundle.chat can't update token usage for {}/CHAT llm_name: {}, used_tokens: {}".format(self.tenant_id, self.llm_name, used_tokens))
