@@ -33,6 +33,7 @@ from api.db.services.document_service import DocumentService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.langfuse_service import TenantLangfuseService
 from api.db.services.llm_service import LLMBundle
+from api.db.services.llm_cache_service import LLMPromptPrefixCache
 from api.db.services.tenant_llm_service import TenantLLMService
 from common.time_utils import current_timestamp, datetime_format
 from graphrag.general.mind_map_extractor import MindMapExtractor
@@ -492,6 +493,9 @@ def chat(dialog, messages, stream=True, **kwargs):
                                                        LLMBundle(dialog.tenant_id, LLMType.CHAT))
                 if ck["content_with_weight"]:
                     kbinfos["chunks"].insert(0, ck)
+
+            if LLMPromptPrefixCache.is_stable_context_order_enabled(llm_model_config.get("llm_factory", "")):
+                kbinfos = LLMPromptPrefixCache.stabilize_context(kbinfos)
 
             knowledges = kb_prompt(kbinfos, max_tokens)
 

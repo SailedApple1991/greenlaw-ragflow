@@ -43,12 +43,15 @@ redis:
 llm_cache:
   enabled: ${LLM_CACHE_ENABLED:-false}
   exact_enabled: ${LLM_CACHE_EXACT_ENABLED:-true}
+  prompt_prefix_enabled: ${LLM_CACHE_PROMPT_PREFIX_ENABLED:-false}
   exact_ttl_seconds: ${LLM_CACHE_EXACT_TTL_SECONDS:-3600}
   cache_streaming: ${LLM_CACHE_STREAMING_ENABLED:-false}
   eligible_task_types: []
+  stable_context_order: ${LLM_CACHE_STABLE_CONTEXT_ORDER:-false}
   providers:
     DeepSeek:
       exact_enabled: true
+      prompt_prefix_enabled: true
 user_default_llm:
   default_models:
     embedding_model:

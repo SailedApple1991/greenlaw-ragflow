@@ -17,7 +17,7 @@ import json
 
 from common.constants import LLMType
 from api.db.services import llm_cache_service
-from api.db.services.llm_cache_service import LLMExactCache
+from api.db.services.llm_cache_service import LLMExactCache, LLMPromptPrefixCache
 from api.db.services.llm_service import LLMBundle
 
 
@@ -57,9 +57,11 @@ def enabled_deepseek_config(**overrides):
     config = {
         "enabled": True,
         "exact_enabled": True,
+        "prompt_prefix_enabled": False,
         "exact_ttl_seconds": 60,
         "cache_streaming": False,
         "eligible_task_types": [],
+        "stable_context_order": False,
         "providers": {"DeepSeek": {"exact_enabled": True}},
     }
     config.update(overrides)
@@ -154,6 +156,41 @@ def test_exact_cache_miss_returns_none(monkeypatch):
     monkeypatch.setattr(LLMExactCache, "redis_conn", staticmethod(lambda: redis))
 
     assert LLMExactCache.get("missing-key") is None
+
+
+def test_prompt_prefix_stable_context_order_requires_global_and_provider_config(monkeypatch):
+    config = enabled_deepseek_config(
+        prompt_prefix_enabled=True,
+        stable_context_order=True,
+        providers={"DeepSeek": {"exact_enabled": True, "prompt_prefix_enabled": True}},
+    )
+    monkeypatch.setattr(llm_cache_service, "get_base_config", lambda key, default=None: config)
+
+    assert LLMPromptPrefixCache.is_stable_context_order_enabled("DeepSeek")
+    assert not LLMPromptPrefixCache.is_stable_context_order_enabled("OpenAI")
+
+    config["stable_context_order"] = False
+    assert not LLMPromptPrefixCache.is_stable_context_order_enabled("DeepSeek")
+
+
+def test_prompt_prefix_stabilizes_context_order():
+    kbinfos = {
+        "chunks": [
+            {"doc_id": "doc-b", "position_int": [[2, 0]], "chunk_id": "chunk-2", "content_with_weight": "b"},
+            {"doc_id": "doc-a", "position_int": [[3, 0]], "chunk_id": "chunk-3", "content_with_weight": "c"},
+            {"doc_id": "doc-a", "position_int": [[1, 0]], "chunk_id": "chunk-1", "content_with_weight": "a"},
+        ],
+        "doc_aggs": [
+            {"doc_id": "doc-b", "doc_name": "B"},
+            {"doc_id": "doc-a", "doc_name": "A"},
+        ],
+    }
+
+    stable = LLMPromptPrefixCache.stabilize_context(kbinfos)
+
+    assert [chunk["chunk_id"] for chunk in stable["chunks"]] == ["chunk-1", "chunk-3", "chunk-2"]
+    assert [doc["doc_id"] for doc in stable["doc_aggs"]] == ["doc-a", "doc-b"]
+    assert [chunk["chunk_id"] for chunk in kbinfos["chunks"]] == ["chunk-2", "chunk-3", "chunk-1"]
 
 
 def test_llm_bundle_chat_returns_cache_hit_without_provider_call(monkeypatch):

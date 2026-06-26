@@ -27,12 +27,15 @@ from common.constants import LLMType
 DEFAULT_LLM_CACHE_CONFIG = {
     "enabled": False,
     "exact_enabled": True,
+    "prompt_prefix_enabled": False,
     "exact_ttl_seconds": 3600,
     "cache_streaming": False,
     "eligible_task_types": [],
+    "stable_context_order": False,
     "providers": {
         "DeepSeek": {
             "exact_enabled": True,
+            "prompt_prefix_enabled": True,
         },
     },
 }
@@ -215,3 +218,53 @@ class LLMExactCache:
                 logging.info("LLM exact cache write: %s", key)
         except Exception:
             logging.exception("LLM exact cache write failed: %s", key)
+
+
+class LLMPromptPrefixCache:
+    @classmethod
+    def is_stable_context_order_enabled(cls, provider: str) -> bool:
+        conf = LLMExactCache.config()
+        if not conf.get("enabled", False) or not conf.get("prompt_prefix_enabled", False):
+            return False
+        if not conf.get("stable_context_order", False):
+            return False
+
+        provider_conf = conf.get("providers", {}).get(provider)
+        if not provider_conf:
+            return False
+        return bool(provider_conf.get("prompt_prefix_enabled", False))
+
+    @classmethod
+    def stabilize_context(cls, kbinfos: dict) -> dict:
+        if not kbinfos:
+            return kbinfos
+
+        stable = deepcopy(kbinfos)
+        stable["chunks"] = sorted(stable.get("chunks", []), key=cls._chunk_sort_key)
+        stable["doc_aggs"] = sorted(stable.get("doc_aggs", []), key=cls._doc_agg_sort_key)
+        return stable
+
+    @staticmethod
+    def _chunk_sort_key(chunk: dict) -> tuple:
+        return (
+            str(chunk.get("doc_id") or chunk.get("document_id") or ""),
+            LLMPromptPrefixCache._positions_sort_key(chunk.get("positions") or chunk.get("position_int")),
+            str(chunk.get("chunk_id") or chunk.get("id") or ""),
+            str(chunk.get("content_with_weight") or chunk.get("content") or "")[:128],
+        )
+
+    @staticmethod
+    def _doc_agg_sort_key(doc_agg: dict) -> tuple:
+        return (
+            str(doc_agg.get("doc_id") or ""),
+            str(doc_agg.get("doc_name") or ""),
+        )
+
+    @staticmethod
+    def _positions_sort_key(positions: Any) -> str:
+        if positions is None:
+            return ""
+        try:
+            return json.dumps(positions, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+        except Exception:
+            return str(positions)
