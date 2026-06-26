@@ -53,14 +53,17 @@ class FakeChatModel:
         yield 12
 
 
-def enabled_deepseek_config():
-    return {
+def enabled_deepseek_config(**overrides):
+    config = {
         "enabled": True,
         "exact_enabled": True,
         "exact_ttl_seconds": 60,
         "cache_streaming": False,
+        "eligible_task_types": [],
         "providers": {"DeepSeek": {"exact_enabled": True}},
     }
+    config.update(overrides)
+    return config
 
 
 def test_exact_cache_key_is_stable_for_equivalent_dict_order():
@@ -109,6 +112,29 @@ def test_exact_cache_is_enabled_only_for_configured_chat_provider(monkeypatch):
     assert not LLMExactCache.is_enabled_for(provider="DeepSeek", llm_type=LLMType.CHAT.value, kwargs={"images": ["image"]})
 
 
+def test_exact_cache_reports_bypass_reasons(monkeypatch):
+    monkeypatch.setattr(llm_cache_service, "get_base_config", lambda key, default=None: enabled_deepseek_config(enabled=False))
+
+    assert LLMExactCache.bypass_reason(provider="DeepSeek", llm_type=LLMType.CHAT.value) == "disabled"
+
+    monkeypatch.setattr(llm_cache_service, "get_base_config", lambda key, default=None: enabled_deepseek_config())
+
+    assert LLMExactCache.bypass_reason(provider="OpenAI", llm_type=LLMType.CHAT.value) == "unsupported_provider"
+    assert LLMExactCache.bypass_reason(provider="DeepSeek", llm_type=LLMType.EMBEDDING.value) == "unsupported_llm_type"
+    assert LLMExactCache.bypass_reason(provider="DeepSeek", llm_type=LLMType.CHAT.value, stream=True) == "streaming_disabled"
+    assert LLMExactCache.bypass_reason(provider="DeepSeek", llm_type=LLMType.CHAT.value, has_tools=True) == "tool_call"
+
+
+def test_exact_cache_can_be_limited_by_task_type(monkeypatch):
+    config = enabled_deepseek_config(eligible_task_types=["faq", "document_qa"])
+    monkeypatch.setattr(llm_cache_service, "get_base_config", lambda key, default=None: config)
+
+    assert LLMExactCache.is_enabled_for(provider="DeepSeek", llm_type=LLMType.CHAT.value, kwargs={"task_type": "faq"})
+    assert LLMExactCache.is_enabled_for(provider="DeepSeek", llm_type=LLMType.CHAT.value, kwargs={"llm_cache_task_type": "document_qa"})
+    assert LLMExactCache.bypass_reason(provider="DeepSeek", llm_type=LLMType.CHAT.value, kwargs={"task_type": "agent"}) == "ineligible_task_type"
+    assert LLMExactCache.bypass_reason(provider="DeepSeek", llm_type=LLMType.CHAT.value, kwargs={}) == "ineligible_task_type"
+
+
 def test_exact_cache_read_write_roundtrip(monkeypatch):
     redis = FakeRedis()
     monkeypatch.setattr(LLMExactCache, "redis_conn", staticmethod(lambda: redis))
@@ -121,6 +147,13 @@ def test_exact_cache_read_write_roundtrip(monkeypatch):
     assert redis.ttls[key] == 60
     payload = json.loads(redis.values[key])
     assert payload["cache_type"] == "L0_EXACT_RESPONSE_CACHE"
+
+
+def test_exact_cache_miss_returns_none(monkeypatch):
+    redis = FakeRedis()
+    monkeypatch.setattr(LLMExactCache, "redis_conn", staticmethod(lambda: redis))
+
+    assert LLMExactCache.get("missing-key") is None
 
 
 def test_llm_bundle_chat_returns_cache_hit_without_provider_call(monkeypatch):

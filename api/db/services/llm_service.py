@@ -242,7 +242,8 @@ class LLMBundle(LLM4Tenant):
         use_kwargs = self._clean_param(chat_partial, **kwargs)
         cache_key = None
         has_tools = bool(self.is_tools and self.mdl.is_tools)
-        if LLMExactCache.is_enabled_for(provider=self.llm_factory, llm_type=self.llm_type, has_tools=has_tools, kwargs=use_kwargs):
+        cache_bypass_reason = LLMExactCache.bypass_reason(provider=self.llm_factory, llm_type=self.llm_type, has_tools=has_tools, kwargs=use_kwargs)
+        if cache_bypass_reason is None:
             cache_key = LLMExactCache.build_key(
                 tenant_id=self.tenant_id,
                 provider=self.llm_factory,
@@ -259,6 +260,8 @@ class LLMBundle(LLM4Tenant):
                     generation.update(output={"output": cached}, metadata={"llm_cache": "L0_EXACT_RESPONSE_CACHE"})
                     generation.end()
                 return cached
+        else:
+            logging.debug("LLM exact cache bypass: %s", cache_bypass_reason)
 
         txt, used_tokens = chat_partial(**use_kwargs)
         txt = self._remove_reasoning_content(txt)
@@ -290,7 +293,8 @@ class LLMBundle(LLM4Tenant):
         use_kwargs = self._clean_param(chat_partial, **kwargs)
         cache_key = None
         has_tools = bool(self.is_tools and self.mdl.is_tools)
-        if LLMExactCache.is_enabled_for(provider=self.llm_factory, llm_type=self.llm_type, stream=True, has_tools=has_tools, kwargs=use_kwargs):
+        cache_bypass_reason = LLMExactCache.bypass_reason(provider=self.llm_factory, llm_type=self.llm_type, stream=True, has_tools=has_tools, kwargs=use_kwargs)
+        if cache_bypass_reason is None:
             cache_key = LLMExactCache.build_key(
                 tenant_id=self.tenant_id,
                 provider=self.llm_factory,
@@ -308,6 +312,8 @@ class LLMBundle(LLM4Tenant):
                     generation.end()
                 yield cached
                 return
+        else:
+            logging.debug("LLM exact cache bypass: %s", cache_bypass_reason)
 
         for txt in chat_partial(**use_kwargs):
             if isinstance(txt, int):

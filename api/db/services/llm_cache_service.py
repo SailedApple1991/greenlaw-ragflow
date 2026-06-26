@@ -29,6 +29,7 @@ DEFAULT_LLM_CACHE_CONFIG = {
     "exact_enabled": True,
     "exact_ttl_seconds": 3600,
     "cache_streaming": False,
+    "eligible_task_types": [],
     "providers": {
         "DeepSeek": {
             "exact_enabled": True,
@@ -72,22 +73,47 @@ class LLMExactCache:
         has_tools: bool = False,
         kwargs: dict | None = None,
     ) -> bool:
+        return cls.bypass_reason(provider=provider, llm_type=llm_type, stream=stream, has_tools=has_tools, kwargs=kwargs) is None
+
+    @classmethod
+    def bypass_reason(
+        cls,
+        *,
+        provider: str,
+        llm_type: str,
+        stream: bool = False,
+        has_tools: bool = False,
+        kwargs: dict | None = None,
+    ) -> str | None:
         conf = cls.config()
         if not conf.get("enabled", False) or not conf.get("exact_enabled", True):
-            return False
+            return "disabled"
         if llm_type != LLMType.CHAT.value:
-            return False
+            return "unsupported_llm_type"
         if stream and not conf.get("cache_streaming", False):
-            return False
+            return "streaming_disabled"
         if has_tools:
-            return False
+            return "tool_call"
         if kwargs and kwargs.get("images"):
-            return False
+            return "image_input"
+
+        task_type = cls._task_type(kwargs)
+        eligible_task_types = conf.get("eligible_task_types") or []
+        if eligible_task_types and task_type not in set(str(x).strip() for x in eligible_task_types if str(x).strip()):
+            return "ineligible_task_type"
 
         provider_conf = conf.get("providers", {}).get(provider)
         if not provider_conf:
-            return False
-        return bool(provider_conf.get("exact_enabled", False))
+            return "unsupported_provider"
+        if not provider_conf.get("exact_enabled", False):
+            return "provider_disabled"
+        return None
+
+    @staticmethod
+    def _task_type(kwargs: dict | None) -> str:
+        if not kwargs:
+            return ""
+        return str(kwargs.get("task_type") or kwargs.get("llm_cache_task_type") or "").strip()
 
     @classmethod
     def build_key(
@@ -152,10 +178,12 @@ class LLMExactCache:
         try:
             raw = cls.redis_conn().get(key)
             if not raw:
+                logging.info("LLM exact cache miss: %s", key)
                 return None
             payload = json.loads(raw)
             answer = payload.get("answer")
             if not isinstance(answer, str):
+                logging.info("LLM exact cache miss: invalid payload for %s", key)
                 return None
             logging.info("LLM exact cache hit: %s", key)
             return answer

@@ -45,6 +45,7 @@ llm_cache:
   exact_enabled: true
   exact_ttl_seconds: 3600
   cache_streaming: false
+  eligible_task_types: []
   providers:
     DeepSeek:
       exact_enabled: true
