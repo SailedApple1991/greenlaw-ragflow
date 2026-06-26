@@ -288,6 +288,27 @@ class LLMBundle(LLM4Tenant):
         if self.is_tools and self.mdl.is_tools:
             chat_partial = partial(self.mdl.chat_streamly_with_tools, system, history, gen_conf)
         use_kwargs = self._clean_param(chat_partial, **kwargs)
+        cache_key = None
+        has_tools = bool(self.is_tools and self.mdl.is_tools)
+        if LLMExactCache.is_enabled_for(provider=self.llm_factory, llm_type=self.llm_type, stream=True, has_tools=has_tools, kwargs=use_kwargs):
+            cache_key = LLMExactCache.build_key(
+                tenant_id=self.tenant_id,
+                provider=self.llm_factory,
+                llm_name=self.effective_llm_name,
+                llm_type=self.llm_type,
+                system=system,
+                history=history,
+                gen_conf=gen_conf,
+                kwargs=use_kwargs,
+            )
+            cached = LLMExactCache.get(cache_key)
+            if cached is not None:
+                if self.langfuse:
+                    generation.update(output={"output": cached}, metadata={"llm_cache": "L0_EXACT_RESPONSE_CACHE"})
+                    generation.end()
+                yield cached
+                return
+
         for txt in chat_partial(**use_kwargs):
             if isinstance(txt, int):
                 total_tokens = txt
@@ -304,6 +325,9 @@ class LLMBundle(LLM4Tenant):
 
             ans += txt
             yield ans
+
+        if cache_key and ans:
+            LLMExactCache.set(cache_key, ans, provider=self.llm_factory, llm_name=self.effective_llm_name, used_tokens=total_tokens)
 
         if total_tokens > 0:
             if not TenantLLMService.increase_usage(self.tenant_id, self.llm_type, txt, self.llm_name):

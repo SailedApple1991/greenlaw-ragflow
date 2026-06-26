@@ -40,10 +40,17 @@ class FakeChatModel:
 
     def __init__(self):
         self.calls = 0
+        self.stream_calls = 0
 
     def chat(self, system, history, gen_conf):
         self.calls += 1
         return "provider answer", 12
+
+    def chat_streamly(self, system, history, gen_conf):
+        self.stream_calls += 1
+        yield "provider "
+        yield "answer"
+        yield 12
 
 
 def enabled_deepseek_config():
@@ -158,4 +165,50 @@ def test_llm_bundle_chat_writes_cache_after_provider_call(monkeypatch):
 
     assert bundle.chat("system", [{"role": "user", "content": "hello"}], {"temperature": 0}) == "provider answer"
     assert fake_model.calls == 1
+    assert writes == [(("cache-key", "provider answer"), {"provider": "DeepSeek", "llm_name": "deepseek-chat", "used_tokens": 12})]
+
+
+def test_llm_bundle_chat_streamly_returns_cache_hit_without_provider_call(monkeypatch):
+    fake_model = FakeChatModel()
+    bundle = object.__new__(LLMBundle)
+    bundle.langfuse = None
+    bundle.tenant_id = "tenant-1"
+    bundle.llm_type = LLMType.CHAT.value
+    bundle.llm_name = "deepseek-chat@DeepSeek"
+    bundle.effective_llm_name = "deepseek-chat"
+    bundle.llm_factory = "DeepSeek"
+    bundle.is_tools = False
+    bundle.verbose_tool_use = False
+    bundle.mdl = fake_model
+
+    monkeypatch.setattr(LLMExactCache, "is_enabled_for", classmethod(lambda cls, **kwargs: True))
+    monkeypatch.setattr(LLMExactCache, "build_key", classmethod(lambda cls, **kwargs: "cache-key"))
+    monkeypatch.setattr(LLMExactCache, "get", classmethod(lambda cls, key: "cached answer"))
+
+    assert list(bundle.chat_streamly("system", [{"role": "user", "content": "hello"}], {"temperature": 0})) == ["cached answer"]
+    assert fake_model.stream_calls == 0
+
+
+def test_llm_bundle_chat_streamly_writes_final_answer_after_provider_call(monkeypatch):
+    fake_model = FakeChatModel()
+    writes = []
+    bundle = object.__new__(LLMBundle)
+    bundle.langfuse = None
+    bundle.tenant_id = "tenant-1"
+    bundle.llm_type = LLMType.CHAT.value
+    bundle.llm_name = "deepseek-chat@DeepSeek"
+    bundle.effective_llm_name = "deepseek-chat"
+    bundle.llm_factory = "DeepSeek"
+    bundle.is_tools = False
+    bundle.verbose_tool_use = False
+    bundle.mdl = fake_model
+
+    monkeypatch.setattr(LLMExactCache, "is_enabled_for", classmethod(lambda cls, **kwargs: True))
+    monkeypatch.setattr(LLMExactCache, "build_key", classmethod(lambda cls, **kwargs: "cache-key"))
+    monkeypatch.setattr(LLMExactCache, "get", classmethod(lambda cls, key: None))
+    monkeypatch.setattr(LLMExactCache, "set", classmethod(lambda cls, *args, **kwargs: writes.append((args, kwargs))))
+    monkeypatch.setattr("api.db.services.llm_service.TenantLLMService.increase_usage", lambda *args, **kwargs: True)
+
+    assert list(bundle.chat_streamly("system", [{"role": "user", "content": "hello"}], {"temperature": 0})) == ["provider ", "provider answer"]
+    assert fake_model.stream_calls == 1
     assert writes == [(("cache-key", "provider answer"), {"provider": "DeepSeek", "llm_name": "deepseek-chat", "used_tokens": 12})]
