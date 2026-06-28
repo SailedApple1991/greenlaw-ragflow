@@ -35,7 +35,7 @@ from zhipuai import ZhipuAI
 
 from rag.llm import FACTORY_DEFAULT_BASE_URL, LITELLM_PROVIDER_PREFIX, SupportedLiteLLMProvider
 from rag.nlp import is_chinese, is_english
-from common.token_utils import num_tokens_from_string, total_token_count_from_response
+from common.token_utils import num_tokens_from_string, provider_cache_token_details_from_response, total_token_count_from_response
 
 
 # Error message constants
@@ -1460,6 +1460,11 @@ class LiteLLMBase(ABC):
             del gen_conf["max_tokens"]
         return gen_conf
 
+    def _log_provider_cache_tokens(self, response):
+        details = provider_cache_token_details_from_response(response)
+        if details:
+            logging.info("[PROVIDER CACHE TOKENS] model=%s details=%s", self.model_name, details)
+
     def _chat(self, history, gen_conf, **kwargs):
         logging.info("[HISTORY]" + json.dumps(history, ensure_ascii=False, indent=2))
         if self.model_name.lower().find("qwen3") >= 0:
@@ -1471,6 +1476,7 @@ class LiteLLMBase(ABC):
             drop_params=True,
             timeout=self.timeout,
         )
+        self._log_provider_cache_tokens(response)
         # response = self.client.chat.completions.create(model=self.model_name, messages=history, **gen_conf, **kwargs)
         if any([not response.choices, not response.choices[0].message, not response.choices[0].message.content]):
             return "", 0
@@ -1513,6 +1519,7 @@ class LiteLLMBase(ABC):
                 ans = delta.content
 
             tol = total_token_count_from_response(resp)
+            self._log_provider_cache_tokens(resp)
             if not tol:
                 tol = num_tokens_from_string(delta.content)
 
@@ -1673,6 +1680,7 @@ class LiteLLMBase(ABC):
                         drop_params=True,
                         timeout=self.timeout,
                     )
+                    self._log_provider_cache_tokens(response)
 
                     tk_count += total_token_count_from_response(response)
 
@@ -1807,6 +1815,7 @@ class LiteLLMBase(ABC):
                             yield delta.content
 
                         tol = total_token_count_from_response(resp)
+                        self._log_provider_cache_tokens(resp)
                         if not tol:
                             total_tokens += num_tokens_from_string(delta.content)
                         else:
@@ -1856,6 +1865,7 @@ class LiteLLMBase(ABC):
                     if not hasattr(delta, "content") or delta.content is None:
                         continue
                     tol = total_token_count_from_response(resp)
+                    self._log_provider_cache_tokens(resp)
                     if not tol:
                         total_tokens += num_tokens_from_string(delta.content)
                     else:

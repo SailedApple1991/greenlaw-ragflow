@@ -76,7 +76,76 @@ def total_token_count_from_response(resp):
     return 0
 
 
+def provider_cache_token_details_from_response(resp) -> dict:
+    """
+    Extract provider prompt-cache token counters from common response shapes.
+
+    Providers expose these fields inconsistently. This keeps the extraction
+    defensive and returns only counters that are present and non-zero.
+    """
+    if resp is None:
+        return {}
+
+    usage = _get_response_value(resp, "usage")
+    usage_metadata = _get_response_value(resp, "usage_metadata")
+    candidates = [
+        usage,
+        usage_metadata,
+        _get_response_value(usage, "prompt_tokens_details"),
+        _get_response_value(usage, "input_token_details"),
+        _get_response_value(usage_metadata, "input_token_details"),
+        _get_response_value(usage_metadata, "cache_tokens_details"),
+    ]
+
+    field_aliases = {
+        "cache_read_input_tokens": [
+            "cache_read_input_tokens",
+            "cacheReadInputTokens",
+            "cache_read_tokens",
+            "cache_read",
+            "cached_tokens",
+        ],
+        "cache_write_input_tokens": [
+            "cache_write_input_tokens",
+            "cacheWriteInputTokens",
+            "cache_creation_input_tokens",
+            "cache_creation_tokens",
+            "cache_creation",
+            "cache_write",
+        ],
+    }
+
+    details = {}
+    for out_key, aliases in field_aliases.items():
+        value = 0
+        for candidate in candidates:
+            for alias in aliases:
+                value = _get_response_value(candidate, alias, 0)
+                if value:
+                    break
+            if value:
+                break
+        try:
+            value = int(value)
+        except Exception:
+            value = 0
+        if value:
+            details[out_key] = value
+
+    return details
+
+
+def _get_response_value(obj, key, default=None):
+    if obj is None:
+        return default
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    try:
+        return getattr(obj, key)
+    except Exception:
+        return default
+
+
 def truncate(string: str, max_len: int) -> str:
     """Returns truncated text if the length of text exceed max_len."""
     return encoder.decode(encoder.encode(string)[:max_len])
-

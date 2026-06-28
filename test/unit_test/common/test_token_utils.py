@@ -14,7 +14,7 @@
 #  limitations under the License.
 #
 
-from common.token_utils import num_tokens_from_string, total_token_count_from_response, truncate, encoder
+from common.token_utils import num_tokens_from_string, provider_cache_token_details_from_response, total_token_count_from_response, truncate, encoder
 import pytest
 
 
@@ -247,6 +247,69 @@ class TestTotalTokenCountFromResponse:
 
         # result = total_token_count_from_response(123)
         # assert result == 0
+
+
+class TestProviderCacheTokenDetailsFromResponse:
+    """Test cases for provider_cache_token_details_from_response function"""
+
+    class UsageObject:
+        def __init__(self):
+            self.prompt_tokens_details = {
+                "cached_tokens": 17,
+            }
+            self.input_token_details = {
+                "cache_creation": 5,
+            }
+
+    class ResponseObject:
+        def __init__(self):
+            self.usage = TestProviderCacheTokenDetailsFromResponse.UsageObject()
+
+    def test_openai_style_cached_tokens(self):
+        resp = {
+            "usage": {
+                "prompt_tokens_details": {
+                    "cached_tokens": 32,
+                }
+            }
+        }
+
+        assert provider_cache_token_details_from_response(resp) == {"cache_read_input_tokens": 32}
+
+    def test_bedrock_style_cache_read_write_tokens(self):
+        resp = {
+            "usage": {
+                "cacheReadInputTokens": 11,
+                "cacheWriteInputTokens": 7,
+            }
+        }
+
+        assert provider_cache_token_details_from_response(resp) == {
+            "cache_read_input_tokens": 11,
+            "cache_write_input_tokens": 7,
+        }
+
+    def test_anthropic_style_cache_creation_tokens(self):
+        resp = {
+            "usage": {
+                "cache_read_input_tokens": 19,
+                "cache_creation_input_tokens": 13,
+            }
+        }
+
+        assert provider_cache_token_details_from_response(resp) == {
+            "cache_read_input_tokens": 19,
+            "cache_write_input_tokens": 13,
+        }
+
+    def test_object_response_cache_token_details(self):
+        assert provider_cache_token_details_from_response(self.ResponseObject()) == {
+            "cache_read_input_tokens": 17,
+            "cache_write_input_tokens": 5,
+        }
+
+    def test_no_cache_token_details_returns_empty_dict(self):
+        assert provider_cache_token_details_from_response({"usage": {"total_tokens": 99}}) == {}
 
 
 class TestTruncate:
