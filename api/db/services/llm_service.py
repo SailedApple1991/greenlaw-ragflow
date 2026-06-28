@@ -281,6 +281,8 @@ class LLMBundle(LLM4Tenant):
         semantic_cache = self._semantic_cache_context(system, history, gen_conf, use_kwargs, has_tools)
         if semantic_cache:
             cached = LLMSemanticCache.lookup(index_key=semantic_cache["index_key"], query_embedding=semantic_cache["embedding"])
+            if cached and cached.get("requires_validation") and not self._validate_semantic_cache_hit(semantic_cache["query"], cached.get("query", ""), gen_conf):
+                cached = None
             if cached:
                 answer = cached["answer"]
                 if self.langfuse:
@@ -346,6 +348,31 @@ class LLMBundle(LLM4Tenant):
         except Exception:
             logging.exception("LLM semantic cache context build failed")
             return None
+
+    def _validate_semantic_cache_hit(self, query: str, cached_query: str, gen_conf: dict) -> bool:
+        if not query or not cached_query:
+            return False
+        validator_system = (
+            "Decide whether two user questions are semantically equivalent for reusing the same answer. "
+            "Return only YES or NO."
+        )
+        validator_history = [
+            {
+                "role": "user",
+                "content": f"Question A:\n{cached_query}\n\nQuestion B:\n{query}",
+            }
+        ]
+        validator_conf = {"temperature": 0, "max_completion_tokens": 4}
+        if isinstance(gen_conf, dict) and "stop" in gen_conf:
+            validator_conf["stop"] = gen_conf["stop"]
+        try:
+            answer, _ = self.mdl.chat(validator_system, validator_history, validator_conf)
+            passed = str(answer).strip().upper().startswith("YES")
+            logging.info("LLM semantic cache validation %s", "passed" if passed else "failed")
+            return passed
+        except Exception:
+            logging.exception("LLM semantic cache validation failed")
+            return False
 
     def chat_streamly(self, system: str, history: list, gen_conf: dict = {}, **kwargs):
         if self.langfuse:

@@ -48,6 +48,8 @@ llm_cache:
   exact_ttl_seconds: ${LLM_CACHE_EXACT_TTL_SECONDS:-3600}
   semantic_ttl_seconds: ${LLM_CACHE_SEMANTIC_TTL_SECONDS:-3600}
   semantic_similarity_threshold: ${LLM_CACHE_SEMANTIC_SIMILARITY_THRESHOLD:-0.94}
+  semantic_validation_enabled: ${LLM_CACHE_SEMANTIC_VALIDATION_ENABLED:-false}
+  semantic_validation_threshold: ${LLM_CACHE_SEMANTIC_VALIDATION_THRESHOLD:-0.88}
   cache_streaming: ${LLM_CACHE_STREAMING_ENABLED:-false}
   eligible_task_types: []
   stable_context_order: ${LLM_CACHE_STABLE_CONTEXT_ORDER:-false}

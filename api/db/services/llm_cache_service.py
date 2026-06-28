@@ -32,6 +32,8 @@ DEFAULT_LLM_CACHE_CONFIG = {
     "exact_ttl_seconds": 3600,
     "semantic_ttl_seconds": 3600,
     "semantic_similarity_threshold": 0.94,
+    "semantic_validation_enabled": False,
+    "semantic_validation_threshold": 0.88,
     "cache_streaming": False,
     "eligible_task_types": [],
     "stable_context_order": False,
@@ -398,6 +400,8 @@ class LLMSemanticCache:
     def lookup(cls, *, index_key: str, query_embedding: list[float]) -> dict | None:
         conf = LLMExactCache.config()
         threshold = float(conf.get("semantic_similarity_threshold", 0.94))
+        validation_enabled = bool(conf.get("semantic_validation_enabled", False))
+        validation_threshold = min(float(conf.get("semantic_validation_threshold", 0.88)), threshold)
         best = None
         best_score = 0.0
 
@@ -415,6 +419,12 @@ class LLMSemanticCache:
             if best and best_score >= threshold:
                 logging.info("LLM semantic cache hit: %s score=%.4f", index_key, best_score)
                 best["similarity"] = best_score
+                best["requires_validation"] = False
+                return best
+            if validation_enabled and best and best_score >= validation_threshold:
+                logging.info("LLM semantic cache validation candidate: %s score=%.4f", index_key, best_score)
+                best["similarity"] = best_score
+                best["requires_validation"] = True
                 return best
             logging.info("LLM semantic cache miss: %s best_score=%.4f", index_key, best_score)
         except Exception:

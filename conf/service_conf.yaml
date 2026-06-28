@@ -48,6 +48,8 @@ llm_cache:
   exact_ttl_seconds: 3600
   semantic_ttl_seconds: 3600
   semantic_similarity_threshold: 0.94
+  semantic_validation_enabled: false
+  semantic_validation_threshold: 0.88
   cache_streaming: false
   eligible_task_types: []
   stable_context_order: false
