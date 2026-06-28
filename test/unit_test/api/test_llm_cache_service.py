@@ -48,14 +48,17 @@ class FakeChatModel:
 
     def __init__(self):
         self.calls = 0
+        self.kwargs = None
         self.stream_calls = 0
 
-    def chat(self, system, history, gen_conf):
+    def chat(self, system, history, gen_conf, **kwargs):
         self.calls += 1
+        self.kwargs = kwargs
         return "provider answer", 12
 
-    def chat_streamly(self, system, history, gen_conf):
+    def chat_streamly(self, system, history, gen_conf, **kwargs):
         self.stream_calls += 1
+        self.kwargs = kwargs
         yield "provider "
         yield "answer"
         yield 12
@@ -266,6 +269,31 @@ def test_semantic_cache_context_hash_ignores_latest_user_query():
     )
 
 
+def test_semantic_cache_context_hash_uses_cache_metadata_aliases():
+    history = [{"role": "user", "content": "question"}]
+
+    base = LLMSemanticCache.context_hash(system="system", history=history, gen_conf={}, kwargs={"llm_cache_permission_scope_hash": "scope-a"})
+    changed = LLMSemanticCache.context_hash(system="system", history=history, gen_conf={}, kwargs={"llm_cache_permission_scope_hash": "scope-b"})
+
+    assert base != changed
+
+
+def test_semantic_cache_rag_hash_helpers_are_stable():
+    kbinfos = {
+        "chunks": [
+            {"chunk_id": "chunk-1", "doc_id": "doc-1", "content": "A", "vector": [1, 2]},
+            {"id": "chunk-2", "doc_id": "doc-2", "content_ltks": "B", "vector": [3, 4]},
+        ],
+        "doc_aggs": [{"doc_id": "doc-2", "count": 2}, {"doc_id": "doc-1", "count": 1}],
+    }
+
+    assert LLMSemanticCache.retrieved_context_hash(kbinfos) == LLMSemanticCache.retrieved_context_hash(kbinfos)
+    assert LLMSemanticCache.document_hash(kbinfos) == LLMSemanticCache.document_hash({"doc_aggs": list(reversed(kbinfos["doc_aggs"]))})
+    assert LLMSemanticCache.permission_scope_hash(tenant_id="tenant-1", kb_ids=["kb-2", "kb-1"], doc_ids=["doc-1"]) == LLMSemanticCache.permission_scope_hash(
+        tenant_id="tenant-1", kb_ids=["kb-1", "kb-2"], doc_ids=["doc-1"]
+    )
+
+
 def test_llm_bundle_chat_returns_cache_hit_without_provider_call(monkeypatch):
     fake_model = FakeChatModel()
     bundle = object.__new__(LLMBundle)
@@ -360,6 +388,26 @@ def test_llm_bundle_chat_writes_semantic_cache_after_provider_call(monkeypatch):
     assert bundle.chat("system", [{"role": "user", "content": "hello"}], {"temperature": 0}) == "provider answer"
     assert fake_model.calls == 1
     assert semantic_writes[0]["answer"] == "provider answer"
+
+
+def test_llm_bundle_strips_cache_metadata_before_provider_call(monkeypatch):
+    fake_model = FakeChatModel()
+    bundle = object.__new__(LLMBundle)
+    bundle.langfuse = None
+    bundle.tenant_id = "tenant-1"
+    bundle.llm_type = LLMType.CHAT.value
+    bundle.llm_name = "deepseek-chat@DeepSeek"
+    bundle.effective_llm_name = "deepseek-chat"
+    bundle.llm_factory = "DeepSeek"
+    bundle.is_tools = False
+    bundle.verbose_tool_use = False
+    bundle.mdl = fake_model
+
+    monkeypatch.setattr(LLMExactCache, "bypass_reason", classmethod(lambda cls, **kwargs: "disabled"))
+    monkeypatch.setattr(bundle, "_semantic_cache_context", lambda *args, **kwargs: None)
+
+    assert bundle.chat("system", [{"role": "user", "content": "hello"}], {}, llm_cache_task_type="rag_chat", stop=["END"]) == "provider answer"
+    assert fake_model.kwargs == {"stop": ["END"]}
 
 
 def test_llm_bundle_chat_streamly_returns_cache_hit_without_provider_call(monkeypatch):

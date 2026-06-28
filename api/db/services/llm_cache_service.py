@@ -327,12 +327,52 @@ class LLMSemanticCache:
             "system": system or "",
             "history": prior_history,
             "gen_conf": gen_conf or {},
-            "permission_scope_hash": (kwargs or {}).get("permission_scope_hash", ""),
-            "retrieved_context_hash": (kwargs or {}).get("retrieved_context_hash", ""),
-            "document_hash": (kwargs or {}).get("document_hash", ""),
-            "output_format_version": (kwargs or {}).get("output_format_version", ""),
+            "permission_scope_hash": cls.cache_metadata_value(kwargs, "permission_scope_hash"),
+            "retrieved_context_hash": cls.cache_metadata_value(kwargs, "retrieved_context_hash"),
+            "document_hash": cls.cache_metadata_value(kwargs, "document_hash"),
+            "output_format_version": cls.cache_metadata_value(kwargs, "output_format_version"),
         }
+        return cls.stable_hash(payload)
+
+    @classmethod
+    def cache_metadata_value(cls, kwargs: dict | None, name: str) -> str:
+        if not kwargs:
+            return ""
+        return str(kwargs.get(name) or kwargs.get(f"llm_cache_{name}") or "").strip()
+
+    @classmethod
+    def stable_hash(cls, payload: Any) -> str:
         return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")).hexdigest()
+
+    @classmethod
+    def retrieved_context_hash(cls, kbinfos: dict | None) -> str:
+        chunks = []
+        for chunk in (kbinfos or {}).get("chunks", []) or []:
+            chunks.append(
+                {
+                    "chunk_id": chunk.get("chunk_id") or chunk.get("id") or "",
+                    "doc_id": chunk.get("doc_id") or "",
+                    "content": chunk.get("content") or chunk.get("content_ltks") or chunk.get("content_with_weight") or "",
+                }
+            )
+        return cls.stable_hash(chunks)
+
+    @classmethod
+    def document_hash(cls, kbinfos: dict | None) -> str:
+        docs = []
+        for doc in (kbinfos or {}).get("doc_aggs", []) or []:
+            docs.append({"doc_id": doc.get("doc_id") or "", "count": doc.get("count", 0)})
+        return cls.stable_hash(sorted(docs, key=lambda doc: (doc["doc_id"], doc["count"])))
+
+    @classmethod
+    def permission_scope_hash(cls, *, tenant_id: str, kb_ids: list | None = None, doc_ids: list | None = None) -> str:
+        return cls.stable_hash(
+            {
+                "tenant_id": tenant_id,
+                "kb_ids": sorted(str(kb_id) for kb_id in (kb_ids or []) if kb_id),
+                "doc_ids": sorted(str(doc_id) for doc_id in (doc_ids or []) if doc_id),
+            }
+        )
 
     @classmethod
     def index_key(cls, *, tenant_id: str, provider: str, llm_name: str, task_type: str, context_hash: str) -> str:

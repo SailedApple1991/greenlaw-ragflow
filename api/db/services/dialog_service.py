@@ -33,7 +33,7 @@ from api.db.services.document_service import DocumentService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.langfuse_service import TenantLangfuseService
 from api.db.services.llm_service import LLMBundle
-from api.db.services.llm_cache_service import LLMPromptPrefixCache
+from api.db.services.llm_cache_service import LLMPromptPrefixCache, LLMSemanticCache
 from api.db.services.tenant_llm_service import TenantLLMService
 from common.time_utils import current_timestamp, datetime_format
 from graphrag.general.mind_map_extractor import MindMapExtractor
@@ -509,6 +509,11 @@ def chat(dialog, messages, stream=True, **kwargs):
         return {"answer": prompt_config["empty_response"], "reference": kbinfos}
 
     kwargs["knowledge"] = "\n------\n" + "\n\n------\n\n".join(knowledges)
+    kwargs["llm_cache_task_type"] = "rag_chat"
+    kwargs["llm_cache_permission_scope_hash"] = LLMSemanticCache.permission_scope_hash(tenant_id=dialog.tenant_id, kb_ids=dialog.kb_ids, doc_ids=attachments or [])
+    kwargs["llm_cache_retrieved_context_hash"] = LLMSemanticCache.retrieved_context_hash(kbinfos)
+    kwargs["llm_cache_document_hash"] = LLMSemanticCache.document_hash(kbinfos)
+    kwargs["llm_cache_output_format_version"] = "dialog_chat_v1"
     gen_conf = dialog.llm_setting
 
     msg = [{"role": "system", "content": prompt_config["system"].format(**kwargs)+attachments_}]

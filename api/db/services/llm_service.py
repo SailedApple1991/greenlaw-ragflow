@@ -79,6 +79,14 @@ def get_init_tenant_llm(user_id):
 
 
 class LLMBundle(LLM4Tenant):
+    CACHE_INTERNAL_KWARGS = {
+        "llm_cache_task_type",
+        "llm_cache_permission_scope_hash",
+        "llm_cache_retrieved_context_hash",
+        "llm_cache_document_hash",
+        "llm_cache_output_format_version",
+    }
+
     def __init__(self, tenant_id, llm_type, llm_name=None, lang="Chinese", **kwargs):
         super().__init__(tenant_id, llm_type, llm_name, lang, **kwargs)
         model_config = TenantLLMService.get_model_config(tenant_id, llm_type, llm_name)
@@ -231,15 +239,21 @@ class LLMBundle(LLM4Tenant):
             return kwargs
         else:
             return {k: v for k, v in kwargs.items() if k in allowed_params}
+
+    @staticmethod
+    def _provider_kwargs(kwargs: dict) -> dict:
+        return {k: v for k, v in (kwargs or {}).items() if k not in LLMBundle.CACHE_INTERNAL_KWARGS}
+
     def chat(self, system: str, history: list, gen_conf: dict = {}, **kwargs) -> str:
         if self.langfuse:
             generation = self.langfuse.start_generation(trace_context=self.trace_context, name="chat", model=self.llm_name, input={"system": system, "history": history})
 
-        chat_partial = partial(self.mdl.chat, system, history, gen_conf, **kwargs)
+        chat_partial = partial(self.mdl.chat, system, history, gen_conf)
         if self.is_tools and self.mdl.is_tools:
-            chat_partial = partial(self.mdl.chat_with_tools, system, history, gen_conf, **kwargs)
+            chat_partial = partial(self.mdl.chat_with_tools, system, history, gen_conf)
 
         use_kwargs = self._clean_param(chat_partial, **kwargs)
+        provider_kwargs = self._provider_kwargs(use_kwargs)
         cache_key = None
         semantic_cache = None
         has_tools = bool(self.is_tools and self.mdl.is_tools)
@@ -274,7 +288,7 @@ class LLMBundle(LLM4Tenant):
                     generation.end()
                 return answer
 
-        txt, used_tokens = chat_partial(**use_kwargs)
+        txt, used_tokens = chat_partial(**provider_kwargs)
         txt = self._remove_reasoning_content(txt)
 
         if not self.verbose_tool_use:
@@ -343,6 +357,7 @@ class LLMBundle(LLM4Tenant):
         if self.is_tools and self.mdl.is_tools:
             chat_partial = partial(self.mdl.chat_streamly_with_tools, system, history, gen_conf)
         use_kwargs = self._clean_param(chat_partial, **kwargs)
+        provider_kwargs = self._provider_kwargs(use_kwargs)
         cache_key = None
         has_tools = bool(self.is_tools and self.mdl.is_tools)
         cache_bypass_reason = LLMExactCache.bypass_reason(provider=self.llm_factory, llm_type=self.llm_type, stream=True, has_tools=has_tools, kwargs=use_kwargs)
@@ -367,7 +382,7 @@ class LLMBundle(LLM4Tenant):
         else:
             logging.debug("LLM exact cache bypass: %s", cache_bypass_reason)
 
-        for txt in chat_partial(**use_kwargs):
+        for txt in chat_partial(**provider_kwargs):
             if isinstance(txt, int):
                 total_tokens = txt
                 if self.langfuse:
