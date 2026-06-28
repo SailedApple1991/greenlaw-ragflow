@@ -27,14 +27,18 @@ from common.constants import LLMType
 DEFAULT_LLM_CACHE_CONFIG = {
     "enabled": False,
     "exact_enabled": True,
+    "semantic_enabled": False,
     "prompt_prefix_enabled": False,
     "exact_ttl_seconds": 3600,
+    "semantic_ttl_seconds": 3600,
+    "semantic_similarity_threshold": 0.94,
     "cache_streaming": False,
     "eligible_task_types": [],
     "stable_context_order": False,
     "providers": {
         "DeepSeek": {
             "exact_enabled": True,
+            "semantic_enabled": False,
             "prompt_prefix_enabled": True,
         },
     },
@@ -268,3 +272,163 @@ class LLMPromptPrefixCache:
             return json.dumps(positions, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
         except Exception:
             return str(positions)
+
+
+class LLMSemanticCache:
+    VERSION = "v1"
+    INDEX_PREFIX = f"ragflow:llm_cache:semantic:index:{VERSION}"
+    ENTRY_PREFIX = f"ragflow:llm_cache:semantic:entry:{VERSION}"
+
+    @classmethod
+    def is_enabled_for(
+        cls,
+        *,
+        provider: str,
+        llm_type: str,
+        stream: bool = False,
+        has_tools: bool = False,
+        kwargs: dict | None = None,
+    ) -> bool:
+        conf = LLMExactCache.config()
+        if not conf.get("enabled", False) or not conf.get("semantic_enabled", False):
+            return False
+        if llm_type != LLMType.CHAT.value:
+            return False
+        if stream:
+            return False
+        if has_tools:
+            return False
+        if kwargs and kwargs.get("images"):
+            return False
+
+        task_type = LLMExactCache._task_type(kwargs)
+        eligible_task_types = conf.get("eligible_task_types") or []
+        if eligible_task_types and task_type not in set(str(x).strip() for x in eligible_task_types if str(x).strip()):
+            return False
+
+        provider_conf = conf.get("providers", {}).get(provider)
+        if not provider_conf:
+            return False
+        return bool(provider_conf.get("semantic_enabled", False))
+
+    @classmethod
+    def query_text(cls, history: list) -> str:
+        for message in reversed(history or []):
+            if message.get("role") == "user":
+                return str(message.get("content") or "").strip()
+        return ""
+
+    @classmethod
+    def context_hash(cls, *, system: str | None, history: list, gen_conf: dict | None, kwargs: dict | None = None) -> str:
+        prior_history = list(history or [])
+        if prior_history and prior_history[-1].get("role") == "user":
+            prior_history = prior_history[:-1]
+        payload = {
+            "system": system or "",
+            "history": prior_history,
+            "gen_conf": gen_conf or {},
+            "permission_scope_hash": (kwargs or {}).get("permission_scope_hash", ""),
+            "retrieved_context_hash": (kwargs or {}).get("retrieved_context_hash", ""),
+            "document_hash": (kwargs or {}).get("document_hash", ""),
+            "output_format_version": (kwargs or {}).get("output_format_version", ""),
+        }
+        return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")).hexdigest()
+
+    @classmethod
+    def index_key(cls, *, tenant_id: str, provider: str, llm_name: str, task_type: str, context_hash: str) -> str:
+        raw = json.dumps(
+            {
+                "tenant_id": tenant_id,
+                "provider": provider,
+                "llm_name": llm_name,
+                "task_type": task_type,
+                "context_hash": context_hash,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return f"{cls.INDEX_PREFIX}:{hashlib.sha256(raw.encode('utf-8')).hexdigest()}"
+
+    @classmethod
+    def entry_key(cls, index_key: str, query: str) -> str:
+        return f"{cls.ENTRY_PREFIX}:{hashlib.sha256((index_key + query).encode('utf-8')).hexdigest()}"
+
+    @classmethod
+    def lookup(cls, *, index_key: str, query_embedding: list[float]) -> dict | None:
+        conf = LLMExactCache.config()
+        threshold = float(conf.get("semantic_similarity_threshold", 0.94))
+        best = None
+        best_score = 0.0
+
+        try:
+            entry_keys = cls.redis_conn().smembers(index_key) or []
+            for entry_key in entry_keys:
+                raw = cls.redis_conn().get(entry_key)
+                if not raw:
+                    continue
+                entry = json.loads(raw)
+                score = cls.cosine_similarity(query_embedding, entry.get("embedding") or [])
+                if score > best_score:
+                    best = entry
+                    best_score = score
+            if best and best_score >= threshold:
+                logging.info("LLM semantic cache hit: %s score=%.4f", index_key, best_score)
+                best["similarity"] = best_score
+                return best
+            logging.info("LLM semantic cache miss: %s best_score=%.4f", index_key, best_score)
+        except Exception:
+            logging.exception("LLM semantic cache lookup failed: %s", index_key)
+        return None
+
+    @classmethod
+    def set(cls, *, index_key: str, entry_key: str, query: str, answer: str, embedding: list[float], provider: str, llm_name: str) -> None:
+        if not query or not answer or not embedding:
+            return
+
+        conf = LLMExactCache.config()
+        ttl = int(conf.get("semantic_ttl_seconds", 3600))
+        if ttl <= 0:
+            return
+
+        payload = {
+            "query": query,
+            "answer": answer,
+            "embedding": cls.embedding_to_list(embedding),
+            "provider": provider,
+            "llm_name": llm_name,
+            "created_at": int(time.time()),
+            "cache_type": "L1_SEMANTIC_RESPONSE_CACHE",
+            "version": cls.VERSION,
+        }
+        try:
+            redis = cls.redis_conn()
+            redis.set(entry_key, json.dumps(payload, ensure_ascii=False), ttl)
+            redis.sadd(index_key, entry_key)
+            redis.set(f"{index_key}:ttl", "1", ttl)
+            logging.info("LLM semantic cache write: %s", index_key)
+        except Exception:
+            logging.exception("LLM semantic cache write failed: %s", index_key)
+
+    @staticmethod
+    def redis_conn():
+        return LLMExactCache.redis_conn()
+
+    @staticmethod
+    def embedding_to_list(embedding) -> list[float]:
+        if hasattr(embedding, "tolist"):
+            embedding = embedding.tolist()
+        return [float(x) for x in embedding]
+
+    @classmethod
+    def cosine_similarity(cls, left, right) -> float:
+        left = cls.embedding_to_list(left)
+        right = cls.embedding_to_list(right)
+        if not left or not right or len(left) != len(right):
+            return 0.0
+        dot = sum(a * b for a, b in zip(left, right))
+        left_norm = sum(a * a for a in left) ** 0.5
+        right_norm = sum(b * b for b in right) ** 0.5
+        if not left_norm or not right_norm:
+            return 0.0
+        return dot / (left_norm * right_norm)

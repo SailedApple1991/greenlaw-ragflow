@@ -43,14 +43,18 @@ redis:
 llm_cache:
   enabled: false
   exact_enabled: true
+  semantic_enabled: false
   prompt_prefix_enabled: false
   exact_ttl_seconds: 3600
+  semantic_ttl_seconds: 3600
+  semantic_similarity_threshold: 0.94
   cache_streaming: false
   eligible_task_types: []
   stable_context_order: false
   providers:
     DeepSeek:
       exact_enabled: true
+      semantic_enabled: false
       prompt_prefix_enabled: true
 task_executor:
   message_queue_type: 'redis'

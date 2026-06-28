@@ -17,7 +17,7 @@ import json
 
 from common.constants import LLMType
 from api.db.services import llm_cache_service
-from api.db.services.llm_cache_service import LLMExactCache, LLMPromptPrefixCache
+from api.db.services.llm_cache_service import LLMExactCache, LLMPromptPrefixCache, LLMSemanticCache
 from api.db.services.llm_service import LLMBundle
 
 
@@ -25,6 +25,7 @@ class FakeRedis:
     def __init__(self):
         self.values = {}
         self.ttls = {}
+        self.sets = {}
 
     def get(self, key):
         return self.values.get(key)
@@ -33,6 +34,13 @@ class FakeRedis:
         self.values[key] = value
         self.ttls[key] = exp
         return True
+
+    def sadd(self, key, member):
+        self.sets.setdefault(key, set()).add(member)
+        return True
+
+    def smembers(self, key):
+        return self.sets.get(key, set())
 
 
 class FakeChatModel:
@@ -57,12 +65,15 @@ def enabled_deepseek_config(**overrides):
     config = {
         "enabled": True,
         "exact_enabled": True,
+        "semantic_enabled": False,
         "prompt_prefix_enabled": False,
         "exact_ttl_seconds": 60,
+        "semantic_ttl_seconds": 60,
+        "semantic_similarity_threshold": 0.94,
         "cache_streaming": False,
         "eligible_task_types": [],
         "stable_context_order": False,
-        "providers": {"DeepSeek": {"exact_enabled": True}},
+        "providers": {"DeepSeek": {"exact_enabled": True, "semantic_enabled": False}},
     }
     config.update(overrides)
     return config
@@ -193,6 +204,68 @@ def test_prompt_prefix_stabilizes_context_order():
     assert [chunk["chunk_id"] for chunk in kbinfos["chunks"]] == ["chunk-2", "chunk-3", "chunk-1"]
 
 
+def test_semantic_cache_requires_global_and_provider_config(monkeypatch):
+    config = enabled_deepseek_config(
+        semantic_enabled=True,
+        eligible_task_types=["faq"],
+        providers={"DeepSeek": {"exact_enabled": True, "semantic_enabled": True}},
+    )
+    monkeypatch.setattr(llm_cache_service, "get_base_config", lambda key, default=None: config)
+
+    assert LLMSemanticCache.is_enabled_for(provider="DeepSeek", llm_type=LLMType.CHAT.value, kwargs={"task_type": "faq"})
+    assert not LLMSemanticCache.is_enabled_for(provider="DeepSeek", llm_type=LLMType.CHAT.value, kwargs={"task_type": "agent"})
+    assert not LLMSemanticCache.is_enabled_for(provider="OpenAI", llm_type=LLMType.CHAT.value, kwargs={"task_type": "faq"})
+
+
+def test_semantic_cache_can_run_when_exact_cache_is_disabled(monkeypatch):
+    config = enabled_deepseek_config(
+        exact_enabled=False,
+        semantic_enabled=True,
+        eligible_task_types=["faq"],
+        providers={"DeepSeek": {"exact_enabled": False, "semantic_enabled": True}},
+    )
+    monkeypatch.setattr(llm_cache_service, "get_base_config", lambda key, default=None: config)
+
+    assert LLMSemanticCache.is_enabled_for(provider="DeepSeek", llm_type=LLMType.CHAT.value, kwargs={"task_type": "faq"})
+
+
+def test_semantic_cache_lookup_and_write(monkeypatch):
+    redis = FakeRedis()
+    config = enabled_deepseek_config(
+        semantic_enabled=True,
+        semantic_similarity_threshold=0.9,
+        providers={"DeepSeek": {"exact_enabled": True, "semantic_enabled": True}},
+    )
+    monkeypatch.setattr(LLMSemanticCache, "redis_conn", staticmethod(lambda: redis))
+    monkeypatch.setattr(llm_cache_service, "get_base_config", lambda key, default=None: config)
+
+    index_key = "semantic-index"
+    entry_key = "semantic-entry"
+    LLMSemanticCache.set(
+        index_key=index_key,
+        entry_key=entry_key,
+        query="How do I reset my password?",
+        answer="Use the reset flow.",
+        embedding=[1.0, 0.0],
+        provider="DeepSeek",
+        llm_name="deepseek-chat",
+    )
+
+    hit = LLMSemanticCache.lookup(index_key=index_key, query_embedding=[0.99, 0.01])
+
+    assert hit["answer"] == "Use the reset flow."
+    assert hit["similarity"] >= 0.9
+
+
+def test_semantic_cache_context_hash_ignores_latest_user_query():
+    history_a = [{"role": "assistant", "content": "hello"}, {"role": "user", "content": "question one"}]
+    history_b = [{"role": "assistant", "content": "hello"}, {"role": "user", "content": "question two"}]
+
+    assert LLMSemanticCache.context_hash(system="system", history=history_a, gen_conf={"temperature": 0}) == LLMSemanticCache.context_hash(
+        system="system", history=history_b, gen_conf={"temperature": 0}
+    )
+
+
 def test_llm_bundle_chat_returns_cache_hit_without_provider_call(monkeypatch):
     fake_model = FakeChatModel()
     bundle = object.__new__(LLMBundle)
@@ -236,6 +309,57 @@ def test_llm_bundle_chat_writes_cache_after_provider_call(monkeypatch):
     assert bundle.chat("system", [{"role": "user", "content": "hello"}], {"temperature": 0}) == "provider answer"
     assert fake_model.calls == 1
     assert writes == [(("cache-key", "provider answer"), {"provider": "DeepSeek", "llm_name": "deepseek-chat", "used_tokens": 12})]
+
+
+def test_llm_bundle_chat_returns_semantic_cache_hit_without_provider_call(monkeypatch):
+    fake_model = FakeChatModel()
+    bundle = object.__new__(LLMBundle)
+    bundle.langfuse = None
+    bundle.tenant_id = "tenant-1"
+    bundle.llm_type = LLMType.CHAT.value
+    bundle.llm_name = "deepseek-chat@DeepSeek"
+    bundle.effective_llm_name = "deepseek-chat"
+    bundle.llm_factory = "DeepSeek"
+    bundle.is_tools = False
+    bundle.verbose_tool_use = False
+    bundle.mdl = fake_model
+
+    monkeypatch.setattr(LLMExactCache, "bypass_reason", classmethod(lambda cls, **kwargs: None))
+    monkeypatch.setattr(LLMExactCache, "build_key", classmethod(lambda cls, **kwargs: "exact-key"))
+    monkeypatch.setattr(LLMExactCache, "get", classmethod(lambda cls, key: None))
+    monkeypatch.setattr(bundle, "_semantic_cache_context", lambda *args, **kwargs: {"index_key": "semantic-index", "embedding": [1.0, 0.0]})
+    monkeypatch.setattr(LLMSemanticCache, "lookup", classmethod(lambda cls, **kwargs: {"answer": "semantic answer", "similarity": 0.97}))
+
+    assert bundle.chat("system", [{"role": "user", "content": "hello"}], {"temperature": 0}) == "semantic answer"
+    assert fake_model.calls == 0
+
+
+def test_llm_bundle_chat_writes_semantic_cache_after_provider_call(monkeypatch):
+    fake_model = FakeChatModel()
+    semantic_writes = []
+    bundle = object.__new__(LLMBundle)
+    bundle.langfuse = None
+    bundle.tenant_id = "tenant-1"
+    bundle.llm_type = LLMType.CHAT.value
+    bundle.llm_name = "deepseek-chat@DeepSeek"
+    bundle.effective_llm_name = "deepseek-chat"
+    bundle.llm_factory = "DeepSeek"
+    bundle.is_tools = False
+    bundle.verbose_tool_use = False
+    bundle.mdl = fake_model
+
+    semantic_context = {"index_key": "semantic-index", "entry_key": "semantic-entry", "query": "hello", "embedding": [1.0, 0.0]}
+    monkeypatch.setattr(LLMExactCache, "bypass_reason", classmethod(lambda cls, **kwargs: None))
+    monkeypatch.setattr(LLMExactCache, "build_key", classmethod(lambda cls, **kwargs: "exact-key"))
+    monkeypatch.setattr(LLMExactCache, "get", classmethod(lambda cls, key: None))
+    monkeypatch.setattr(LLMExactCache, "set", classmethod(lambda cls, *args, **kwargs: None))
+    monkeypatch.setattr(bundle, "_semantic_cache_context", lambda *args, **kwargs: semantic_context)
+    monkeypatch.setattr(LLMSemanticCache, "lookup", classmethod(lambda cls, **kwargs: None))
+    monkeypatch.setattr(LLMSemanticCache, "set", classmethod(lambda cls, **kwargs: semantic_writes.append(kwargs)))
+
+    assert bundle.chat("system", [{"role": "user", "content": "hello"}], {"temperature": 0}) == "provider answer"
+    assert fake_model.calls == 1
+    assert semantic_writes[0]["answer"] == "provider answer"
 
 
 def test_llm_bundle_chat_streamly_returns_cache_hit_without_provider_call(monkeypatch):

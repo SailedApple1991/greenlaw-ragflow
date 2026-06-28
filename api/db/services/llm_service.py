@@ -21,7 +21,7 @@ from functools import partial
 from typing import Generator
 from common.constants import LLMType
 from api.db.db_models import LLM
-from api.db.services.llm_cache_service import LLMExactCache
+from api.db.services.llm_cache_service import LLMExactCache, LLMSemanticCache
 from api.db.services.common_service import CommonService
 from api.db.services.tenant_llm_service import LLM4Tenant, TenantLLMService
 
@@ -241,6 +241,7 @@ class LLMBundle(LLM4Tenant):
 
         use_kwargs = self._clean_param(chat_partial, **kwargs)
         cache_key = None
+        semantic_cache = None
         has_tools = bool(self.is_tools and self.mdl.is_tools)
         cache_bypass_reason = LLMExactCache.bypass_reason(provider=self.llm_factory, llm_type=self.llm_type, has_tools=has_tools, kwargs=use_kwargs)
         if cache_bypass_reason is None:
@@ -263,6 +264,16 @@ class LLMBundle(LLM4Tenant):
         else:
             logging.debug("LLM exact cache bypass: %s", cache_bypass_reason)
 
+        semantic_cache = self._semantic_cache_context(system, history, gen_conf, use_kwargs, has_tools)
+        if semantic_cache:
+            cached = LLMSemanticCache.lookup(index_key=semantic_cache["index_key"], query_embedding=semantic_cache["embedding"])
+            if cached:
+                answer = cached["answer"]
+                if self.langfuse:
+                    generation.update(output={"output": answer}, metadata={"llm_cache": "L1_SEMANTIC_RESPONSE_CACHE", "similarity": cached.get("similarity")})
+                    generation.end()
+                return answer
+
         txt, used_tokens = chat_partial(**use_kwargs)
         txt = self._remove_reasoning_content(txt)
 
@@ -271,6 +282,16 @@ class LLMBundle(LLM4Tenant):
 
         if cache_key and isinstance(txt, str):
             LLMExactCache.set(cache_key, txt, provider=self.llm_factory, llm_name=self.effective_llm_name, used_tokens=used_tokens)
+        if semantic_cache and isinstance(txt, str):
+            LLMSemanticCache.set(
+                index_key=semantic_cache["index_key"],
+                entry_key=semantic_cache["entry_key"],
+                query=semantic_cache["query"],
+                answer=txt,
+                embedding=semantic_cache["embedding"],
+                provider=self.llm_factory,
+                llm_name=self.effective_llm_name,
+            )
 
         if isinstance(txt, int) and not TenantLLMService.increase_usage(self.tenant_id, self.llm_type, used_tokens, self.llm_name):
             logging.error("LLMBundle.chat can't update token usage for {}/CHAT llm_name: {}, used_tokens: {}".format(self.tenant_id, self.llm_name, used_tokens))
@@ -280,6 +301,37 @@ class LLMBundle(LLM4Tenant):
             generation.end()
 
         return txt
+
+    def _semantic_cache_context(self, system: str, history: list, gen_conf: dict, kwargs: dict, has_tools: bool) -> dict | None:
+        if not LLMSemanticCache.is_enabled_for(provider=self.llm_factory, llm_type=self.llm_type, has_tools=has_tools, kwargs=kwargs):
+            return None
+
+        query = LLMSemanticCache.query_text(history)
+        if not query:
+            return None
+
+        try:
+            embedding_mdl = LLMBundle(self.tenant_id, LLMType.EMBEDDING)
+            embedding, _ = embedding_mdl.encode_queries(query)
+            embedding = LLMSemanticCache.embedding_to_list(embedding)
+            context_hash = LLMSemanticCache.context_hash(system=system, history=history, gen_conf=gen_conf, kwargs=kwargs)
+            task_type = LLMExactCache._task_type(kwargs)
+            index_key = LLMSemanticCache.index_key(
+                tenant_id=self.tenant_id,
+                provider=self.llm_factory,
+                llm_name=self.effective_llm_name,
+                task_type=task_type,
+                context_hash=context_hash,
+            )
+            return {
+                "query": query,
+                "embedding": embedding,
+                "index_key": index_key,
+                "entry_key": LLMSemanticCache.entry_key(index_key, query),
+            }
+        except Exception:
+            logging.exception("LLM semantic cache context build failed")
+            return None
 
     def chat_streamly(self, system: str, history: list, gen_conf: dict = {}, **kwargs):
         if self.langfuse:
