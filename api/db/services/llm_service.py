@@ -85,6 +85,15 @@ class LLMBundle(LLM4Tenant):
         "llm_cache_retrieved_context_hash",
         "llm_cache_document_hash",
         "llm_cache_output_format_version",
+        "user_id",
+        "user_role",
+        "role",
+        "company_id",
+        "companyId",
+        "account_id",
+        "accountId",
+        "permission_policy_hash",
+        "policy_hash",
     }
 
     def __init__(self, tenant_id, llm_type, llm_name=None, lang="Chinese", **kwargs):
@@ -280,7 +289,12 @@ class LLMBundle(LLM4Tenant):
 
         semantic_cache = self._semantic_cache_context(system, history, gen_conf, use_kwargs, has_tools)
         if semantic_cache:
-            cached = LLMSemanticCache.lookup(index_key=semantic_cache["index_key"], query_embedding=semantic_cache["embedding"])
+            cached = LLMSemanticCache.lookup(
+                index_key=semantic_cache["index_key"],
+                query_embedding=semantic_cache["embedding"],
+                context_hash=semantic_cache["context_hash"],
+                permission_scope_hash=semantic_cache["permission_scope_hash"],
+            )
             if cached and cached.get("requires_validation") and not self._validate_semantic_cache_hit(semantic_cache["query"], cached.get("query", ""), gen_conf):
                 cached = None
             if cached:
@@ -307,6 +321,8 @@ class LLMBundle(LLM4Tenant):
                 embedding=semantic_cache["embedding"],
                 provider=self.llm_factory,
                 llm_name=self.effective_llm_name,
+                context_hash=semantic_cache["context_hash"],
+                permission_scope_hash=semantic_cache["permission_scope_hash"],
             )
 
         if isinstance(txt, int) and not TenantLLMService.increase_usage(self.tenant_id, self.llm_type, used_tokens, self.llm_name):
@@ -331,6 +347,7 @@ class LLMBundle(LLM4Tenant):
             embedding, _ = embedding_mdl.encode_queries(query)
             embedding = LLMSemanticCache.embedding_to_list(embedding)
             context_hash = LLMSemanticCache.context_hash(system=system, history=history, gen_conf=gen_conf, kwargs=kwargs)
+            permission_scope_hash = LLMSemanticCache.cache_metadata_value(kwargs, "permission_scope_hash")
             task_type = LLMExactCache._task_type(kwargs)
             index_key = LLMSemanticCache.index_key(
                 tenant_id=self.tenant_id,
@@ -344,6 +361,8 @@ class LLMBundle(LLM4Tenant):
                 "embedding": embedding,
                 "index_key": index_key,
                 "entry_key": LLMSemanticCache.entry_key(index_key, query),
+                "context_hash": context_hash,
+                "permission_scope_hash": permission_scope_hash,
             }
         except Exception:
             logging.exception("LLM semantic cache context build failed")

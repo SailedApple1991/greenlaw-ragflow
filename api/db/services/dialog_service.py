@@ -344,6 +344,33 @@ def meta_filter(metas: dict, filters: list[dict], logic: str = "and"):
     return list(doc_ids)
 
 
+def _llm_cache_kb_access_scope(kbs) -> list:
+    scope = []
+    for kb in kbs or []:
+        kb_data = kb.to_dict() if hasattr(kb, "to_dict") else kb
+        scope.append(
+            {
+                "kb_id": kb_data.get("id", ""),
+                "tenant_id": kb_data.get("tenant_id", ""),
+                "permission": kb_data.get("permission", ""),
+                "created_by": kb_data.get("created_by", ""),
+                "update_time": kb_data.get("update_time", ""),
+            }
+        )
+    return scope
+
+
+def _llm_cache_doc_ids(kbinfos: dict, attachments: list | None = None) -> list:
+    doc_ids = {str(doc_id) for doc_id in (attachments or []) if doc_id and doc_id != "-999"}
+    for chunk in (kbinfos or {}).get("chunks", []) or []:
+        if chunk.get("doc_id"):
+            doc_ids.add(str(chunk["doc_id"]))
+    for doc in (kbinfos or {}).get("doc_aggs", []) or []:
+        if doc.get("doc_id"):
+            doc_ids.add(str(doc["doc_id"]))
+    return sorted(doc_ids)
+
+
 def chat(dialog, messages, stream=True, **kwargs):
     assert messages[-1]["role"] == "user", "The last content of this conversation is not from user."
     if not dialog.kb_ids and not dialog.prompt_config.get("tavily_api_key"):
@@ -510,7 +537,19 @@ def chat(dialog, messages, stream=True, **kwargs):
 
     kwargs["knowledge"] = "\n------\n" + "\n\n------\n\n".join(knowledges)
     kwargs["llm_cache_task_type"] = "rag_chat"
-    kwargs["llm_cache_permission_scope_hash"] = LLMSemanticCache.permission_scope_hash(tenant_id=dialog.tenant_id, kb_ids=dialog.kb_ids, doc_ids=attachments or [])
+    user_id = str(kwargs.get("user_id") or "")
+    scoped_doc_ids = _llm_cache_doc_ids(kbinfos, attachments)
+    kwargs["llm_cache_permission_scope_hash"] = LLMSemanticCache.permission_scope_hash(
+        tenant_id=dialog.tenant_id,
+        user_id=user_id,
+        kb_ids=dialog.kb_ids,
+        doc_ids=scoped_doc_ids,
+        kb_access=_llm_cache_kb_access_scope(kbs),
+        role=kwargs.get("user_role") or kwargs.get("role") or "",
+        company_id=kwargs.get("company_id") or kwargs.get("companyId") or "",
+        account_id=kwargs.get("account_id") or kwargs.get("accountId") or "",
+        policy_hash=kwargs.get("permission_policy_hash") or kwargs.get("policy_hash") or "",
+    )
     kwargs["llm_cache_retrieved_context_hash"] = LLMSemanticCache.retrieved_context_hash(kbinfos)
     kwargs["llm_cache_document_hash"] = LLMSemanticCache.document_hash(kbinfos)
     kwargs["llm_cache_output_format_version"] = "dialog_chat_v1"

@@ -78,6 +78,7 @@ def enabled_deepseek_config(**overrides):
         "semantic_similarity_threshold": 0.94,
         "semantic_validation_enabled": False,
         "semantic_validation_threshold": 0.88,
+        "semantic_require_scope": True,
         "cache_streaming": False,
         "eligible_task_types": [],
         "stable_context_order": False,
@@ -121,6 +122,25 @@ def test_exact_cache_key_changes_by_tenant():
     }
 
     assert LLMExactCache.build_key(tenant_id="tenant-1", **base) != LLMExactCache.build_key(tenant_id="tenant-2", **base)
+
+
+def test_exact_cache_key_changes_by_user_and_company_scope():
+    base = {
+        "tenant_id": "tenant-1",
+        "provider": "DeepSeek",
+        "llm_name": "deepseek-chat",
+        "llm_type": LLMType.CHAT.value,
+        "system": "system",
+        "history": [{"role": "user", "content": "carbon emissions"}],
+        "gen_conf": {"temperature": 0},
+    }
+
+    assert LLMExactCache.build_key(**base, kwargs={"user_id": "user-a", "company_id": "company-a"}) != LLMExactCache.build_key(
+        **base, kwargs={"user_id": "user-b", "company_id": "company-a"}
+    )
+    assert LLMExactCache.build_key(**base, kwargs={"user_id": "user-a", "company_id": "company-a"}) != LLMExactCache.build_key(
+        **base, kwargs={"user_id": "user-a", "company_id": "company-b"}
+    )
 
 
 def test_exact_cache_is_enabled_only_for_configured_chat_provider(monkeypatch):
@@ -215,6 +235,7 @@ def test_prompt_prefix_stabilizes_context_order():
 def test_semantic_cache_requires_global_and_provider_config(monkeypatch):
     config = enabled_deepseek_config(
         semantic_enabled=True,
+        semantic_require_scope=False,
         eligible_task_types=["faq"],
         providers={"DeepSeek": {"exact_enabled": True, "semantic_enabled": True}},
     )
@@ -229,12 +250,32 @@ def test_semantic_cache_can_run_when_exact_cache_is_disabled(monkeypatch):
     config = enabled_deepseek_config(
         exact_enabled=False,
         semantic_enabled=True,
+        semantic_require_scope=False,
         eligible_task_types=["faq"],
         providers={"DeepSeek": {"exact_enabled": False, "semantic_enabled": True}},
     )
     monkeypatch.setattr(llm_cache_service, "get_base_config", lambda key, default=None: config)
 
     assert LLMSemanticCache.is_enabled_for(provider="DeepSeek", llm_type=LLMType.CHAT.value, kwargs={"task_type": "faq"})
+
+
+def test_semantic_cache_requires_scope_metadata_by_default(monkeypatch):
+    config = enabled_deepseek_config(
+        semantic_enabled=True,
+        eligible_task_types=["faq"],
+        providers={"DeepSeek": {"exact_enabled": True, "semantic_enabled": True}},
+    )
+    scoped_kwargs = {
+        "task_type": "faq",
+        "llm_cache_permission_scope_hash": "permission-scope",
+        "llm_cache_retrieved_context_hash": "retrieved-context",
+        "llm_cache_document_hash": "document-scope",
+        "llm_cache_output_format_version": "dialog_chat_v1",
+    }
+    monkeypatch.setattr(llm_cache_service, "get_base_config", lambda key, default=None: config)
+
+    assert not LLMSemanticCache.is_enabled_for(provider="DeepSeek", llm_type=LLMType.CHAT.value, kwargs={"task_type": "faq"})
+    assert LLMSemanticCache.is_enabled_for(provider="DeepSeek", llm_type=LLMType.CHAT.value, kwargs=scoped_kwargs)
 
 
 def test_semantic_cache_lookup_and_write(monkeypatch):
@@ -310,6 +351,17 @@ def test_semantic_cache_context_hash_uses_cache_metadata_aliases():
     changed = LLMSemanticCache.context_hash(system="system", history=history, gen_conf={}, kwargs={"llm_cache_permission_scope_hash": "scope-b"})
 
     assert base != changed
+
+
+def test_semantic_cache_permission_scope_separates_users_and_company():
+    base = {"tenant_id": "tenant-1", "kb_ids": ["kb-1"], "doc_ids": ["doc-1"]}
+
+    assert LLMSemanticCache.permission_scope_hash(**base, user_id="user-a", company_id="company-a") != LLMSemanticCache.permission_scope_hash(
+        **base, user_id="user-b", company_id="company-a"
+    )
+    assert LLMSemanticCache.permission_scope_hash(**base, user_id="user-a", company_id="company-a") != LLMSemanticCache.permission_scope_hash(
+        **base, user_id="user-a", company_id="company-b"
+    )
 
 
 def test_semantic_cache_rag_hash_helpers_are_stable():
@@ -389,11 +441,42 @@ def test_llm_bundle_chat_returns_semantic_cache_hit_without_provider_call(monkey
     monkeypatch.setattr(LLMExactCache, "bypass_reason", classmethod(lambda cls, **kwargs: None))
     monkeypatch.setattr(LLMExactCache, "build_key", classmethod(lambda cls, **kwargs: "exact-key"))
     monkeypatch.setattr(LLMExactCache, "get", classmethod(lambda cls, key: None))
-    monkeypatch.setattr(bundle, "_semantic_cache_context", lambda *args, **kwargs: {"index_key": "semantic-index", "embedding": [1.0, 0.0]})
+    monkeypatch.setattr(
+        bundle,
+        "_semantic_cache_context",
+        lambda *args, **kwargs: {"index_key": "semantic-index", "embedding": [1.0, 0.0], "context_hash": "context-a", "permission_scope_hash": "scope-a"},
+    )
     monkeypatch.setattr(LLMSemanticCache, "lookup", classmethod(lambda cls, **kwargs: {"answer": "semantic answer", "similarity": 0.97}))
 
     assert bundle.chat("system", [{"role": "user", "content": "hello"}], {"temperature": 0}) == "semantic answer"
     assert fake_model.calls == 0
+
+
+def test_semantic_cache_rejects_entry_scope_mismatch(monkeypatch):
+    redis = FakeRedis()
+    config = enabled_deepseek_config(
+        semantic_enabled=True,
+        semantic_similarity_threshold=0.9,
+        providers={"DeepSeek": {"exact_enabled": True, "semantic_enabled": True}},
+    )
+    monkeypatch.setattr(LLMSemanticCache, "redis_conn", staticmethod(lambda: redis))
+    monkeypatch.setattr(llm_cache_service, "get_base_config", lambda key, default=None: config)
+
+    LLMSemanticCache.set(
+        index_key="semantic-index",
+        entry_key="semantic-entry",
+        query="What is company A emission?",
+        answer="Company A answer.",
+        embedding=[1.0, 0.0],
+        provider="DeepSeek",
+        llm_name="deepseek-chat",
+        context_hash="context-a",
+        permission_scope_hash="user-a-company-a",
+    )
+
+    assert LLMSemanticCache.lookup(index_key="semantic-index", query_embedding=[1.0, 0.0], context_hash="context-b", permission_scope_hash="user-b-company-b") is None
+    hit = LLMSemanticCache.lookup(index_key="semantic-index", query_embedding=[1.0, 0.0], context_hash="context-a", permission_scope_hash="user-a-company-a")
+    assert hit["answer"] == "Company A answer."
 
 
 def test_llm_bundle_chat_validates_semantic_candidate(monkeypatch):
@@ -410,7 +493,11 @@ def test_llm_bundle_chat_validates_semantic_candidate(monkeypatch):
     bundle.mdl = fake_model
 
     monkeypatch.setattr(LLMExactCache, "bypass_reason", classmethod(lambda cls, **kwargs: "disabled"))
-    monkeypatch.setattr(bundle, "_semantic_cache_context", lambda *args, **kwargs: {"index_key": "semantic-index", "embedding": [1.0, 0.0], "query": "reset password"})
+    monkeypatch.setattr(
+        bundle,
+        "_semantic_cache_context",
+        lambda *args, **kwargs: {"index_key": "semantic-index", "embedding": [1.0, 0.0], "query": "reset password", "context_hash": "context-a", "permission_scope_hash": "scope-a"},
+    )
     monkeypatch.setattr(
         LLMSemanticCache,
         "lookup",
@@ -435,7 +522,18 @@ def test_llm_bundle_chat_rejects_failed_semantic_candidate(monkeypatch):
     bundle.mdl = fake_model
 
     monkeypatch.setattr(LLMExactCache, "bypass_reason", classmethod(lambda cls, **kwargs: "disabled"))
-    monkeypatch.setattr(bundle, "_semantic_cache_context", lambda *args, **kwargs: {"index_key": "semantic-index", "entry_key": "semantic-entry", "query": "reset password", "embedding": [1.0, 0.0]})
+    monkeypatch.setattr(
+        bundle,
+        "_semantic_cache_context",
+        lambda *args, **kwargs: {
+            "index_key": "semantic-index",
+            "entry_key": "semantic-entry",
+            "query": "reset password",
+            "embedding": [1.0, 0.0],
+            "context_hash": "context-a",
+            "permission_scope_hash": "scope-a",
+        },
+    )
     monkeypatch.setattr(
         LLMSemanticCache,
         "lookup",
@@ -461,7 +559,14 @@ def test_llm_bundle_chat_writes_semantic_cache_after_provider_call(monkeypatch):
     bundle.verbose_tool_use = False
     bundle.mdl = fake_model
 
-    semantic_context = {"index_key": "semantic-index", "entry_key": "semantic-entry", "query": "hello", "embedding": [1.0, 0.0]}
+    semantic_context = {
+        "index_key": "semantic-index",
+        "entry_key": "semantic-entry",
+        "query": "hello",
+        "embedding": [1.0, 0.0],
+        "context_hash": "context-a",
+        "permission_scope_hash": "scope-a",
+    }
     monkeypatch.setattr(LLMExactCache, "bypass_reason", classmethod(lambda cls, **kwargs: None))
     monkeypatch.setattr(LLMExactCache, "build_key", classmethod(lambda cls, **kwargs: "exact-key"))
     monkeypatch.setattr(LLMExactCache, "get", classmethod(lambda cls, key: None))
@@ -491,7 +596,7 @@ def test_llm_bundle_strips_cache_metadata_before_provider_call(monkeypatch):
     monkeypatch.setattr(LLMExactCache, "bypass_reason", classmethod(lambda cls, **kwargs: "disabled"))
     monkeypatch.setattr(bundle, "_semantic_cache_context", lambda *args, **kwargs: None)
 
-    assert bundle.chat("system", [{"role": "user", "content": "hello"}], {}, llm_cache_task_type="rag_chat", stop=["END"]) == "provider answer"
+    assert bundle.chat("system", [{"role": "user", "content": "hello"}], {}, llm_cache_task_type="rag_chat", user_id="user-a", company_id="company-a", stop=["END"]) == "provider answer"
     assert fake_model.kwargs == {"stop": ["END"]}
 
 

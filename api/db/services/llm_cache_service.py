@@ -34,6 +34,7 @@ DEFAULT_LLM_CACHE_CONFIG = {
     "semantic_similarity_threshold": 0.94,
     "semantic_validation_enabled": False,
     "semantic_validation_threshold": 0.88,
+    "semantic_require_scope": True,
     "cache_streaming": False,
     "eligible_task_types": [],
     "stable_context_order": False,
@@ -302,6 +303,9 @@ class LLMSemanticCache:
             return False
         if kwargs and kwargs.get("images"):
             return False
+        if conf.get("semantic_require_scope", True) and not cls.has_required_scope(kwargs):
+            logging.info("LLM semantic cache bypass: missing required permission/context scope")
+            return False
 
         task_type = LLMExactCache._task_type(kwargs)
         eligible_task_types = conf.get("eligible_task_types") or []
@@ -312,6 +316,11 @@ class LLMSemanticCache:
         if not provider_conf:
             return False
         return bool(provider_conf.get("semantic_enabled", False))
+
+    @classmethod
+    def has_required_scope(cls, kwargs: dict | None) -> bool:
+        required = ["permission_scope_hash", "retrieved_context_hash", "document_hash", "output_format_version"]
+        return all(cls.cache_metadata_value(kwargs, name) for name in required)
 
     @classmethod
     def query_text(cls, history: list) -> str:
@@ -350,11 +359,14 @@ class LLMSemanticCache:
     def retrieved_context_hash(cls, kbinfos: dict | None) -> str:
         chunks = []
         for chunk in (kbinfos or {}).get("chunks", []) or []:
+            content = chunk.get("content") or chunk.get("content_ltks") or chunk.get("content_with_weight") or ""
             chunks.append(
                 {
                     "chunk_id": chunk.get("chunk_id") or chunk.get("id") or "",
                     "doc_id": chunk.get("doc_id") or "",
-                    "content": chunk.get("content") or chunk.get("content_ltks") or chunk.get("content_with_weight") or "",
+                    "content_hash": cls.stable_hash(content),
+                    "positions": chunk.get("positions") or chunk.get("position_int") or "",
+                    "available": chunk.get("available_int", ""),
                 }
             )
         return cls.stable_hash(chunks)
@@ -363,16 +375,50 @@ class LLMSemanticCache:
     def document_hash(cls, kbinfos: dict | None) -> str:
         docs = []
         for doc in (kbinfos or {}).get("doc_aggs", []) or []:
-            docs.append({"doc_id": doc.get("doc_id") or "", "count": doc.get("count", 0)})
-        return cls.stable_hash(sorted(docs, key=lambda doc: (doc["doc_id"], doc["count"])))
+            docs.append(
+                {
+                    "doc_id": doc.get("doc_id") or "",
+                    "doc_name": doc.get("doc_name") or "",
+                    "count": doc.get("count", 0),
+                    "update_time": doc.get("update_time") or doc.get("update_date") or "",
+                }
+            )
+        if not docs:
+            doc_ids = sorted(
+                {
+                    str(chunk.get("doc_id"))
+                    for chunk in (kbinfos or {}).get("chunks", []) or []
+                    if chunk.get("doc_id")
+                }
+            )
+            docs = [{"doc_id": doc_id} for doc_id in doc_ids]
+        return cls.stable_hash(sorted(docs, key=lambda doc: (doc.get("doc_id", ""), doc.get("doc_name", ""), doc.get("count", 0))))
 
     @classmethod
-    def permission_scope_hash(cls, *, tenant_id: str, kb_ids: list | None = None, doc_ids: list | None = None) -> str:
+    def permission_scope_hash(
+        cls,
+        *,
+        tenant_id: str,
+        user_id: str | None = None,
+        kb_ids: list | None = None,
+        doc_ids: list | None = None,
+        kb_access: list | None = None,
+        role: str | None = None,
+        company_id: str | None = None,
+        account_id: str | None = None,
+        policy_hash: str | None = None,
+    ) -> str:
         return cls.stable_hash(
             {
                 "tenant_id": tenant_id,
+                "user_id": user_id or "",
+                "company_id": company_id or "",
+                "account_id": account_id or "",
+                "role": role or "",
+                "policy_hash": policy_hash or "",
                 "kb_ids": sorted(str(kb_id) for kb_id in (kb_ids or []) if kb_id),
                 "doc_ids": sorted(str(doc_id) for doc_id in (doc_ids or []) if doc_id),
+                "kb_access": sorted(kb_access or [], key=lambda item: json.dumps(item, ensure_ascii=False, sort_keys=True, default=str)),
             }
         )
 
@@ -397,7 +443,7 @@ class LLMSemanticCache:
         return f"{cls.ENTRY_PREFIX}:{hashlib.sha256((index_key + query).encode('utf-8')).hexdigest()}"
 
     @classmethod
-    def lookup(cls, *, index_key: str, query_embedding: list[float]) -> dict | None:
+    def lookup(cls, *, index_key: str, query_embedding: list[float], context_hash: str | None = None, permission_scope_hash: str | None = None) -> dict | None:
         conf = LLMExactCache.config()
         threshold = float(conf.get("semantic_similarity_threshold", 0.94))
         validation_enabled = bool(conf.get("semantic_validation_enabled", False))
@@ -412,6 +458,9 @@ class LLMSemanticCache:
                 if not raw:
                     continue
                 entry = json.loads(raw)
+                if not cls.entry_scope_matches(entry, context_hash=context_hash, permission_scope_hash=permission_scope_hash):
+                    logging.warning("LLM semantic cache rejected scope mismatch: %s", index_key)
+                    continue
                 score = cls.cosine_similarity(query_embedding, entry.get("embedding") or [])
                 if score > best_score:
                     best = entry
@@ -432,7 +481,19 @@ class LLMSemanticCache:
         return None
 
     @classmethod
-    def set(cls, *, index_key: str, entry_key: str, query: str, answer: str, embedding: list[float], provider: str, llm_name: str) -> None:
+    def set(
+        cls,
+        *,
+        index_key: str,
+        entry_key: str,
+        query: str,
+        answer: str,
+        embedding: list[float],
+        provider: str,
+        llm_name: str,
+        context_hash: str | None = None,
+        permission_scope_hash: str | None = None,
+    ) -> None:
         if not query or not answer or not embedding:
             return
 
@@ -450,6 +511,8 @@ class LLMSemanticCache:
             "created_at": int(time.time()),
             "cache_type": "L1_SEMANTIC_RESPONSE_CACHE",
             "version": cls.VERSION,
+            "context_hash": context_hash or "",
+            "permission_scope_hash": permission_scope_hash or "",
         }
         try:
             redis = cls.redis_conn()
@@ -463,6 +526,14 @@ class LLMSemanticCache:
     @staticmethod
     def redis_conn():
         return LLMExactCache.redis_conn()
+
+    @classmethod
+    def entry_scope_matches(cls, entry: dict, *, context_hash: str | None = None, permission_scope_hash: str | None = None) -> bool:
+        if context_hash and entry.get("context_hash") != context_hash:
+            return False
+        if permission_scope_hash and entry.get("permission_scope_hash") != permission_scope_hash:
+            return False
+        return True
 
     @staticmethod
     def embedding_to_list(embedding) -> list[float]:

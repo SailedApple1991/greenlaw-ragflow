@@ -50,6 +50,7 @@ llm_cache:
   semantic_similarity_threshold: ${LLM_CACHE_SEMANTIC_SIMILARITY_THRESHOLD:-0.94}
   semantic_validation_enabled: ${LLM_CACHE_SEMANTIC_VALIDATION_ENABLED:-false}
   semantic_validation_threshold: ${LLM_CACHE_SEMANTIC_VALIDATION_THRESHOLD:-0.88}
+  semantic_require_scope: ${LLM_CACHE_SEMANTIC_REQUIRE_SCOPE:-true}
   cache_streaming: ${LLM_CACHE_STREAMING_ENABLED:-false}
   eligible_task_types: []
   stable_context_order: ${LLM_CACHE_STABLE_CONTEXT_ORDER:-false}

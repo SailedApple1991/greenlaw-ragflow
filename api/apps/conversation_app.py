@@ -199,6 +199,7 @@ async def completion():
         e, dia = DialogService.get_by_id(conv.dialog_id)
         if not e:
             return get_data_error_result(message="Dialog not found!")
+        req["user_id"] = current_user.id
         del req["conversation_id"]
         del req["messages"]
 
