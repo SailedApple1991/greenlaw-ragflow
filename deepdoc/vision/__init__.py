@@ -22,7 +22,6 @@ import pdfplumber
 from .ocr import OCR
 from .recognizer import Recognizer
 from .layout_recognizer import AscendLayoutRecognizer
-from .providers import run_ocr, get_provider
 from .layout_recognizer import LayoutRecognizer4YOLOv10 as LayoutRecognizer
 from .table_structure_recognizer import TableStructureRecognizer
 
@@ -87,6 +86,4 @@ __all__ = [
     "AscendLayoutRecognizer",
     "TableStructureRecognizer",
     "init_in_out",
-    "run_ocr",
-    "get_provider",
 ]
