@@ -24,12 +24,14 @@ export function useChatSettingSchema() {
     system: z.string().min(1, { message: t('systemMessage') }),
     refine_multiturn: z.boolean(),
     use_kg: z.boolean(),
-    parameters: z.array(
-      z.object({
-        key: z.string(),
-        optional: z.boolean(),
-      }),
-    ),
+    parameters: z
+      .array(
+        z.object({
+          key: z.string(),
+          optional: z.boolean(),
+        }),
+      )
+      .optional(),
     tavily_api_key: z.string().optional(),
     reasoning: z.boolean().optional(),
     cross_languages: z.array(z.string()).optional(),
@@ -40,7 +42,7 @@ export function useChatSettingSchema() {
     name: z.string().min(1, { message: t('assistantNameMessage') }),
     icon: z.string(),
     description: z.string().optional(),
-    kb_ids: z.array(z.string()).min(0, {
+    dataset_ids: z.array(z.string()).min(0, {
       message: t('knowledgeBasesMessage'),
     }),
     prompt_config: promptConfigSchema,

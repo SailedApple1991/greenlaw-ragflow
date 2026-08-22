@@ -1,4 +1,4 @@
-(window._iconfont_svg_string_4909832 =
+((window._iconfont_svg_string_4909832 =
   '<svg>' +
   `
     <symbol id="icon-moxing-default" viewBox="0 0 1024 1024"><path d="M771.7 616.4c-13.9 0-27.8 4.4-41.7 8.9L590.8 381c23.2-22.2 41.7-48.9 41.7-84.4 0-62.2-51-111.1-115.9-111.1s-115.9 53.3-115.9 111.1c0 26.6 9.3 53.3 27.8 75.5L284.7 620.8c-9.3 0-18.5-4.4-27.8-4.4-64.9 0-115.9 48.9-115.9 111 0 62.2 51 111.1 115.9 111.1 55.7 0 102-40 111.3-93.3h287.5c9.3 53.3 55.7 93.3 111.3 93.3 64.9 0 115.9-48.9 115.9-111.1 0.1-62.1-46.3-111-111.2-111zM665 700.8H372.9c-4.6-26.7-23.2-48.9-41.7-62.2l139.1-239.9c13.9 8.9 32.5 8.9 46.4 8.9 9.3 0 23.2 0 32.5-4.4L693 647.5c-14 13.3-23.3 31.1-28 53.3z"  ></path></symbol>
@@ -175,10 +175,10 @@
           console && console.log(a);
         }
       }
-      (c = function () {
+      ((c = function () {
         var a,
           l = document.createElement('div');
-        (l.innerHTML = h._iconfont_svg_string_4909832),
+        ((l.innerHTML = h._iconfont_svg_string_4909832),
           (l = l.getElementsByTagName('svg')[0]) &&
             (l.setAttribute('aria-hidden', 'true'),
             (l.style.position = 'absolute'),
@@ -188,13 +188,13 @@
             (l = l),
             (a = document.body).firstChild
               ? z(l, a.firstChild)
-              : a.appendChild(l));
+              : a.appendChild(l)));
       }),
         document.addEventListener
           ? ~['complete', 'loaded', 'interactive'].indexOf(document.readyState)
             ? setTimeout(c, 0)
             : ((t = function () {
-                document.removeEventListener('DOMContentLoaded', t, !1), c();
+                (document.removeEventListener('DOMContentLoaded', t, !1), c());
               }),
               document.addEventListener('DOMContentLoaded', t, !1))
           : document.attachEvent &&
@@ -205,7 +205,7 @@
             (v.onreadystatechange = function () {
               'complete' == v.readyState &&
                 ((v.onreadystatechange = null), p());
-            }));
+            })));
     }
     function p() {
       o || ((o = !0), i());
@@ -218,4 +218,4 @@
       }
       p();
     }
-  })(window);
+  })(window));

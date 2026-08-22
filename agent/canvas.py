@@ -13,6 +13,10 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
+import asyncio
+import base64
+import datetime
+import inspect
 import json
 import logging
 import re
@@ -24,12 +28,17 @@ from typing import Any, Union, Tuple
 
 from agent.component import component_class
 from agent.component.base import ComponentBase
+from agent.dsl_migration import normalize_chunker_dsl
 from api.db.services.file_service import FileService
+from api.db.services.llm_service import LLMBundle
 from api.db.services.task_service import has_canceled
+from api.db.joint_services.tenant_model_service import get_tenant_default_model_by_type
+from common.constants import LLMType
 from common.misc_utils import get_uuid, hash_str2int
 from common.exceptions import TaskCanceledException
 from rag.prompts.generator import chunks_format
 from rag.utils.redis_conn import REDIS_CONN
+from rag.utils.tts_cache import synthesize_with_cache
 
 class Graph:
     """
@@ -72,13 +81,16 @@ class Graph:
         }
         """
 
-    def __init__(self, dsl: str, tenant_id=None, task_id=None):
+    def __init__(self, dsl: str, tenant_id=None, task_id=None, custom_header=None):
         self.path = []
         self.components = {}
         self.error = ""
-        self.dsl = json.loads(dsl)
+        # Accept legacy DSL on read, but keep the in-memory canvas in the latest schema.
+        self.dsl = normalize_chunker_dsl(json.loads(dsl))
         self._tenant_id = tenant_id
         self.task_id = task_id if task_id else get_uuid()
+        self.custom_header = custom_header
+        self._thread_pool = ThreadPoolExecutor(max_workers=5)
         self.load()
 
     def load(self):
@@ -86,10 +98,8 @@ class Graph:
         cpn_nms = set([])
         for k, cpn in self.components.items():
             cpn_nms.add(cpn["obj"]["component_name"])
-
-        for k, cpn in self.components.items():
-            cpn_nms.add(cpn["obj"]["component_name"])
             param = component_class(cpn["obj"]["component_name"] + "Param")()
+            cpn["obj"]["params"]["custom_header"] = self.custom_header
             param.update(cpn["obj"]["params"])
             try:
                 param.check()
@@ -156,7 +166,7 @@ class Graph:
         return self._tenant_id
 
     def get_value_with_variable(self,value: str) -> Any:
-        pat = re.compile(r"\{* *\{([a-zA-Z:0-9]+@[A-Za-z0-9_.]+|sys\.[A-Za-z0-9_.]+|env\.[A-Za-z0-9_.]+)\} *\}*")
+        pat = re.compile(r"\{* *\{([a-zA-Z:0-9]+@[A-Za-z0-9_.-]+|sys\.[A-Za-z0-9_.]+|env\.[A-Za-z0-9_.]+)\} *\}*")
         out_parts = []
         last = 0
 
@@ -253,7 +263,7 @@ class Graph:
         keys = path.split('.')
         if not path:
             return value
-        for key in keys:
+        for key in keys[:-1]:
             if key not in cur or not isinstance(cur[key], dict):
                 cur[key] = {}
             cur = cur[key]
@@ -274,27 +284,36 @@ class Graph:
 
 class Canvas(Graph):
 
-    def __init__(self, dsl: str, tenant_id=None, task_id=None):
+    def __init__(self, dsl: str, tenant_id=None, task_id=None, canvas_id=None, custom_header=None):
         self.globals = {
             "sys.query": "",
             "sys.user_id": tenant_id,
             "sys.conversation_turns": 0,
-            "sys.files": []
+            "sys.files": [],
+            "sys.history": [],
+            "sys.date": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         }
         self.variables = {}
-        super().__init__(dsl, tenant_id, task_id)
+        super().__init__(dsl, tenant_id, task_id, custom_header=custom_header)
+        self._id = canvas_id
 
     def load(self):
         super().load()
         self.history = self.dsl["history"]
         if "globals" in self.dsl:
             self.globals = self.dsl["globals"]
+            if "sys.history" not in self.globals:
+                self.globals["sys.history"] = []
+            if "sys.date" not in self.globals:
+                self.globals["sys.date"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         else:
             self.globals = {
             "sys.query": "",
             "sys.user_id": "",
             "sys.conversation_turns": 0,
-            "sys.files": []
+            "sys.files": [],
+            "sys.history": [],
+            "sys.date": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         }
         if "variables" in self.dsl:
             self.variables = self.dsl["variables"]
@@ -309,6 +328,11 @@ class Canvas(Graph):
         self.dsl["retrieval"] = self.retrieval
         self.dsl["memory"] = self.memory
         return super().__str__()
+
+    def clear_history(self):
+        self.history = []
+        if isinstance(self.globals.get("sys.history"), list):
+            self.globals["sys.history"] = []
 
     def reset(self, mem=False):
         super().reset()
@@ -335,44 +359,57 @@ class Canvas(Graph):
                 key = k[4:]
                 if key in self.variables:
                     variable = self.variables[key]
-                    if variable["value"]:
-                        self.globals[k] = variable["value"]
+                    value = variable.get("value")
+                    if value is not None:
+                        self.globals[k] = value
                     else:
-                        if variable["type"] == "string":
-                            self.globals[k] = ""
-                        elif variable["type"] == "number":
+                        var_type = variable.get("type", "")
+                        if var_type == "number":
                             self.globals[k] = 0
-                        elif variable["type"] == "boolean":
+                        elif var_type == "boolean":
                             self.globals[k] = False
-                        elif variable["type"] == "object":
+                        elif var_type == "object":
                             self.globals[k] = {}
-                        elif variable["type"].startswith("array"):
+                        elif var_type.startswith("array"):
                             self.globals[k] = []
-                        else:
+                        else:  # "string" or unknown
                             self.globals[k] = ""
                 else:
                     self.globals[k] = ""
-        print(self.globals)
-                
 
     async def run(self, **kwargs):
+        self.globals["sys.date"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         st = time.perf_counter()
+        self._loop = asyncio.get_running_loop()
         self.message_id = get_uuid()
         created_at = int(time.time())
         self.add_user_input(kwargs.get("query"))
+        path_set = set(self.path)
         for k, cpn in self.components.items():
-            self.components[k]["obj"].reset(True)
+            if k in path_set:
+                self.components[k]["obj"].reset(True)
 
         if kwargs.get("webhook_payload"):
             for k, cpn in self.components.items():
-                if self.components[k]["obj"].component_name.lower() == "webhook":
-                    for kk, vv in kwargs["webhook_payload"].items():
+                if self.components[k]["obj"].component_name.lower() == "begin"  and self.components[k]["obj"]._param.mode == "Webhook":
+                    payload = kwargs.get("webhook_payload", {})
+                    if "input" in payload:
+                        self.components[k]["obj"].set_input_value("request", payload["input"])
+                    for kk, vv in payload.items():
+                        if kk == "input":
+                            continue
                         self.components[k]["obj"].set_output(kk, vv)
 
+        layout_recognize = None
+        for cpn in self.components.values():
+            if cpn["obj"].component_name.lower() == "begin":
+                layout_recognize = getattr(cpn["obj"]._param, "layout_recognize", None)
+                break
+
         for k in kwargs.keys():
-            if k in ["query", "user_id", "files"] and kwargs[k]:
+            if k in ["query", "user_id", "files", "chat_template_kwargs"] and kwargs[k]:
                 if k == "files":
-                    self.globals[f"sys.{k}"] = FileService.get_files(kwargs[k])
+                    self.globals[f"sys.{k}"] = await self.get_files_async(kwargs[k], layout_recognize)
                 else:
                     self.globals[f"sys.{k}"] = kwargs[k]
         if not self.globals["sys.conversation_turns"] :
@@ -402,31 +439,54 @@ class Canvas(Graph):
         yield decorate("workflow_started", {"inputs": kwargs.get("inputs")})
         self.retrieval.append({"chunks": {}, "doc_aggs": {}})
 
-        def _run_batch(f, t):
+        async def _run_batch(f, t):
             if self.is_canceled():
                 msg = f"Task {self.task_id} has been canceled during batch execution."
                 logging.info(msg)
                 raise TaskCanceledException(msg)
 
-            with ThreadPoolExecutor(max_workers=5) as executor:
-                thr = []
-                i = f
-                while i < t:
-                    cpn = self.get_component_obj(self.path[i])
-                    if cpn.component_name.lower() in ["begin", "userfillup"]:
-                        thr.append(executor.submit(cpn.invoke, inputs=kwargs.get("inputs", {})))
-                        i += 1
+            loop = asyncio.get_running_loop()
+            tasks = []
+            max_concurrency = getattr(self._thread_pool, "_max_workers", 5)
+            sem = asyncio.Semaphore(max_concurrency)
+
+            async def _invoke_one(cpn_obj, sync_fn, call_kwargs, use_async: bool):
+                async with sem:
+                    if use_async:
+                        await cpn_obj.invoke_async(**(call_kwargs or {}))
+                        return
+                    await loop.run_in_executor(self._thread_pool, partial(sync_fn, **(call_kwargs or {})))
+
+            i = f
+            while i < t:
+                cpn = self.get_component_obj(self.path[i])
+                task_fn = None
+                call_kwargs = None
+
+                if cpn.component_name.lower() in ["begin", "userfillup"]:
+                    call_kwargs = {"inputs": kwargs.get("inputs", {})}
+                    task_fn = cpn.invoke
+                    i += 1
+                else:
+                    for _, ele in cpn.get_input_elements().items():
+                        if isinstance(ele, dict) and ele.get("_cpn_id") and ele.get("_cpn_id") not in self.path[:i] and self.path[0].lower().find("userfillup") < 0:
+                            self.path.pop(i)
+                            t -= 1
+                            break
                     else:
-                        for _, ele in cpn.get_input_elements().items():
-                            if isinstance(ele, dict) and ele.get("_cpn_id") and ele.get("_cpn_id") not in self.path[:i] and self.path[0].lower().find("userfillup") < 0:
-                                self.path.pop(i)
-                                t -= 1
-                                break
-                        else:
-                            thr.append(executor.submit(cpn.invoke, **cpn.get_input()))
-                            i += 1
-                for t in thr:
-                    t.result()
+                        call_kwargs = cpn.get_input()
+                        task_fn = cpn.invoke
+                        i += 1
+
+                if task_fn is None:
+                    continue
+
+                fn_invoke_async = getattr(cpn, "_invoke_async", None)
+                use_async = (fn_invoke_async and asyncio.iscoroutinefunction(fn_invoke_async)) or asyncio.iscoroutinefunction(getattr(cpn, "_invoke", None))
+                tasks.append(asyncio.create_task(_invoke_one(cpn, task_fn, call_kwargs, use_async)))
+
+            if tasks:
+                await asyncio.gather(*tasks)
 
         def _node_finished(cpn_obj):
             return decorate("node_finished",{
@@ -443,6 +503,7 @@ class Canvas(Graph):
         self.error = ""
         idx = len(self.path) - 1
         partials = []
+        tts_mdl = None
         while idx < len(self.path):
             to = len(self.path)
             for i in range(idx, to):
@@ -453,35 +514,65 @@ class Canvas(Graph):
                     "component_type": self.get_component_type(self.path[i]),
                     "thoughts": self.get_component_thoughts(self.path[i])
                 })
-            _run_batch(idx, to)
+            await _run_batch(idx, to)
             to = len(self.path)
-            # post processing of components invocation
+            # post-processing of components invocation
             for i in range(idx, to):
                 cpn = self.get_component(self.path[i])
                 cpn_obj = self.get_component_obj(self.path[i])
                 if cpn_obj.component_name.lower() == "message":
+                    if cpn_obj.get_param("auto_play"):
+                        tts_model_config = get_tenant_default_model_by_type(self._tenant_id, LLMType.TTS)
+                        tts_mdl = LLMBundle(self._tenant_id, tts_model_config)
                     if isinstance(cpn_obj.output("content"), partial):
                         _m = ""
-                        for m in cpn_obj.output("content")():
+                        buff_m = ""
+                        stream = cpn_obj.output("content")()
+                        async def _process_stream(m):
+                            nonlocal buff_m, _m, tts_mdl
                             if not m:
-                                continue
+                                return
                             if m == "<think>":
-                                yield decorate("message", {"content": "", "start_to_think": True})
+                                return decorate("message", {"content": "", "start_to_think": True})
+
                             elif m == "</think>":
-                                yield decorate("message", {"content": "", "end_to_think": True})
-                            else:
-                                yield decorate("message", {"content": m})
-                                _m += m
+                                return decorate("message", {"content": "", "end_to_think": True})
+
+                            buff_m += m
+                            _m += m
+
+                            if len(buff_m) > 16:
+                                ev = decorate(
+                                    "message",
+                                    {
+                                        "content": m,
+                                        "audio_binary": self.tts(tts_mdl, buff_m)
+                                    }
+                                )
+                                buff_m = ""
+                                return ev
+
+                            return decorate("message", {"content": m})
+
+                        if inspect.isasyncgen(stream):
+                            async for m in stream:
+                                ev= await _process_stream(m)
+                                if ev:
+                                    yield ev
+                        else:
+                            for m in stream:
+                                ev= await _process_stream(m)
+                                if ev:
+                                    yield ev
+                        if buff_m:
+                            yield decorate("message", {"content": "", "audio_binary": self.tts(tts_mdl, buff_m)})
+                            buff_m = ""
                         cpn_obj.set_output("content", _m)
-                        cite = re.search(r"\[ID:[ 0-9]+\]", _m)
                     else:
                         yield decorate("message", {"content": cpn_obj.output("content")})
-                        cite = re.search(r"\[ID:[ 0-9]+\]",  cpn_obj.output("content"))
 
-                    if isinstance(cpn_obj.output("attachment"), tuple):
-                        yield decorate("message", {"attachment": cpn_obj.output("attachment")})
-
-                    yield decorate("message_end", {"reference": self.get_reference() if cite else None})
+                    message_end = self._build_message_end(cpn_obj)
+                    yield decorate("message_end", message_end)
 
                     while partials:
                         _cpn_obj = self.get_component_obj(partials[0])
@@ -572,6 +663,7 @@ class Canvas(Graph):
                            "created_at": st,
                        })
             self.history.append(("assistant", self.get_component_obj(self.path[-1]).output()))
+            self.globals["sys.history"].append(f"{self.history[-1][0]}: {self.history[-1][1]}")
         elif "Task has been canceled" in self.error:
             yield decorate("workflow_finished",
                        {
@@ -592,6 +684,43 @@ class Canvas(Graph):
             return False
         return True
 
+
+    def tts(self,tts_mdl, text):
+        def clean_tts_text(text: str) -> str:
+            if not text:
+                return ""
+
+            text = text.encode("utf-8", "ignore").decode("utf-8", "ignore")
+
+            text = re.sub(r"[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]", "", text)
+
+            emoji_pattern = re.compile(
+                "[\U0001F600-\U0001F64F"
+                "\U0001F300-\U0001F5FF"
+                "\U0001F680-\U0001F6FF"
+                "\U0001F1E0-\U0001F1FF"
+                "\U00002700-\U000027BF"
+                "\U0001F900-\U0001F9FF"
+                "\U0001FA70-\U0001FAFF"
+                "\U0001FAD0-\U0001FAFF]+",
+                flags=re.UNICODE
+            )
+            text = emoji_pattern.sub("", text)
+
+            text = re.sub(r"\s+", " ", text).strip()
+
+            MAX_LEN = 500
+            if len(text) > MAX_LEN:
+                text = text[:MAX_LEN]
+
+            return text
+        if not tts_mdl or not text:
+            return None
+        text = clean_tts_text(text)
+        if not text:
+            return None
+        return synthesize_with_cache(tts_mdl, text)
+
     def get_history(self, window_size):
         convs = []
         if window_size <= 0:
@@ -605,12 +734,16 @@ class Canvas(Graph):
 
     def add_user_input(self, question):
         self.history.append(("user", question))
+        self.globals["sys.history"].append(f"{self.history[-1][0]}: {self.history[-1][1]}")
 
     def get_prologue(self):
         return self.components["begin"]["obj"]._param.prologue
 
     def get_mode(self):
         return self.components["begin"]["obj"]._param.mode
+
+    def get_sys_query(self):
+        return self.globals.get("sys.query", "")
 
     def set_global_param(self, **kwargs):
         self.globals.update(kwargs)
@@ -620,6 +753,34 @@ class Canvas(Graph):
 
     def get_component_input_elements(self, cpnnm):
         return self.components[cpnnm]["obj"].get_input_elements()
+
+    async def get_files_async(self, files: Union[None, list[dict]], layout_recognize: str = None) -> list[str]:
+        if not files:
+            return  []
+        def image_to_base64(file):
+            return "data:{};base64,{}".format(file["mime_type"],
+                                        base64.b64encode(FileService.get_blob(file["created_by"], file["id"])).decode("utf-8"))
+        def parse_file(file):
+            blob = FileService.get_blob(file["created_by"], file["id"])
+            return FileService.parse(file["name"], blob, True, file["created_by"], layout_recognize)
+        loop = asyncio.get_running_loop()
+        tasks = []
+        for file in files:
+            if file["mime_type"].find("image") >=0:
+                tasks.append(loop.run_in_executor(self._thread_pool, image_to_base64, file))
+                continue
+            tasks.append(loop.run_in_executor(self._thread_pool, parse_file, file))
+        return await asyncio.gather(*tasks)
+
+    def get_files(self, files: Union[None, list[dict]], layout_recognize: str = None) -> list[str]:
+        """
+        Synchronous wrapper for get_files_async, used by sync component invoke paths.
+        """
+        loop = getattr(self, "_loop", None)
+        if loop and loop.is_running():
+            return asyncio.run_coroutine_threadsafe(self.get_files_async(files, layout_recognize), loop).result()
+
+        return asyncio.run(self.get_files_async(files, layout_recognize))
 
     def tool_use_callback(self, agent_id: str, func_name: str, params: dict, result: Any, elapsed_time=None):
         agent_ids = agent_id.split("-->")
@@ -664,6 +825,22 @@ class Canvas(Graph):
         if not self.retrieval:
             return {"chunks": {}, "doc_aggs": {}}
         return self.retrieval[-1]
+
+    def _has_reference(self) -> bool:
+        ref = self.get_reference()
+        if not isinstance(ref, dict):
+            return False
+        return bool(ref.get("chunks") or ref.get("doc_aggs"))
+
+    def _build_message_end(self, cpn_obj) -> dict:
+        message_end = {}
+        if cpn_obj.get_param("status"):
+            message_end["status"] = cpn_obj.get_param("status")
+        if isinstance(cpn_obj.output("attachment"), dict):
+            message_end["attachment"] = cpn_obj.output("attachment")
+        if self._has_reference():
+            message_end["reference"] = self.get_reference()
+        return message_end
 
     def add_memory(self, user:str, assist:str, summ: str):
         self.memory.append((user, assist, summ))

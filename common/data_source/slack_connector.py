@@ -37,7 +37,6 @@ from common.data_source.models import (
     Document,
     DocumentFailure,
     SlimDocument,
-    TextSection,
     SecondsSinceUnixEpoch,
     GenerateSlimDocumentOutput, MessageType, SlackMessageFilterReason, ChannelType, ThreadType, ProcessedSlackMessage,
     CheckpointOutput
@@ -167,7 +166,6 @@ def get_latest_message_time(thread: ThreadType) -> datetime:
 
 
 def _build_doc_id(channel_id: str, thread_ts: str) -> str:
-    """构建文档ID"""
     return f"{channel_id}__{thread_ts}"
 
 
@@ -179,7 +177,6 @@ def thread_to_doc(
     user_cache: dict[str, BasicExpertInfo | None],
     channel_access: Any | None,
 ) -> Document:
-    """将线程转换为文档"""
     channel_id = channel["id"]
 
     initial_sender_expert_info = expert_info_from_slack_id(
@@ -203,7 +200,10 @@ def thread_to_doc(
         ]
         valid_experts = [expert for expert in experts if expert]
 
-    first_message = slack_cleaner.index_clean(cast(str, thread[0]["text"]))
+    cleaned_messages = [
+        slack_cleaner.index_clean(cast(str, m["text"])) for m in thread
+    ]
+    first_message = cleaned_messages[0] if cleaned_messages else ""
     snippet = (
         first_message[:50].rstrip() + "..."
         if len(first_message) > 50
@@ -214,21 +214,22 @@ def thread_to_doc(
         "\n", " "
     )
 
+    # The Document model is blob-based (no sections), so flatten the thread's
+    # cleaned messages into a single UTF-8 text blob.
+    content = "\n\n".join(cleaned_messages)
+    blob = content.encode("utf-8")
+
     return Document(
         id=_build_doc_id(channel_id=channel_id, thread_ts=thread[0]["ts"]),
-        sections=[
-            TextSection(
-                link=get_message_link(event=m, client=client, channel_id=channel_id),
-                text=slack_cleaner.index_clean(cast(str, m["text"])),
-            )
-            for m in thread
-        ],
         source="slack",
         semantic_identifier=doc_sem_id,
+        extension=".txt",
+        blob=blob,
+        size_bytes=len(blob),
         doc_updated_at=get_latest_message_time(thread),
         primary_owners=valid_experts,
         metadata={"Channel": channel["name"]},
-        external_access=channel_access,
+        externale_access=channel_access,
     )
 
 
@@ -237,7 +238,6 @@ def filter_channels(
     channels_to_connect: list[str] | None,
     regex_enabled: bool,
 ) -> list[ChannelType]:
-    """过滤频道"""
     if not channels_to_connect:
         return all_channels
 
@@ -381,7 +381,6 @@ def _process_message(
         [MessageType], SlackMessageFilterReason | None
     ] = default_msg_filter,
 ) -> ProcessedSlackMessage:
-    """处理消息"""
     thread_ts = message.get("thread_ts")
     thread_or_message_ts = thread_ts or message["ts"]
     try:
@@ -532,11 +531,8 @@ class SlackConnector(
 
     def retrieve_all_slim_docs_perm_sync(
         self,
-        start: SecondsSinceUnixEpoch | None = None,
-        end: SecondsSinceUnixEpoch | None = None,
         callback: Any = None,
     ) -> GenerateSlimDocumentOutput:
-        """获取所有简化文档（带权限同步）"""
         if self.client is None:
             raise ConnectorMissingCredentialError("Slack")
 
@@ -546,6 +542,79 @@ class SlackConnector(
             channel_name_regex_enabled=self.channel_regex_enabled,
             callback=callback,
         )
+
+    def _fetch_document_batches(
+        self,
+        oldest: str | None = None,
+        latest: str | None = None,
+        callback: Any = None,
+    ) -> Generator[list[Document], None, None]:
+        """Iterate the configured channels and yield batches of thread documents.
+
+        The checkpoint interface is not implemented in this connector, so both
+        full and incremental syncs run through this generator. ``oldest`` /
+        ``latest`` are Slack epoch-second strings used to bound the
+        conversations history for incremental polling.
+        """
+        if self.client is None or self.text_cleaner is None:
+            raise ConnectorMissingCredentialError("Slack")
+
+        all_channels = get_channels(self.client)
+        filtered_channels = filter_channels(
+            all_channels, self.channels, self.channel_regex_enabled
+        )
+
+        batch: list[Document] = []
+        for channel in filtered_channels:
+            seen_thread_ts: set[str] = set()
+            for message_batch in get_channel_messages(
+                client=self.client,
+                channel=channel,
+                oldest=oldest,
+                latest=latest,
+                callback=callback,
+            ):
+                for message in message_batch:
+                    processed = _process_message(
+                        message=message,
+                        client=self.client,
+                        channel=channel,
+                        slack_cleaner=self.text_cleaner,
+                        user_cache=self.user_cache,
+                        seen_thread_ts=seen_thread_ts,
+                        channel_access=None,
+                    )
+
+                    if processed.thread_or_message_ts:
+                        seen_thread_ts.add(processed.thread_or_message_ts)
+
+                    if processed.failure is not None:
+                        logging.warning(
+                            "Slack message processing failure: %s",
+                            processed.failure.failure_message,
+                        )
+                        continue
+
+                    if processed.doc is not None:
+                        batch.append(processed.doc)
+                        if len(batch) >= self.batch_size:
+                            yield batch
+                            batch = []
+
+        if batch:
+            yield batch
+
+    def load_from_state(self) -> Generator[list[Document], None, None]:
+        """Full sync: ingest every accessible channel message/thread."""
+        return self._fetch_document_batches()
+
+    def poll_source(
+        self,
+        start: SecondsSinceUnixEpoch,
+        end: SecondsSinceUnixEpoch,
+    ) -> Generator[list[Document], None, None]:
+        """Incremental sync bounded by a [start, end] epoch-seconds window."""
+        return self._fetch_document_batches(oldest=str(start), latest=str(end))
 
     def load_from_checkpoint(
         self,
@@ -608,6 +677,16 @@ class SlackConnector(
                 raise UnexpectedValidationError(
                     f"Slack API returned a failure: {error_msg}"
                 )
+
+            # 3) Confirm users:read scope is available (required by thread_to_doc)
+            users_resp = self.fast_client.users_info(user="USLACKBOT")
+            if not users_resp.get("ok", False):
+                error_msg = users_resp.get("error", "")
+                if error_msg in ("missing_scope", "not_allowed_token_type"):
+                    raise InsufficientPermissionsError(
+                        "Slack bot token lacks the 'users:read' scope required to look up message senders. "
+                        "Please add 'users:read' to your Slack app's OAuth scopes."
+                    )
 
         except SlackApiError as e:
             slack_error = e.response.get("error", "")

@@ -1,0 +1,71 @@
+# ===================================================================
+# RAGFlow AWS 部署专用 Docker Compose
+# ===================================================================
+# 启动 ragflow + 本地 valkey (替代 AWS ElastiCache 降本)
+# MySQL 由 AWS RDS 提供，存储由 S3 提供，向量搜索由 OpenSearch 提供
+# ===================================================================
+
+services:
+  ragflow:
+    image: ${RAGFLOW_IMAGE:-infiniflow/ragflow:dev}
+    container_name: ragflow-server
+    command:
+      - --enable-adminserver
+      - --init-model-provider-tables
+      - --workers=${TASK_EXECUTOR_WORKERS:-3}
+    depends_on:
+      - redis
+    mem_limit: 13g
+    cpus: 3.5
+    ports:
+      - "127.0.0.1:${SVR_WEB_HTTP_PORT:-80}:80"
+      - "127.0.0.1:${SVR_WEB_HTTPS_PORT:-443}:443"
+      - "127.0.0.1:${SVR_HTTP_PORT:-9380}:9380"
+      - "127.0.0.1:${ADMIN_SVR_HTTP_PORT:-9381}:9381"
+    volumes:
+      - ./ragflow-logs:/ragflow/logs
+      - ./nginx/ragflow.conf:/etc/nginx/conf.d/ragflow.conf
+      - ./nginx/proxy.conf:/etc/nginx/proxy.conf
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./service_conf.yaml.template:/ragflow/conf/service_conf.yaml.template
+    env_file: .env
+    environment:
+      - TZ=${TZ:-Asia/Singapore}
+      - DOC_ENGINE=opensearch
+      - RAGFLOW_SECRET_KEY=${RAGFLOW_SECRET_KEY:-}
+      # Task executor engine: 2=original (safe for first deploy), 0=refactored
+      # (#15154 default), 1=dry-run compare. Start at 2, flip to 0 after a
+      # TE_RUN_MODE=1 dry-run confirms the refactored engine matches.
+      - TE_RUN_MODE=${TE_RUN_MODE:-2}
+      # SSE write-timeout protection for the Python/Quart backend (the server
+      # actually used in this deploy; the Go #15852 fix only covers hybrid/golang
+      # mode). Align the Quart response/body timeouts with nginx's 3600s so a
+      # long-lived chat/agent stream is never cut by the app before nginx.
+      - QUART_RESPONSE_TIMEOUT=${QUART_RESPONSE_TIMEOUT:-3600}
+      - QUART_BODY_TIMEOUT=${QUART_BODY_TIMEOUT:-3600}
+      # Pin OpenAI-API-Compatible embedding output dim. silra.cn Qwen3-Embedding-8B
+      # returns 1024 for small batches and 4096 for large ones unless dimensions is
+      # set; existing indices are 4096, so pin 4096 to keep index+query consistent.
+      - OPENAI_API_EMBED_DIMENSIONS=${OPENAI_API_EMBED_DIMENSIONS:-4096}
+    networks:
+      - ragflow
+    restart: on-failure
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  redis:
+    image: valkey/valkey:8
+    container_name: ragflow-redis
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-infini_rag_flow}", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - ragflow
+    restart: on-failure
+
+volumes:
+  redis_data:
+
+networks:
+  ragflow:
+    driver: bridge

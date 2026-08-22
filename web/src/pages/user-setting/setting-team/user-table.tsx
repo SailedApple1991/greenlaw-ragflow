@@ -13,7 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { useListTenantUser } from '@/hooks/user-setting-hooks';
+import { useListTenantUser } from '@/hooks/use-user-setting-request';
 import { formatDate } from '@/utils/date';
 import { upperFirst } from 'lodash';
 import { ArrowDown, ArrowUp, ArrowUpDown, Trash2 } from 'lucide-react';
@@ -71,11 +71,11 @@ const UserTable = ({ searchUser }: { searchUser: string }) => {
 
   const renderSortIcon = () => {
     if (sortOrder === 'asc') {
-      return <ArrowUp className="ml-1 h-4 w-4 " />;
+      return <ArrowUp className="size-[1em] " />;
     } else if (sortOrder === 'desc') {
-      return <ArrowDown className="ml-1 h-4 w-4" />;
+      return <ArrowDown className="size-[1em]" />;
     } else {
-      return <ArrowUpDown className="ml-1 h-4 w-4" />;
+      return <ArrowUpDown className="size-[1em]" />;
     }
   };
   return (
@@ -84,13 +84,16 @@ const UserTable = ({ searchUser }: { searchUser: string }) => {
         <TableHeader className="bg-bg-title">
           <TableRow className="hover:bg-bg-title">
             <TableHead className="h-12 px-4">{t('common.name')}</TableHead>
-            <TableHead
-              className="h-12 px-4 cursor-pointer"
-              onClick={toggleSortOrder}
-            >
-              <div className="flex items-center">
+            <TableHead className="h-12 px-4">
+              <div className="flex items-center gap-1">
                 {t('setting.updateDate')}
-                {renderSortIcon()}
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={toggleSortOrder}
+                >
+                  {renderSortIcon()}
+                </Button>
               </div>
             </TableHead>
             <TableHead className="h-12 px-4">{t('setting.email')}</TableHead>
@@ -110,7 +113,7 @@ const UserTable = ({ searchUser }: { searchUser: string }) => {
           ) : sortedData && sortedData.length > 0 ? (
             sortedData.map((record) => (
               <TableRow key={record.user_id} className="hover:bg-bg-card">
-                <TableCell className="p-4 ">
+                <TableCell className="p-4">
                   <div className="flex gap-1 items-center">
                     <RAGFlowAvatar
                       isPerson

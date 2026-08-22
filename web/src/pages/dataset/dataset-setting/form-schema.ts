@@ -1,34 +1,43 @@
+import { ParseType } from '@/constants/knowledge';
 import { t } from 'i18next';
 import { z } from 'zod';
 
 export const formSchema = z
   .object({
-    parseType: z.number(),
+    parse_type: z.nativeEnum(ParseType),
     name: z.string().min(1, {
       message: 'Username must be at least 2 characters.',
     }),
-    description: z.string().min(2, {
-      message: 'Username must be at least 2 characters.',
-    }),
+    description: z.string().optional(),
     // avatar: z.instanceof(File),
     avatar: z.any().nullish(),
     permission: z.string().optional(),
-    parser_id: z.string(),
+    language: z.string().optional(),
+    chunk_method: z.string(),
     pipeline_id: z.string().optional(),
     pipeline_name: z.string().optional(),
     pipeline_avatar: z.string().optional(),
-    embd_id: z.string(),
+    embedding_model: z.string(),
     parser_config: z
       .object({
         layout_recognize: z.string(),
         chunk_token_num: z.number(),
         delimiter: z.string(),
+        enable_children: z.boolean(),
+        children_delimiter: z.string(),
         auto_keywords: z.number().optional(),
         auto_questions: z.number().optional(),
         html4excel: z.boolean(),
         tag_kb_ids: z.array(z.string()).nullish(),
         topn_tags: z.number().optional(),
         toc_extraction: z.boolean().optional(),
+        image_table_context_window: z.number().optional(),
+        overlapped_percent: z.number().optional(),
+        // MinerU-specific options
+        mineru_parse_method: z.enum(['auto', 'txt', 'ocr']).optional(),
+        mineru_formula_enable: z.boolean().optional(),
+        mineru_table_enable: z.boolean().optional(),
+        mineru_lang: z.string().optional(),
         raptor: z
           .object({
             use_raptor: z.boolean().optional(),
@@ -74,6 +83,17 @@ export const formSchema = z
               path: ['entity_types'],
             },
           ),
+        metadata: z.any().optional(),
+        built_in_metadata: z
+          .array(
+            z.object({
+              key: z.string().optional(),
+              type: z.string().optional(),
+            }),
+          )
+          .optional(),
+        enable_metadata: z.boolean().optional(),
+        llm_id: z.string().optional(),
       })
       .optional(),
     pagerank: z.number(),
@@ -91,7 +111,7 @@ export const formSchema = z
     // icon: z.array(z.instanceof(File)),
   })
   .superRefine((data, ctx) => {
-    if (data.parseType === 2 && !data.pipeline_id) {
+    if (data.parse_type === ParseType.Pipeline && !data.pipeline_id) {
       ctx.addIssue({
         path: ['pipeline_id'],
         message: t('common.pleaseSelect'),

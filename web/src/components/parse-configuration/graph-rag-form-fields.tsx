@@ -1,6 +1,7 @@
 import { DocumentParserType } from '@/constants/knowledge';
 import { useTranslate } from '@/hooks/common-hooks';
 import { cn } from '@/lib/utils';
+import { LLMModelItem } from '@/pages/dataset/dataset-setting/configuration/common-item';
 import {
   GenerateLogButton,
   GenerateType,
@@ -136,13 +137,21 @@ const GraphRagItems = ({
 
   return (
     <FormContainer className={cn({ 'mb-4': marginBottom }, className)}>
+      <LLMModelItem
+        label={t('globalIndexModel')}
+        name={'parser_config.llm_id'}
+      />
       <UseGraphRagFormField
         data={data}
         onDelete={onDelete}
       ></UseGraphRagFormField>
       {useRaptor && (
         <>
-          <EntityTypesFormField name="parser_config.graphrag.entity_types"></EntityTypesFormField>
+          <EntityTypesFormField
+            name="parser_config.graphrag.entity_types"
+            addButtonTestId="ds-settings-graph-entity-types-add-btn"
+            inputTestId="ds-settings-graph-entity-types-input"
+          ></EntityTypesFormField>
           <FormField
             control={form.control}
             name="parser_config.graphrag.method"
@@ -166,6 +175,7 @@ const GraphRagItems = ({
                       <RAGFlowSelect
                         {...field}
                         options={methodOptions}
+                        triggerTestId="ds-settings-graph-method-select"
                       ></RAGFlowSelect>
                     </FormControl>
                   </div>
@@ -195,6 +205,7 @@ const GraphRagItems = ({
                       <Switch
                         checked={field.value}
                         onCheckedChange={field.onChange}
+                        data-testid="ds-settings-graph-entity-resolution-switch"
                       ></Switch>
                     </FormControl>
                   </div>
@@ -224,6 +235,7 @@ const GraphRagItems = ({
                       <Switch
                         checked={field.value}
                         onCheckedChange={field.onChange}
+                        data-testid="ds-settings-graph-community-reports-switch"
                       ></Switch>
                     </FormControl>
                   </div>

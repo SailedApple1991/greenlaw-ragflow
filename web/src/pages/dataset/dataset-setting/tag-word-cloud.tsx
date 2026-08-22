@@ -1,11 +1,11 @@
-import { useFetchTagList } from '@/hooks/knowledge-hooks';
+import { useFetchTagList } from '@/hooks/use-knowledge-request';
 import { Chart } from '@antv/g2';
 import { sumBy } from 'lodash';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 export function TagWordCloud() {
   const domRef = useRef<HTMLDivElement>(null);
-  let chartRef = useRef<Chart>();
+  const chartRef = useRef<Chart>();
   const { list } = useFetchTagList();
 
   const { list: tagList } = useMemo(() => {

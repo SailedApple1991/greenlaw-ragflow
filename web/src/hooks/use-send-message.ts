@@ -2,7 +2,6 @@ import message from '@/components/ui/message';
 import { Authorization } from '@/constants/authorization';
 import { IReferenceObject } from '@/interfaces/database/chat';
 import { BeginQuery } from '@/pages/agent/interface';
-import api from '@/utils/api';
 import { getAuthorization } from '@/utils/authorization-util';
 import { EventSourceParserStream } from 'eventsource-parser/stream';
 import { useCallback, useRef, useState } from 'react';
@@ -51,6 +50,7 @@ export interface IAttachment {
 }
 export interface IMessageData {
   content: string;
+  audio_binary: string;
   outputs: any;
   start_to_think?: boolean;
   end_to_think?: boolean;
@@ -85,7 +85,7 @@ export type IChatEvent = INodeEvent | IMessageEvent | IMessageEndEvent;
 
 export type IEventList = Array<IChatEvent>;
 
-export const useSendMessageBySSE = (url: string = api.completeConversation) => {
+export const useSendMessageBySSE = (url: string) => {
   const [answerList, setAnswerList] = useState<IEventList>([]);
   const [done, setDone] = useState(true);
   const timer = useRef<any>();
@@ -130,6 +130,7 @@ export const useSendMessageBySSE = (url: string = api.completeConversation) => {
           .pipeThrough(new EventSourceParserStream())
           .getReader();
 
+        // eslint-disable-next-line no-constant-condition
         while (true) {
           try {
             const x = await reader?.read();
@@ -144,7 +145,7 @@ export const useSendMessageBySSE = (url: string = api.completeConversation) => {
                 const val = JSON.parse(value?.data || '');
 
                 console.info('data:', val);
-                if (val.code === 500) {
+                if (typeof val?.code === 'number' && val.code !== 0) {
                   message.error(val.message);
                 }
 

@@ -33,7 +33,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { useDeleteTag, useFetchTagList } from '@/hooks/knowledge-hooks';
+import { useDeleteTag, useFetchTagList } from '@/hooks/use-knowledge-request';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRenameKnowledgeTag } from '../hooks';
@@ -222,7 +222,7 @@ export function TagTable() {
           )}
         </div>
         <Table rootClassName="rounded-none border max-h-80 overflow-y-auto">
-          <TableHeader className="bg-[#39393b]">
+          <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => {

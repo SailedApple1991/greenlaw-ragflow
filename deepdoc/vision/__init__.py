@@ -22,6 +22,7 @@ import pdfplumber
 from .ocr import OCR
 from .recognizer import Recognizer
 from .layout_recognizer import AscendLayoutRecognizer
+from .providers import run_ocr, get_provider
 from .layout_recognizer import LayoutRecognizer4YOLOv10 as LayoutRecognizer
 from .table_structure_recognizer import TableStructureRecognizer
 
@@ -60,9 +61,8 @@ def init_in_out(args):
             pdf_pages(fnm)
             return
         try:
-            fp = open(fnm, "rb")
-            binary = fp.read()
-            fp.close()
+            with open(fnm, "rb") as fp:
+                binary = fp.read()
             images.append(Image.open(io.BytesIO(binary)).convert("RGB"))
             outputs.append(os.path.split(fnm)[-1])
         except Exception:
@@ -87,4 +87,6 @@ __all__ = [
     "AscendLayoutRecognizer",
     "TableStructureRecognizer",
     "init_in_out",
+    "run_ocr",
+    "get_provider",
 ]

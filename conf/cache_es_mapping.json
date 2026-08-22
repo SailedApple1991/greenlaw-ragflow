@@ -1,0 +1,26 @@
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0,
+      "refresh_interval": "1000ms"
+    }
+  },
+  "mappings": {
+    "properties": {
+      "dialog_id": { "type": "keyword" },
+      "question_text": { "type": "text" },
+      "answer_json": { "type": "keyword", "index": false, "ignore_above": 32766 },
+      "reference_json": { "type": "keyword", "index": false, "ignore_above": 32766 },
+      "prompt_text": { "type": "keyword", "index": false, "ignore_above": 32766 },
+      "q_vec": {
+        "type": "dense_vector",
+        "dims": 1024,
+        "index": true,
+        "similarity": "cosine"
+      },
+      "cached_at": { "type": "double" },
+      "ttl": { "type": "integer" }
+    }
+  }
+}

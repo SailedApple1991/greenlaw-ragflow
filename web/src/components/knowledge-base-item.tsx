@@ -1,103 +1,86 @@
 import { DocumentParserType } from '@/constants/knowledge';
-import { useTranslate } from '@/hooks/common-hooks';
-import { useFetchKnowledgeList } from '@/hooks/knowledge-hooks';
+import { useFetchKnowledgeList } from '@/hooks/use-knowledge-request';
+import { IKnowledge } from '@/interfaces/database/knowledge';
 import { useBuildQueryVariableOptions } from '@/pages/agent/hooks/use-get-begin-query';
-import { UserOutlined } from '@ant-design/icons';
-import { Avatar as AntAvatar, Form, Select, Space } from 'antd';
 import { toLower } from 'lodash';
 import { useMemo } from 'react';
-import { useFormContext } from 'react-hook-form';
+import { useFormContext, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { RAGFlowAvatar } from './ragflow-avatar';
-import { FormControl, FormField, FormItem, FormLabel } from './ui/form';
+import { RAGFlowFormItem } from './ragflow-form';
 import { MultiSelect } from './ui/multi-select';
-
-interface KnowledgeBaseItemProps {
-  label?: string;
-  tooltipText?: string;
-  name?: string;
-  required?: boolean;
-  onChange?(): void;
-}
-
-const KnowledgeBaseItem = ({
-  label,
-  tooltipText,
-  name,
-  required = true,
-  onChange,
-}: KnowledgeBaseItemProps) => {
-  const { t } = useTranslate('chat');
-
-  const { list: knowledgeList } = useFetchKnowledgeList(true);
-
-  const filteredKnowledgeList = knowledgeList.filter(
-    (x) => x.parser_id !== DocumentParserType.Tag,
-  );
-
-  const knowledgeOptions = filteredKnowledgeList.map((x) => ({
-    label: (
-      <Space>
-        <AntAvatar size={20} icon={<UserOutlined />} src={x.avatar} />
-        {x.name}
-      </Space>
-    ),
-    value: x.id,
-  }));
-
-  return (
-    <Form.Item
-      label={label || t('knowledgeBases')}
-      name={name || 'kb_ids'}
-      tooltip={tooltipText || t('knowledgeBasesTip')}
-      rules={[
-        {
-          required,
-          message: t('knowledgeBasesMessage'),
-          type: 'array',
-        },
-      ]}
-    >
-      <Select
-        mode="multiple"
-        options={knowledgeOptions}
-        placeholder={t('knowledgeBasesMessage')}
-        onChange={onChange}
-      ></Select>
-    </Form.Item>
-  );
-};
-
-export default KnowledgeBaseItem;
 
 function buildQueryVariableOptionsByShowVariable(showVariable?: boolean) {
   return showVariable ? useBuildQueryVariableOptions : () => [];
 }
 
+function DatasetLabel({ text }: { text: string }) {
+  return (
+    <div className="text-xs px-3 p-1 bg-bg-card text-text-secondary rounded-lg border border-bg-card">
+      {text}
+    </div>
+  );
+}
+
+export function useDisableDifferenceEmbeddingDataset(name: string) {
+  const { list: datasetListOrigin } = useFetchKnowledgeList(true);
+  const form = useFormContext();
+  const datasetId = useWatch({ name, control: form.control });
+
+  const selectedEmbedId = useMemo(() => {
+    const data = datasetListOrigin?.find((item) => item.id === datasetId?.[0]);
+    return data?.embedding_model ?? '';
+  }, [datasetId, datasetListOrigin]);
+
+  const nextOptions = useMemo(() => {
+    const datasetListMap = datasetListOrigin
+      .filter((x) => x.chunk_method !== DocumentParserType.Tag)
+      .map((item: IKnowledge) => {
+        return {
+          label: item.name,
+          icon: () => (
+            <RAGFlowAvatar
+              className="size-4"
+              avatar={item.avatar}
+              name={item.name}
+            />
+          ),
+          suffix: (
+            <section className="flex gap-2">
+              <DatasetLabel text={item.nickname} />
+              <DatasetLabel text={item.embedding_model} />
+            </section>
+          ),
+          value: item.id,
+          disabled:
+            item.embedding_model !== selectedEmbedId && selectedEmbedId !== '',
+        };
+      });
+
+    return datasetListMap;
+  }, [datasetListOrigin, selectedEmbedId]);
+
+  return {
+    datasetOptions: nextOptions,
+  };
+}
+
 export function KnowledgeBaseFormField({
   showVariable = false,
+  name = 'dataset_ids',
+  required = false,
 }: {
   showVariable?: boolean;
+  name?: string;
+  required?: boolean;
 }) {
-  const form = useFormContext();
   const { t } = useTranslation();
 
-  const { list: knowledgeList } = useFetchKnowledgeList(true);
-
-  const filteredKnowledgeList = knowledgeList.filter(
-    (x) => x.parser_id !== DocumentParserType.Tag,
-  );
+  const { datasetOptions } = useDisableDifferenceEmbeddingDataset(name);
 
   const nextOptions = buildQueryVariableOptionsByShowVariable(showVariable)();
 
-  const knowledgeOptions = filteredKnowledgeList.map((x) => ({
-    label: x.name,
-    value: x.id,
-    icon: () => (
-      <RAGFlowAvatar className="size-4 mr-2" avatar={x.avatar} name={x.name} />
-    ),
-  }));
-
+  const knowledgeOptions = datasetOptions;
   const options = useMemo(() => {
     if (showVariable) {
       return [
@@ -129,27 +112,27 @@ export function KnowledgeBaseFormField({
   }, [knowledgeOptions, nextOptions, showVariable, t]);
 
   return (
-    <FormField
-      control={form.control}
-      name="kb_ids"
-      render={({ field }) => (
-        <FormItem>
-          <FormLabel tooltip={t('chat.knowledgeBasesTip')}>
-            {t('chat.knowledgeBases')}
-          </FormLabel>
-          <FormControl>
-            <MultiSelect
-              options={options}
-              onValueChange={field.onChange}
-              placeholder={t('chat.knowledgeBasesMessage')}
-              variant="inverted"
-              maxCount={100}
-              defaultValue={field.value}
-              {...field}
-            />
-          </FormControl>
-        </FormItem>
+    <RAGFlowFormItem
+      name={name}
+      tooltip={t('chat.knowledgeBasesTip')}
+      required={required}
+      label={t('chat.knowledgeBases')}
+    >
+      {(field) => (
+        <MultiSelect
+          data-testid="chat-datasets-combobox"
+          options={options}
+          onValueChange={field.onChange}
+          placeholder={t('chat.knowledgeBasesPlaceholder')}
+          variant="inverted"
+          maxCount={100}
+          defaultValue={field.value}
+          showSelectAll={false}
+          popoverTestId="datasets-options"
+          optionTestIdPrefix="datasets"
+          {...field}
+        />
       )}
-    />
+    </RAGFlowFormItem>
   );
 }

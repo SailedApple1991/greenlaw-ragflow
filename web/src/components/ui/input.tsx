@@ -3,16 +3,32 @@ import * as React from 'react';
 import { cn } from '@/lib/utils';
 import { Eye, EyeOff, Search } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
-export interface InputProps
-  extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'prefix'> {
+export interface InputProps extends Omit<
+  React.InputHTMLAttributes<HTMLInputElement>,
+  'prefix'
+> {
   value?: string | number | readonly string[] | undefined;
   prefix?: React.ReactNode;
   suffix?: React.ReactNode;
+  rootClassName?: string;
 }
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className, type, value, onChange, prefix, suffix, ...props }, ref) => {
+  (
+    {
+      className,
+      rootClassName,
+      type,
+      value,
+      onChange,
+      prefix,
+      suffix,
+      ...props
+    },
+    ref,
+  ) => {
     const isControlled = value !== undefined;
     const { defaultValue, ...restProps } = props;
     const inputValue = isControlled ? value : defaultValue;
@@ -64,8 +80,9 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
             className,
           )}
           style={{
-            paddingLeft: !!prefix && prefixWidth ? `${prefixWidth}px` : '',
-            paddingRight: isPasswordInput
+            paddingInlineStart:
+              !!prefix && prefixWidth ? `${prefixWidth}px` : '',
+            paddingInlineEnd: isPasswordInput
               ? '40px'
               : !!suffix
                 ? `${suffixWidth}px`
@@ -89,11 +106,11 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
 
     if (prefix || suffix || isPasswordInput) {
       return (
-        <div className="relative">
+        <div className={cn('relative', rootClassName)}>
           {prefix && (
             <span
               ref={prefixRef}
-              className="absolute left-0 top-[50%] translate-y-[-50%]"
+              className="absolute start-0 top-[50%] translate-y-[-50%]"
             >
               {prefix}
             </span>
@@ -102,8 +119,8 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
           {suffix && (
             <span
               ref={suffixRef}
-              className={cn('absolute right-0 top-[50%] translate-y-[-50%]', {
-                'right-14': isPasswordInput,
+              className={cn('absolute end-0 top-[50%] translate-y-[-50%]', {
+                'end-14': isPasswordInput,
               })}
             >
               {suffix}
@@ -114,7 +131,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
               type="button"
               className="
                 p-2 text-text-secondary
-                absolute border-0 right-1 top-[50%] translate-y-[-50%]
+                absolute border-0 end-1 top-[50%] translate-y-[-50%]
                 dark:peer-autofill/input:text-text-secondary-inverse
                 dark:peer-autofill/input:hover:text-text-primary-inverse
                 dark:peer-autofill/input:focus-visible:text-text-primary-inverse
@@ -144,8 +161,13 @@ export interface ExpandedInputProps extends InputProps {}
 const ExpandedInput = Input;
 
 const SearchInput = (props: InputProps) => {
+  const { t } = useTranslation();
   return (
-    <Input {...props} prefix={<Search className="ml-2 mr-1 size-[1em]" />} />
+    <Input
+      placeholder={t('common.search')}
+      {...props}
+      prefix={<Search className="ms-2 me-1 size-[1em]" />}
+    />
   );
 };
 
@@ -184,6 +206,8 @@ export const InnerBlurInput = React.forwardRef<
     ></Input>
   );
 });
+
+InnerBlurInput.displayName = 'BlurInput';
 
 if (process.env.NODE_ENV !== 'production') {
   InnerBlurInput.whyDidYouRender = true;

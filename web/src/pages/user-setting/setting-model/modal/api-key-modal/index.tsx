@@ -14,6 +14,9 @@ import { useTranslate } from '@/hooks/common-hooks';
 import { KeyboardEventHandler, useCallback, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { ApiKeyPostBody } from '../../../interface';
+import { LLMHeader } from '../../components/llm-header';
+import { VerifyResult } from '../../hooks';
+import VerifyButton from '../verify-button';
 
 interface IProps extends Omit<IModalManagerChildrenProps, 'showModal'> {
   loading: boolean;
@@ -21,6 +24,9 @@ interface IProps extends Omit<IModalManagerChildrenProps, 'showModal'> {
   llmFactory: string;
   editMode?: boolean;
   onOk: (postBody: ApiKeyPostBody) => void;
+  onVerify: (
+    postBody: any,
+  ) => Promise<boolean | void | VerifyResult | undefined>;
   showModal?(): void;
 }
 
@@ -34,6 +40,8 @@ const modelsWithBaseUrl = [
   LLMFactory.OpenAI,
   LLMFactory.AzureOpenAI,
   LLMFactory.TongYiQianWen,
+  LLMFactory.MiniMax,
+  LLMFactory.SILICONFLOW,
 ];
 
 const ApiKeyModal = ({
@@ -44,6 +52,7 @@ const ApiKeyModal = ({
   initialValue,
   editMode = false,
   onOk,
+  onVerify,
 }: IProps) => {
   const form = useForm<FieldType>();
   const { t } = useTranslate('setting');
@@ -69,7 +78,7 @@ const ApiKeyModal = ({
 
   return (
     <Modal
-      title={t('configureModelTitle')}
+      title={<LLMHeader name={llmFactory} />}
       open={visible}
       onOpenChange={(open) => !open && hideModal()}
       onOk={handleOk}
@@ -78,6 +87,8 @@ const ApiKeyModal = ({
       okText={t('save')}
       cancelText={t('cancel')}
       className="!w-[600px]"
+      testId="apikey-modal"
+      okButtonTestId="apikey-save"
     >
       <Form {...form}>
         <div className="space-y-4 py-4">
@@ -95,6 +106,7 @@ const ApiKeyModal = ({
                 <FormControl>
                   <Input
                     {...field}
+                    data-testid="apikey-input"
                     onKeyDown={handleKeyDown}
                     className="w-full"
                   />
@@ -109,7 +121,18 @@ const ApiKeyModal = ({
               name="base_url"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-sm font-medium text-text-primary">
+                  <FormLabel
+                    className="text-sm font-medium text-text-primary"
+                    tooltip={
+                      llmFactory === LLMFactory.MiniMax
+                        ? t('minimaxBaseUrlTip')
+                        : llmFactory === LLMFactory.TongYiQianWen
+                          ? t('tongyiBaseUrlTip')
+                          : llmFactory === LLMFactory.SILICONFLOW
+                            ? t('siliconBaseUrlTip')
+                            : t('baseUrlTip')
+                    }
+                  >
                     {t('baseUrl')}
                   </FormLabel>
                   <FormControl>
@@ -118,7 +141,11 @@ const ApiKeyModal = ({
                       placeholder={
                         llmFactory === LLMFactory.TongYiQianWen
                           ? t('tongyiBaseUrlPlaceholder')
-                          : 'https://api.openai.com/v1'
+                          : llmFactory === LLMFactory.MiniMax
+                            ? t('minimaxBaseUrlPlaceholder')
+                            : llmFactory === LLMFactory.SILICONFLOW
+                              ? 'https://api.siliconflow.cn/v1'
+                              : 'https://api.openai.com/v1'
                       }
                       onKeyDown={handleKeyDown}
                       className="w-full"
@@ -168,6 +195,8 @@ const ApiKeyModal = ({
               )}
             />
           )}
+
+          <VerifyButton onVerify={onVerify} />
         </div>
       </Form>
     </Modal>

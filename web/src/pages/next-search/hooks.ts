@@ -1,19 +1,21 @@
 import message from '@/components/ui/message';
 import { SharedFrom } from '@/constants/chat';
 import { useSetModalState } from '@/hooks/common-hooks';
-import { useSelectTestingResult } from '@/hooks/knowledge-hooks';
 import {
   useGetPaginationWithRouter,
   useSendMessageWithSse,
 } from '@/hooks/logic-hooks';
 import { useSetPaginationParams } from '@/hooks/route-hook';
-import { useKnowledgeBaseId } from '@/hooks/use-knowledge-request';
+import {
+  useKnowledgeBaseId,
+  useSelectTestingResult,
+} from '@/hooks/use-knowledge-request';
 import { ResponsePostType } from '@/interfaces/database/base';
 import { IAnswer } from '@/interfaces/database/chat';
 import { ITestingResult } from '@/interfaces/database/knowledge';
 import { IAskRequestBody } from '@/interfaces/request/chat';
-import chatService from '@/services/chat-service';
 import kbService from '@/services/knowledge-service';
+import chatService from '@/services/next-chat-service';
 import searchService from '@/services/search-service';
 import api from '@/utils/api';
 import { useMutation } from '@tanstack/react-query';
@@ -27,7 +29,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { useSearchParams } from 'umi';
+import { useSearchParams } from 'react-router';
 import { ISearchAppDetailProps } from '../next-searches/hooks';
 import { useClickDrawer } from './document-preview-modal/hooks';
 
@@ -66,7 +68,7 @@ export const useSearchFetchMindMap = () => {
   const sharedId = searchParams.get('shared_id');
   const fetchMindMapFunc = sharedId
     ? searchService.mindmapShare
-    : chatService.getMindMap;
+    : chatService.chatsMindmap;
   const {
     data,
     isPending: loading,
@@ -137,7 +139,7 @@ export const useTestChunkRetrieval = (
   const shared_id = searchParams.get('shared_id');
   const retrievalTestFunc = shared_id
     ? kbService.retrievalTestShare
-    : kbService.retrieval_test;
+    : kbService.retrievalTest;
   const {
     data,
     isPending: loading,
@@ -188,7 +190,7 @@ export const useTestChunkAllRetrieval = (
   const shared_id = searchParams.get('shared_id');
   const retrievalTestFunc = shared_id
     ? kbService.retrievalTestShare
-    : kbService.retrieval_test;
+    : kbService.retrievalTest;
   const {
     data,
     isPending: loading,
@@ -278,7 +280,7 @@ export const useFetchRelatedQuestions = (
   const shared_id = searchParams.get('shared_id');
   const retrievalTestFunc = shared_id
     ? searchService.getRelatedQuestionsShare
-    : chatService.getRelatedQuestions;
+    : chatService.chatsRelatedQuestions;
   const {
     data,
     isPending: loading,
@@ -307,9 +309,12 @@ export const useSendQuestion = (
   related_search: boolean = false,
 ) => {
   const { sharedId } = useGetSharedSearchParams();
-  const { send, answer, done, stopOutputMessage } = useSendMessageWithSse(
-    sharedId ? api.askShare : api.ask,
-  );
+  const askUrl = sharedId
+    ? api.askShare
+    : searchId
+      ? api.searchCompletion(searchId)
+      : '';
+  const { send, answer, done, stopOutputMessage } = useSendMessageWithSse();
 
   const { testChunk, loading } = useTestChunkRetrieval(tenantId);
   const { testChunkAll } = useTestChunkAllRetrieval(tenantId);
@@ -332,7 +337,12 @@ export const useSendQuestion = (
       setCurrentAnswer({} as IAnswer);
       if (enableAI) {
         setSendingLoading(true);
-        send({ kb_ids: kbIds, question: q, tenantId, search_id: searchId });
+        send(askUrl, {
+          kb_ids: kbIds,
+          question: q,
+          tenantId,
+          search_id: searchId,
+        });
       }
       testChunk({
         kb_id: kbIds,

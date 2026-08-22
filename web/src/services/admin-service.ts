@@ -1,7 +1,7 @@
-import { message, notification } from 'antd';
+import { history } from '@/utils/simple-history-util';
 import axios from 'axios';
-import { history } from 'umi';
 
+import message from '@/components/ui/message';
 import { Authorization } from '@/constants/authorization';
 import i18n from '@/locales/config';
 import { Routes } from '@/routes';
@@ -41,37 +41,34 @@ request.interceptors.response.use(
     if (data?.code === 100) {
       message.error(data?.message);
     } else if (data?.code === 401) {
-      notification.error({
-        message: data?.message,
+      message.error(data?.message, {
         description: data?.message,
-        duration: 3,
       });
 
       authorizationUtil.removeAll();
       history.push(Routes.Admin);
+      window.location.reload();
     } else if (data?.code && data.code !== 0) {
-      notification.error({
-        message: `${i18n.t('message.hint')}: ${data?.code}`,
+      message.error(`${i18n.t('message.hint')}: ${data?.code}`, {
         description: data?.message,
-        duration: 3,
       });
     }
 
     return response;
   },
   (error) => {
-    const { response, message } = error;
+    const { response } = error;
     const { data } = response ?? {};
 
     if (error.message === 'Failed to fetch') {
-      notification.error({
+      message.error({
         description: i18n.t('message.networkAnomalyDescription'),
         message: i18n.t('message.networkAnomaly'),
       });
     } else if (data?.code === 100) {
       message.error(data?.message);
     } else if (response.status === 401 || data?.code === 401) {
-      notification.error({
+      message.error({
         message: data?.message || response.statusText,
         description:
           data?.message || RetcodeMessage[response?.status as ResultCode],
@@ -80,14 +77,15 @@ request.interceptors.response.use(
 
       authorizationUtil.removeAll();
       history.push(Routes.Admin);
+      window.location.reload();
     } else if (data?.code && data.code !== 0) {
-      notification.error({
+      message.error({
         message: `${i18n.t('message.hint')}: ${data?.code}`,
         description: data?.message,
         duration: 3,
       });
     } else if (response.status) {
-      notification.error({
+      message.error({
         message: `${i18n.t('message.requestError')} ${response.status}: ${response.config.url}`,
         description:
           RetcodeMessage[response.status as ResultCode] || response.statusText,
@@ -136,6 +134,21 @@ const {
   adminImportWhitelist,
 
   adminGetSystemVersion,
+
+  adminListSandboxProviders,
+  adminGetSandboxProviderSchema,
+  adminGetSandboxConfig,
+  adminSetSandboxConfig,
+  adminTestSandboxConnection,
+
+  adminCacheStats,
+  adminCacheTenants,
+  adminCacheTenantDialogs,
+  adminCacheL2Entries,
+  adminCacheL2Entry,
+  adminCacheL1InvalidateDialog,
+  adminCacheL1Entries,
+  adminCacheL1Dialogs,
 } = api;
 
 type ResponseData<D = NonNullable<unknown>> = {
@@ -155,6 +168,13 @@ export const createUser = (email: string, password: string) =>
     username: email,
     password,
   });
+
+export const grantSuperuser = (email: string) =>
+  request.put<ResponseData<void>>(api.adminSetSuperuser(email));
+
+export const revokeSuperuser = (email: string) =>
+  request.delete<ResponseData<void>>(api.adminSetSuperuser(email));
+
 export const getUserDetails = (email: string) =>
   request.get<ResponseData<[AdminService.UserDetail]>>(
     adminGetUserDetails(email),
@@ -261,3 +281,143 @@ export const importWhitelistFromExcel = (file: File) => {
 
 export const getSystemVersion = () =>
   request.get<ResponseData<{ version: string }>>(adminGetSystemVersion);
+
+// Sandbox settings APIs
+export const listSandboxProviders = () =>
+  request.get<ResponseData<AdminService.SandboxProvider[]>>(
+    adminListSandboxProviders,
+  );
+
+export const getSandboxProviderSchema = (providerId: string) =>
+  request.get<ResponseData<Record<string, AdminService.SandboxConfigField>>>(
+    adminGetSandboxProviderSchema(providerId),
+  );
+
+export const getSandboxConfig = () =>
+  request.get<ResponseData<AdminService.SandboxConfig>>(adminGetSandboxConfig);
+
+export const setSandboxConfig = (params: {
+  providerType: string;
+  config: Record<string, unknown>;
+}) =>
+  request.post<ResponseData<AdminService.SandboxConfig>>(
+    adminSetSandboxConfig,
+    {
+      provider_type: params.providerType,
+      config: params.config,
+    },
+  );
+
+export const testSandboxConnection = (params: {
+  providerType: string;
+  config: Record<string, unknown>;
+}) =>
+  request.post<
+    ResponseData<{
+      success: boolean;
+      message: string;
+      details?: {
+        exit_code: number;
+        execution_time: number;
+        stdout: string;
+        stderr: string;
+      };
+    }>
+  >(adminTestSandboxConnection, {
+    provider_type: params.providerType,
+    config: params.config,
+  });
+
+// Cache management APIs
+export const getCacheStats = () =>
+  request.get<ResponseData<AdminService.CacheStats>>(adminCacheStats);
+
+export const getCacheTenants = () =>
+  request.get<ResponseData<AdminService.CacheTenant[]>>(adminCacheTenants);
+
+export const getCacheTenantDialogs = (tenantId: string) =>
+  request.get<ResponseData<AdminService.CacheDialog[]>>(
+    adminCacheTenantDialogs(tenantId),
+  );
+
+export const listCacheL2Entries = (params: {
+  tenantId: string;
+  dialogId?: string;
+  questionSearch?: string;
+  page?: number;
+  pageSize?: number;
+}) =>
+  request.get<ResponseData<AdminService.CacheL2EntriesResponse>>(
+    adminCacheL2Entries,
+    {
+      params: {
+        tenant_id: params.tenantId,
+        dialog_id: params.dialogId,
+        question_search: params.questionSearch,
+        page: params.page || 1,
+        page_size: params.pageSize || 20,
+      },
+    },
+  );
+
+export const getCacheL2Entry = (tenantId: string, entryId: string) =>
+  request.get<ResponseData<AdminService.CacheL2Entry>>(
+    adminCacheL2Entry(tenantId, entryId),
+  );
+
+export const updateCacheL2Entry = (
+  tenantId: string,
+  entryId: string,
+  data: Partial<Pick<AdminService.CacheL2Entry, 'answer_json' | 'ttl'>>,
+) =>
+  request.put<ResponseData<boolean>>(
+    adminCacheL2Entry(tenantId, entryId),
+    data,
+  );
+
+export const createCacheL2Entry = (data: {
+  tenantId: string;
+  dialogId: string;
+  questionText: string;
+  answer: string;
+  reference?: string;
+  ttl?: number;
+}) =>
+  request.post<ResponseData<AdminService.CacheL2Entry>>(
+    adminCacheL2Entries,
+    data,
+  );
+
+export const deleteCacheL2Entries = (tenantId: string, entryIds: string[]) =>
+  request.delete<ResponseData<{ deleted: number }>>(adminCacheL2Entries, {
+    data: { tenant_id: tenantId, entry_ids: entryIds },
+  });
+
+export const invalidateCacheL1Dialog = (dialogId: string) =>
+  request.delete<ResponseData<{ count: number }>>(
+    adminCacheL1InvalidateDialog(dialogId),
+  );
+
+export const listCacheL1Entries = (params: {
+  dialogId?: string;
+  page?: number;
+  pageSize?: number;
+}) =>
+  request.get<ResponseData<AdminService.CacheL1EntriesResponse>>(
+    adminCacheL1Entries,
+    {
+      params: {
+        dialog_id: params.dialogId,
+        page: params.page || 1,
+        page_size: params.pageSize || 20,
+      },
+    },
+  );
+
+export const deleteCacheL1Entries = (keys: string[]) =>
+  request.delete<ResponseData<{ deleted: number }>>(adminCacheL1Entries, {
+    data: { keys },
+  });
+
+export const listCacheL1Dialogs = () =>
+  request.get<ResponseData<AdminService.CacheDialog[]>>(adminCacheL1Dialogs);

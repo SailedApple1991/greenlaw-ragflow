@@ -1,41 +1,40 @@
+import { Authorization } from '@/constants/authorization';
 import { IRenameTag } from '@/interfaces/database/knowledge';
 import {
   IFetchDocumentListRequestBody,
-  IFetchKnowledgeListRequestBody,
   IFetchKnowledgeListRequestParams,
 } from '@/interfaces/request/knowledge';
 import { ProcessingType } from '@/pages/dataset/dataset-overview/dataset-common';
 import api from '@/utils/api';
+import { getAuthorization } from '@/utils/authorization-util';
 import registerServer from '@/utils/register-server';
 import request, { post } from '@/utils/request';
+import axios from 'axios';
 
 const {
-  create_kb,
-  update_kb,
-  rm_kb,
-  get_kb_detail,
-  kb_list,
-  get_document_list,
-  document_change_status,
-  document_rm,
-  document_delete,
-  document_create,
-  document_change_parser,
-  document_thumbnails,
-  chunk_list,
-  create_chunk,
-  set_chunk,
-  get_chunk,
-  switch_chunk,
-  rm_chunk,
-  retrieval_test,
-  document_rename,
-  document_run,
-  document_upload,
-  web_crawl,
-  knowledge_graph,
-  document_infos,
-  upload_and_parse,
+  createKb,
+  rmKb,
+  getKbDetail,
+  kbList,
+  getDocumentList,
+  documentChangeStatus,
+  documentRm,
+  documentDelete,
+  documentCreate,
+  documentChangeParser,
+  documentThumbnails,
+  chunkList,
+  createChunk,
+  setChunk,
+  getChunk,
+  switchChunk,
+  rmChunk,
+  retrievalTest,
+  documentRun,
+  documentUpload,
+  webCrawl,
+  knowledgeGraph,
+  documentInfos,
   listTagByKnowledgeIds,
   setMeta,
   getMeta,
@@ -43,78 +42,67 @@ const {
   getKnowledgeBasicInfo,
   fetchDataPipelineLog,
   fetchPipelineDatasetLogs,
-  runGraphRag,
-  traceGraphRag,
-  runRaptor,
-  traceRaptor,
-  check_embedding,
+  checkEmbedding,
+  kbUpdateMetaData,
+  documentUpdateMetaData,
 } = api;
 
 const methods = {
-  // 知识库管理
   createKb: {
-    url: create_kb,
-    method: 'post',
-  },
-  updateKb: {
-    url: update_kb,
+    url: createKb,
     method: 'post',
   },
   rmKb: {
-    url: rm_kb,
-    method: 'post',
+    url: rmKb,
+    method: 'delete',
   },
-  get_kb_detail: {
-    url: get_kb_detail,
+  getKbDetail: {
+    url: getKbDetail,
     method: 'get',
   },
   getList: {
-    url: kb_list,
-    method: 'post',
+    url: kbList,
+    method: 'get',
   },
   // document manager
-  get_document_list: {
-    url: get_document_list,
+  getDocumentList: {
+    url: getDocumentList,
     method: 'get',
   },
-  document_change_status: {
-    url: document_change_status,
+  documentChangeStatus: {
+    url: documentChangeStatus,
     method: 'post',
   },
-  document_rm: {
-    url: document_rm,
+  documentRm: {
+    url: documentRm,
     method: 'post',
   },
-  document_rename: {
-    url: document_rename,
+  documentCreate: {
+    url: documentCreate,
     method: 'post',
   },
-  document_create: {
-    url: document_create,
+  documentRun: {
+    url: documentRun,
     method: 'post',
   },
-  document_run: {
-    url: document_run,
+  documentChangeParser: {
+    url: documentChangeParser,
     method: 'post',
   },
-  document_change_parser: {
-    url: document_change_parser,
-    method: 'post',
-  },
-  document_thumbnails: {
-    url: document_thumbnails,
+  documentThumbnails: {
+    url: documentThumbnails,
     method: 'get',
   },
-  document_upload: {
-    url: document_upload,
+  documentUpload: {
+    url: documentUpload,
     method: 'post',
   },
-  web_crawl: {
-    url: web_crawl,
+  webCrawl: {
+    url: webCrawl,
     method: 'post',
   },
-  document_infos: {
-    url: document_infos,
+  documentInfos: {
+    url: documentInfos,
     method: 'post',
   },
   setMeta: {
@@ -122,52 +110,48 @@ const methods = {
     method: 'post',
   },
   // chunk管理
-  chunk_list: {
-    url: chunk_list,
+  chunkList: {
+    url: chunkList,
     method: 'post',
   },
-  create_chunk: {
-    url: create_chunk,
+  createChunk: {
+    url: createChunk,
     method: 'post',
   },
-  set_chunk: {
-    url: set_chunk,
+  setChunk: {
+    url: setChunk,
     method: 'post',
   },
-  get_chunk: {
-    url: get_chunk,
+  getChunk: {
+    url: getChunk,
     method: 'get',
   },
-  switch_chunk: {
-    url: switch_chunk,
+  switchChunk: {
+    url: switchChunk,
     method: 'post',
   },
-  rm_chunk: {
-    url: rm_chunk,
+  rmChunk: {
+    url: rmChunk,
     method: 'post',
   },
-  retrieval_test: {
-    url: retrieval_test,
+  retrievalTest: {
+    url: retrievalTest,
     method: 'post',
   },
-  knowledge_graph: {
-    url: knowledge_graph,
+  knowledgeGraph: {
+    url: knowledgeGraph,
     method: 'get',
   },
-  document_delete: {
-    url: document_delete,
+  documentDelete: {
+    url: documentDelete,
     method: 'delete',
-  },
-  upload_and_parse: {
-    url: upload_and_parse,
-    method: 'post',
   },
   listTagByKnowledgeIds: {
     url: listTagByKnowledgeIds,
     method: 'get',
   },
   documentFilter: {
-    url: api.get_dataset_filter,
+    url: api.getDatasetFilter,
     method: 'post',
   },
   getMeta: {
@@ -190,36 +174,32 @@ const methods = {
     url: fetchPipelineDatasetLogs,
     method: 'post',
   },
-  get_pipeline_detail: {
-    url: api.get_pipeline_detail,
+  getPipelineDetail: {
+    url: api.getPipelineDetail,
     method: 'get',
   },
 
-  runGraphRag: {
-    url: runGraphRag,
-    method: 'post',
-  },
-  traceGraphRag: {
-    url: traceGraphRag,
-    method: 'get',
-  },
-  runRaptor: {
-    url: runRaptor,
-    method: 'post',
-  },
-  traceRaptor: {
-    url: traceRaptor,
-    method: 'get',
-  },
   pipelineRerun: {
     url: api.pipelineRerun,
     method: 'post',
   },
 
   checkEmbedding: {
-    url: check_embedding,
+    url: checkEmbedding,
     method: 'post',
   },
+  kbUpdateMetaData: {
+    url: kbUpdateMetaData,
+    method: 'post',
+  },
+  documentUpdateMetaData: {
+    url: documentUpdateMetaData,
+    method: 'post',
+  },
+  // getMetaData: {
+  //   url: getMetaData,
+  //   method: 'get',
+  // },
 };
 
 const kbService = registerServer<keyof typeof methods>(methods, request);
@@ -243,25 +223,78 @@ export function deleteKnowledgeGraph(knowledgeId: string) {
   return request.delete(api.getKnowledgeGraph(knowledgeId));
 }
 
-export const listDataset = (
-  params?: IFetchKnowledgeListRequestParams,
-  body?: IFetchKnowledgeListRequestBody,
-) => request.post(api.kb_list, { data: body || {}, params });
+export const listDataset = (params?: IFetchKnowledgeListRequestParams) =>
+  request.get(api.kbList, { params });
+
+export const updateKb = (datasetId: string, data: Record<string, any>) =>
+  request.put(api.updateKb(datasetId), { data });
+
+export const runGraphRag = (datasetId: string) =>
+  request.post(api.runGraphRag(datasetId));
+
+export const traceGraphRag = (datasetId: string) =>
+  request.get(api.traceGraphRag(datasetId));
+
+export const runRaptor = (datasetId: string) =>
+  request.post(api.runRaptor(datasetId));
+
+export const traceRaptor = (datasetId: string) =>
+  request.get(api.traceRaptor(datasetId));
 
 export const listDocument = (
   params?: IFetchKnowledgeListRequestParams,
   body?: IFetchDocumentListRequestBody,
-) => request.post(api.get_document_list, { data: body || {}, params });
+) => request.post(api.getDocumentList, { data: body || {}, params });
 
 export const documentFilter = (kb_id: string) =>
-  request.post(api.get_dataset_filter, { kb_id });
+  request.post(api.getDatasetFilter, { kb_id });
+
+// Custom upload function that handles dynamic URL using axios directly
+export const uploadDocument = async (datasetId: string, formData: FormData) => {
+  const url = api.documentUpload(datasetId);
+  const response = await axios.post(url, formData, {
+    headers: {
+      [Authorization]: getAuthorization(),
+    },
+  });
+  return response.data;
+};
+
+export const renameDocument = (
+  datasetId: string,
+  documentId: string,
+  data: { name?: string },
+) => request.patch(api.documentRename(datasetId, documentId), { data });
+
+export const getMetaDataService = ({
+  kb_id,
+  doc_ids,
+}: {
+  kb_id: string;
+  doc_ids?: string[];
+}) =>
+  request.get(api.getMetaData(kb_id), {
+    params: doc_ids?.length ? { doc_ids: doc_ids.join(',') } : undefined,
+  });
+export const updateMetaData = ({
+  kb_id,
+  doc_ids,
+  data,
+}: {
+  kb_id: string;
+  doc_ids?: string[];
+  data: any;
+}) => request.post(api.updateMetaData, { data: { kb_id, doc_ids, ...data } });
 
 export const listDataPipelineLogDocument = (
   params?: IFetchKnowledgeListRequestParams,
   body?: IFetchDocumentListRequestBody,
 ) => request.post(api.fetchDataPipelineLog, { data: body || {}, params });
 export const listPipelineDatasetLogs = (
-  params?: IFetchKnowledgeListRequestParams,
+  params?: IFetchKnowledgeListRequestParams & {
+    kb_id?: string;
+    keywords?: string;
+  },
   body?: IFetchDocumentListRequestBody,
 ) => request.post(api.fetchPipelineDatasetLogs, { data: body || {}, params });
 

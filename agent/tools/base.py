@@ -17,14 +17,20 @@ import logging
 import re
 import time
 from copy import deepcopy
+import asyncio
 from functools import partial
+from collections.abc import Mapping
 from typing import TypedDict, List, Any
 from agent.component.base import ComponentParamBase, ComponentBase
 from common.misc_utils import hash_str2int
 from rag.prompts.generator import kb_prompt
-from common.mcp_tool_call_conn import MCPToolCallSession, ToolCallSession
+from common.mcp_tool_call_conn import MCPToolBinding, MCPToolCallSession, ToolCallSession
 from timeit import default_timer as timer
 
+
+
+
+from common.misc_utils import thread_pool_exec
 
 class ToolParameter(TypedDict):
     type: str
@@ -47,15 +53,41 @@ class LLMToolPluginCallSession(ToolCallSession):
         self.tools_map = tools_map
         self.callback = callback
 
-    def tool_call(self, name: str, arguments: dict[str, Any]) -> Any:
-        assert name in self.tools_map, f"LLM tool {name} does not exist"
-        st = timer()
-        if isinstance(self.tools_map[name], MCPToolCallSession):
-            resp = self.tools_map[name].tool_call(name, arguments, 60)
-        else:
-            resp = self.tools_map[name].invoke(**arguments)
+    def tool_call(self, name: str, arguments: dict[str, Any], timeout: float | int = 10) -> Any:
+        return asyncio.run(self.tool_call_async(name, arguments, request_timeout=timeout))
 
-        self.callback(name, arguments, resp, elapsed_time=timer()-st)
+    async def tool_call_async(self, name: str, arguments: dict[str, Any], request_timeout: float | int = 10) -> Any:
+        assert name in self.tools_map, f"LLM tool {name} does not exist"
+        logging.info(f"[ToolCall] invoke name={name} arguments={str(arguments)[:200]}")
+        if not isinstance(arguments, Mapping):
+            raise TypeError(f"Tool arguments for {name} must be an object, got {type(arguments).__name__}")
+        st = timer()
+        tool_obj = self.tools_map[name]
+        if isinstance(tool_obj, MCPToolBinding):
+            resp = await thread_pool_exec(tool_obj.session.tool_call, tool_obj.original_name, arguments, request_timeout)
+        elif isinstance(tool_obj, MCPToolCallSession):
+            resp = await thread_pool_exec(tool_obj.tool_call, name, arguments, request_timeout)
+        elif hasattr(tool_obj, "invoke_async") and asyncio.iscoroutinefunction(tool_obj.invoke_async):
+            resp = await tool_obj.invoke_async(**arguments)
+        else:
+            resp = await thread_pool_exec(tool_obj.invoke, **arguments)
+
+        if resp is None and hasattr(tool_obj, "output") and callable(tool_obj.output):
+            try:
+                fallback_output = tool_obj.output()
+                if isinstance(fallback_output, dict) and fallback_output.get("content") not in (None, ""):
+                    resp = fallback_output["content"]
+                elif fallback_output not in (None, ""):
+                    resp = fallback_output
+                else:
+                    resp = fallback_output
+                logging.warning(f"[ToolCall] resp is None, fallback to output name={name} output_keys={list(fallback_output.keys()) if isinstance(fallback_output, dict) else type(fallback_output).__name__}")
+            except Exception as e:
+                logging.warning(f"[ToolCall] resp is None and output fallback failed name={name} err={e}")
+
+        elapsed = timer() - st
+        logging.info(f"[ToolCall] done name={name} elapsed={elapsed:.2f}s result={str(resp)[:200]}")
+        self.callback(name, arguments, resp, elapsed_time=elapsed)
         return resp
 
     def get_tool_obj(self, name):
@@ -89,13 +121,8 @@ class ToolParamBase(ComponentParamBase):
             if "enum" in p:
                 params[k]["enum"] = p["enum"]
 
-        desc = self.meta["description"]
-        if hasattr(self, "description"):
-            desc = self.description
-
-        function_name = self.meta["name"]
-        if hasattr(self, "function_name"):
-            function_name = self.function_name
+        desc = getattr(self, "description", None) or self.meta["description"]
+        function_name = getattr(self, "function_name", self.meta["name"])
 
         return {
             "type": "function",
@@ -114,6 +141,7 @@ class ToolParamBase(ComponentParamBase):
 class ToolBase(ComponentBase):
     def __init__(self, canvas, id, param: ComponentParamBase):
         from agent.canvas import Canvas  # Local import to avoid cyclic dependency
+
         assert isinstance(canvas, Canvas), "canvas must be an instance of Canvas"
         self._canvas = canvas
         self._id = id
@@ -130,6 +158,33 @@ class ToolBase(ComponentBase):
         self.set_output("_created_time", time.perf_counter())
         try:
             res = self._invoke(**kwargs)
+        except Exception as e:
+            self._param.outputs["_ERROR"] = {"value": str(e)}
+            logging.exception(e)
+            res = str(e)
+        self._param.debug_inputs = []
+
+        self.set_output("_elapsed_time", time.perf_counter() - self.output("_created_time"))
+        return res
+
+    async def invoke_async(self, **kwargs):
+        """
+        Async wrapper for tool invocation.
+        If `_invoke` is a coroutine, await it directly; otherwise run in a thread to avoid blocking.
+        Mirrors the exception handling of `invoke`.
+        """
+        if self.check_if_canceled("Tool processing"):
+            return
+
+        self.set_output("_created_time", time.perf_counter())
+        try:
+            fn_async = getattr(self, "_invoke_async", None)
+            if fn_async and asyncio.iscoroutinefunction(fn_async):
+                res = await fn_async(**kwargs)
+            elif asyncio.iscoroutinefunction(self._invoke):
+                res = await self._invoke(**kwargs)
+            else:
+                res = await thread_pool_exec(self._invoke, **kwargs)
         except Exception as e:
             self._param.outputs["_ERROR"] = {"value": str(e)}
             logging.exception(e)

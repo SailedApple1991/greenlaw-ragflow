@@ -5,12 +5,12 @@ import {
   FormFieldConfig,
   FormFieldType,
 } from '@/components/dynamic-form';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { RunningStatus } from '@/constants/knowledge';
 import { t } from 'i18next';
-import { debounce } from 'lodash';
 import { CirclePause, Repeat } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FieldValues } from 'react-hook-form';
@@ -18,8 +18,11 @@ import {
   DataSourceFormBaseFields,
   DataSourceFormDefaultValues,
   DataSourceFormFields,
-  DataSourceInfo,
-} from '../contant';
+  getCommonExtraDefaultValues,
+  getCommonExtraFields,
+  mergeDataSourceFormValues,
+  useDataSourceInfo,
+} from '../constant';
 import {
   useAddDataSource,
   useDataSourceResume,
@@ -32,12 +35,12 @@ const SourceDetailPage = () => {
 
   const { data: detail } = useFetchDataSourceDetail();
   const { handleResume } = useDataSourceResume();
-
+  const { dataSourceInfo } = useDataSourceInfo();
   const detailInfo = useMemo(() => {
     if (detail) {
-      return DataSourceInfo[detail.source];
+      return dataSourceInfo[detail.source];
     }
-  }, [detail]);
+  }, [detail, dataSourceInfo]);
 
   const [fields, setFields] = useState<FormFieldConfig[]>([]);
   const [defaultValues, setDefaultValues] = useState<FieldValues>(
@@ -64,11 +67,18 @@ const SourceDetailPage = () => {
         type: FormFieldType.Number,
         required: false,
         render: (fieldProps: FormFieldConfig) => (
-          <div className="flex items-center  gap-1 w-full relative">
-            <Input {...fieldProps} type={FormFieldType.Number} />
-            <span className="absolute right-0 -translate-x-[58px] text-text-secondary italic ">
-              {t('setting.minutes')}
-            </span>
+          <div className="flex items-center gap-1 w-full relative">
+            <div className="flex-1">
+              <Input
+                {...fieldProps}
+                type={FormFieldType.Number}
+                suffix={
+                  <span className="px-2 text-text-secondary italic">
+                    {t('setting.minutes')}
+                  </span>
+                }
+              />
+            </div>
             <button
               type="button"
               className="text-text-secondary bg-bg-input rounded-sm text-xs h-full p-2 border border-border-button hover:bg-border-button hover:text-text-primary"
@@ -94,11 +104,18 @@ const SourceDetailPage = () => {
         hidden: true,
         render: (fieldProps: FormFieldConfig) => {
           return (
-            <div className="flex items-center  gap-1 w-full relative">
-              <Input {...fieldProps} type={FormFieldType.Number} />
-              <span className="absolute right-0 -translate-x-6 text-text-secondary italic ">
-                hours
-              </span>
+            <div className="flex items-center gap-1 w-full relative">
+              <div className="flex-1">
+                <Input
+                  {...fieldProps}
+                  type={FormFieldType.Number}
+                  suffix={
+                    <span className="px-2 text-text-secondary italic">
+                      hours
+                    </span>
+                  }
+                />
+              </div>
             </div>
           );
         },
@@ -109,52 +126,73 @@ const SourceDetailPage = () => {
         type: FormFieldType.Number,
         required: false,
         render: (fieldProps: FormFieldConfig) => (
-          <div className="flex items-center  gap-1 w-full relative">
-            <Input {...fieldProps} type={FormFieldType.Number} />
-            <span className="absolute right-0 -translate-x-6 text-text-secondary italic ">
-              {t('setting.seconds')}
-            </span>
+          <div className="flex items-center gap-1 w-full relative">
+            <div className="flex-1">
+              <Input
+                {...fieldProps}
+                type={FormFieldType.Number}
+                suffix={
+                  <span className="px-2 text-text-secondary italic">
+                    {t('setting.seconds')}
+                  </span>
+                }
+              />
+            </div>
           </div>
         ),
       },
     ];
   }, [detail, runSchedule]);
 
-  const { handleAddOk } = useAddDataSource();
+  const { addLoading, handleAddOk } = useAddDataSource();
 
   const onSubmit = useCallback(() => {
     formRef?.current?.submit();
-  }, [formRef]);
+  }, []);
 
   useEffect(() => {
+    const baseFields = DataSourceFormBaseFields.map((field) => {
+      if (field.name === 'name') {
+        return {
+          ...field,
+          disabled: true,
+        };
+      } else {
+        return {
+          ...field,
+        };
+      }
+    });
     if (detail) {
       const fields = [
-        ...DataSourceFormBaseFields,
+        ...baseFields,
         ...DataSourceFormFields[
           detail.source as keyof typeof DataSourceFormFields
         ],
+        ...getCommonExtraFields(detail.source),
         ...customFields,
       ] as FormFieldConfig[];
 
-      const neweFields = fields.map((field) => {
+      const newFields = fields.map((field) => {
         return {
           ...field,
           horizontal: true,
-          onChange: () => {
-            onSubmit();
-          },
+          onChange: undefined,
         };
       });
-      setFields(neweFields);
+      setFields(newFields);
 
-      const defultValueTemp = {
-        ...(DataSourceFormDefaultValues[
-          detail?.source as keyof typeof DataSourceFormDefaultValues
-        ] as FieldValues),
-        ...detail,
+      const defaultValueTemp = {
+        ...mergeDataSourceFormValues(
+          DataSourceFormDefaultValues[
+            detail?.source as keyof typeof DataSourceFormDefaultValues
+          ] as FieldValues,
+          getCommonExtraDefaultValues(),
+          detail as FieldValues,
+        ),
       };
-      console.log('defaultValue', defultValueTemp);
-      setDefaultValues(defultValueTemp);
+      console.log('defaultValue', defaultValueTemp);
+      setDefaultValues(defaultValueTemp);
     }
   }, [detail, customFields, onSubmit]);
 
@@ -175,11 +213,23 @@ const SourceDetailPage = () => {
             <DynamicForm.Root
               ref={formRef}
               fields={fields}
-              onSubmit={debounce((data) => {
-                handleAddOk(data);
-              }, 500)}
+              onSubmit={(data) => handleAddOk(data)}
               defaultValues={defaultValues}
             />
+          </div>
+          <div className="max-w-[1200px] flex justify-end">
+            <Button
+              type="button"
+              onClick={onSubmit}
+              disabled={addLoading}
+              loading={addLoading}
+            >
+              {t('common.confirm')}
+              {/* {addLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {addLoading
+                ? t('modal.loadingText', { defaultValue: 'Submitting...' })
+                : t('modal.okText', { defaultValue: 'Submit' })} */}
+            </Button>
           </div>
           <section className="flex flex-col gap-2">
             <div className="text-2xl text-text-primary mb-2">

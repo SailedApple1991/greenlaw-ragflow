@@ -23,17 +23,18 @@ from api.db.services.canvas_service import UserCanvasService
 from api.db.services.conversation_service import ConversationService
 from api.db.services.dialog_service import DialogService
 from api.db.services.document_service import DocumentService
+from api.db.services.doc_metadata_service import DocMetadataService
 from api.db.services.file2document_service import File2DocumentService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.langfuse_service import TenantLangfuseService
-from api.db.services.llm_service import get_init_tenant_llm
 from api.db.services.file_service import FileService
 from api.db.services.mcp_server_service import MCPServerService
 from api.db.services.search_service import SearchService
 from api.db.services.task_service import TaskService
-from api.db.services.tenant_llm_service import TenantLLMService
 from api.db.services.user_canvas_version import UserCanvasVersionService
 from api.db.services.user_service import TenantService, UserService, UserTenantService
+from api.db.services.memory_service import MemoryService
+from memory.services.messages import MessageService
 from rag.nlp import search
 from common.constants import ActiveEnum
 from common import settings
@@ -87,14 +88,14 @@ def create_new_user(user_info: dict) -> dict:
         "location": "",
     }
     try:
-        tenant_llm = get_init_tenant_llm(user_id)
+        # tenant_llm = get_init_tenant_llm(user_id)
 
         if not UserService.save(**user_info):
             return {"success": False}
 
         TenantService.insert(**tenant)
         UserTenantService.insert(**usr_tenant)
-        TenantLLMService.insert_many(tenant_llm)
+        # TenantLLMService.insert_many(tenant_llm)
         FileService.insert(file)
 
         return {
@@ -106,6 +107,11 @@ def create_new_user(user_info: dict) -> dict:
         logging.exception(create_error)
         # rollback
         try:
+            metadata_index_name = DocMetadataService._get_doc_meta_index_name(user_id)
+            settings.docStoreConn.delete_idx(metadata_index_name, "")
+        except Exception as e:
+            logging.exception(e)
+        try:
             TenantService.delete_by_id(user_id)
         except Exception as e:
             logging.exception(e)
@@ -113,10 +119,6 @@ def create_new_user(user_info: dict) -> dict:
             u = UserTenantService.query(tenant_id=user_id)
             if u:
                 UserTenantService.delete_by_id(u[0].id)
-        except Exception as e:
-            logging.exception(e)
-        try:
-            TenantLLMService.delete_by_tenant_id(user_id)
         except Exception as e:
             logging.exception(e)
         try:
@@ -153,7 +155,7 @@ def delete_user_data(user_id: str) -> dict:
             done_msg += "Start to delete owned tenant.\n"
             tenant_id = owned_tenant[0]["tenant_id"]
             kb_ids = KnowledgebaseService.get_kb_ids(usr.id)
-            # step1.1 delete knowledgebase related file and info
+            # step1.1 delete dataset related file and info
             if kb_ids:
                 # step1.1.1 delete files in storage, remove bucket
                 for kb_id in kb_ids:
@@ -163,6 +165,12 @@ def delete_user_data(user_id: str) -> dict:
                 # step1.1.2 delete file and document info in db
                 doc_ids = DocumentService.get_all_doc_ids_by_kb_ids(kb_ids)
                 if doc_ids:
+                    for doc in doc_ids:
+                        try:
+                            DocMetadataService.delete_document_metadata(doc["id"], doc["kb_id"], tenant_id=None)
+                        except Exception as e:
+                            logging.warning(f"Failed to delete metadata for document {doc['id']}: {e}")
+
                     doc_delete_res = DocumentService.delete_by_ids([i["id"] for i in doc_ids])
                     done_msg += f"- Deleted {doc_delete_res} document records.\n"
                     task_delete_res = TaskService.delete_by_doc_ids([i["id"] for i in doc_ids])
@@ -182,7 +190,7 @@ def delete_user_data(user_id: str) -> dict:
                                          search.index_name(tenant_id), kb_ids)
                 done_msg += f"- Deleted {r} chunk records.\n"
                 kb_delete_res = KnowledgebaseService.delete_by_ids(kb_ids)
-                done_msg += f"- Deleted {kb_delete_res} knowledgebase records.\n"
+                done_msg += f"- Deleted {kb_delete_res} dataset records.\n"
                 # step1.1.4 delete agents
                 agent_delete_res = delete_user_agents(usr.id)
                 done_msg += f"- Deleted {agent_delete_res['agents_deleted_count']} agent, {agent_delete_res['version_deleted_count']} versions records.\n"
@@ -195,12 +203,28 @@ def delete_user_data(user_id: str) -> dict:
                 # step1.1.7 delete search
                 search_delete_res = SearchService.delete_by_tenant_id(usr.id)
                 done_msg += f"- Deleted {search_delete_res} search records.\n"
-            # step1.2 delete tenant_llm and tenant_langfuse
-            llm_delete_res = TenantLLMService.delete_by_tenant_id(tenant_id)
-            done_msg += f"- Deleted {llm_delete_res} tenant-LLM records.\n"
+            # step1.2 delete tenant_langfuse
+            # llm_delete_res = TenantLLMService.delete_by_tenant_id(tenant_id)
+            # done_msg += f"- Deleted {llm_delete_res} tenant-LLM records.\n"
             langfuse_delete_res = TenantLangfuseService.delete_ty_tenant_id(tenant_id)
             done_msg += f"- Deleted {langfuse_delete_res} langfuse records.\n"
-            # step1.3 delete own tenant
+            try:
+                metadata_index_name = DocMetadataService._get_doc_meta_index_name(tenant_id)
+                settings.docStoreConn.delete_idx(metadata_index_name, "")
+                done_msg += f"- Deleted metadata table {metadata_index_name}.\n"
+            except Exception as e:
+                logging.warning(f"Failed to delete metadata table for tenant {tenant_id}: {e}")
+                done_msg += "- Warning: Failed to delete metadata table (continuing).\n"
+            # step1.3 delete memory and messages
+            user_memory = MemoryService.get_by_tenant_id(tenant_id)
+            if user_memory:
+                for memory in user_memory:
+                    if MessageService.has_index(tenant_id, memory.id):
+                        MessageService.delete_index(tenant_id, memory.id)
+                done_msg += " Deleted memory index."
+                memory_delete_res = MemoryService.delete_by_ids([m.id for m in user_memory])
+                done_msg += f"Deleted {memory_delete_res} memory datasets."
+            # step1.4 delete own tenant
             tenant_delete_res = TenantService.delete_by_id(tenant_id)
             done_msg += f"- Deleted {tenant_delete_res} tenant.\n"
         # step2 delete user-tenant relation
@@ -258,7 +282,12 @@ def delete_user_data(user_id: str) -> dict:
                     # step2.1.5 delete document record
                     doc_delete_res = DocumentService.delete_by_ids([d['id'] for d in created_documents])
                     done_msg += f"- Deleted {doc_delete_res} documents.\n"
-                    # step2.1.6 update knowledge base doc&chunk&token cnt
+                    for doc in created_documents:
+                        try:
+                            DocMetadataService.delete_document_metadata(doc['id'], doc['kb_id'], doc['tenant_id'])
+                        except Exception as e:
+                            logging.warning(f"Failed to delete metadata for document {doc['id']}: {e}")
+                    # step2.1.6 update dataset doc&chunk&token cnt
                     for kb_id, doc_num in kb_doc_info.items():
                         KnowledgebaseService.decrease_document_num_in_delete(kb_id, doc_num)
 
@@ -273,7 +302,7 @@ def delete_user_data(user_id: str) -> dict:
 
     except Exception as e:
         logging.exception(e)
-        return {"success": False, "message": f"Error: {str(e)}. Already done:\n{done_msg}"}
+        return {"success": False, "message": "An internal error occurred during user deletion. Some operations may have completed.","details": done_msg}
 
 
 def delete_user_agents(user_id: str) -> dict:

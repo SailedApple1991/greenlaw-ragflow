@@ -8,7 +8,10 @@ import {
   DataSourceFormBaseFields,
   DataSourceFormDefaultValues,
   DataSourceFormFields,
-} from './contant';
+  getCommonExtraDefaultValues,
+  getCommonExtraFields,
+  mergeDataSourceFormValues,
+} from './constant';
 import { IDataSorceInfo } from './interface';
 
 const AddDataSourceModal = ({
@@ -28,6 +31,7 @@ const AddDataSourceModal = ({
         ...DataSourceFormFields[
           sourceData.id as keyof typeof DataSourceFormFields
         ],
+        ...getCommonExtraFields(sourceData.id),
       ] as FormFieldConfig[]);
     }
   }, [sourceData]);
@@ -42,7 +46,7 @@ const AddDataSourceModal = ({
       title={
         <div className="flex flex-col gap-4">
           <div className="size-6">{sourceData?.icon}</div>
-          {t('setting.addDataSourceModalTital', { name: sourceData?.name })}
+          {t('setting.addDataSourceModalTitle', { name: sourceData?.name })}
         </div>
       }
       open={visible || false}
@@ -59,9 +63,12 @@ const AddDataSourceModal = ({
           console.log(data);
         }}
         defaultValues={
-          DataSourceFormDefaultValues[
-            sourceData?.id as keyof typeof DataSourceFormDefaultValues
-          ] as FieldValues
+          mergeDataSourceFormValues(
+            DataSourceFormDefaultValues[
+              sourceData?.id as keyof typeof DataSourceFormDefaultValues
+            ] as FieldValues,
+            getCommonExtraDefaultValues(),
+          ) as FieldValues
         }
         labelClassName="font-normal"
       >
