@@ -1785,6 +1785,25 @@ def migrate_db():
     alter_db_add_column(migrator, "knowledgebase", "wiki_task_finish_at", DateTimeField(null=True))
     alter_db_add_column(migrator, "knowledgebase", "skill_task_id", CharField(max_length=32, null=True, help_text="Skill generation task ID", index=True))
     alter_db_add_column(migrator, "knowledgebase", "skill_task_finish_at", DateTimeField(null=True))
+    # The Knowledgebase model declares twelve more merge-task columns, and Tenant
+    # one more model ref, but migrate_db never adds them -- fine for a fresh
+    # install, where create_tables builds the whole model, and fatal for an
+    # in-place upgrade: peewee selects the declared column list, so the first
+    # query against knowledgebase or tenant fails with Unknown column.
+    # alter_db_add_column is idempotent, so adding them here is safe either way.
+    alter_db_add_column(migrator, "knowledgebase", "structure_graph_task_id", CharField(max_length=32, null=True, help_text="Structure graph merge task ID", index=True))
+    alter_db_add_column(migrator, "knowledgebase", "structure_graph_task_finish_at", DateTimeField(null=True))
+    alter_db_add_column(migrator, "knowledgebase", "structure_mindmap_task_id", CharField(max_length=32, null=True, help_text="Structure mindmap merge task ID", index=True))
+    alter_db_add_column(migrator, "knowledgebase", "structure_mindmap_task_finish_at", DateTimeField(null=True))
+    alter_db_add_column(migrator, "knowledgebase", "timeline_task_id", CharField(max_length=32, null=True, help_text="Timeline merge task ID", index=True))
+    alter_db_add_column(migrator, "knowledgebase", "timeline_task_finish_at", DateTimeField(null=True))
+    alter_db_add_column(migrator, "knowledgebase", "session_graph_task_id", CharField(max_length=32, null=True, help_text="Session graph merge task ID", index=True))
+    alter_db_add_column(migrator, "knowledgebase", "session_graph_task_finish_at", DateTimeField(null=True))
+    alter_db_add_column(migrator, "knowledgebase", "session_essence_task_id", CharField(max_length=32, null=True, help_text="Session essence merge task ID", index=True))
+    alter_db_add_column(migrator, "knowledgebase", "session_essence_task_finish_at", DateTimeField(null=True))
+    alter_db_add_column(migrator, "knowledgebase", "structure_task_id", CharField(max_length=32, null=True, help_text="Structure merge-all task ID", index=True))
+    alter_db_add_column(migrator, "knowledgebase", "structure_task_finish_at", DateTimeField(null=True))
+    alter_db_add_column(migrator, "tenant", "tenant_ocr_id", CharField(max_length=32, null=True, help_text="id in tenant_model", index=True))
     for _structure_type in ("structure_graph", "structure_mindmap", "timeline", "session_graph", "session_essence", "structure"):
         alter_db_add_column(migrator, "knowledgebase", f"{_structure_type}_task_id", CharField(max_length=32, null=True, help_text=f"{_structure_type} merge task ID", index=True))
         alter_db_add_column(migrator, "knowledgebase", f"{_structure_type}_task_finish_at", DateTimeField(null=True))
