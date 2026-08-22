@@ -2,7 +2,7 @@ import { useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation } from 'react-router';
 
-import { LucideHouse, LucideMenu } from 'lucide-react';
+import { LucideDatabase, LucideHouse, LucideMenu } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
@@ -18,6 +18,7 @@ const PathMap = {
   [Routes.Agents]: [Routes.Agents, Routes.AgentTemplates],
   [Routes.Memories]: [Routes.Memories, Routes.Memory, Routes.MemoryMessage],
   [Routes.Files]: [Routes.Files],
+  [Routes.AdminCacheManagement]: [Routes.AdminCacheManagement],
 } as const;
 
 // Match on path-segment boundaries, not a loose substring, so e.g.
@@ -75,6 +76,11 @@ const menuItems = [
     name: 'header.fileManager',
     icon: MenuItemsIcon,
     icon_name: 'file',
+  },
+  {
+    path: Routes.AdminCacheManagement,
+    name: 'header.cacheManagement',
+    icon: LucideDatabase,
   },
 ];
 

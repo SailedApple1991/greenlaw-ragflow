@@ -105,6 +105,7 @@ export default {
       setting: '用户设置',
       logout: '登出',
       fileManager: '文件管理',
+      cacheManagement: '缓存',
       skills: 'Skills',
       flow: '智能体',
       search: '搜索',

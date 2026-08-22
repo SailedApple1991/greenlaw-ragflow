@@ -512,6 +512,19 @@ export default {
 
   adminGetSystemVersion: `${restAPIv1}/admin/version`,
 
+  // Cache management (fork: served by api/apps/cache_app.py at /v1/cache)
+  adminCacheStats: `${webAPI}/cache/stats`,
+  adminCacheTenants: `${webAPI}/cache/tenants`,
+  adminCacheTenantDialogs: (tenantId: string) =>
+    `${webAPI}/cache/tenants/${tenantId}/dialogs`,
+  adminCacheL2Entries: `${webAPI}/cache/l2/entries`,
+  adminCacheL2Entry: (tenantId: string, entryId: string) =>
+    `${webAPI}/cache/l2/entries/${tenantId}/${entryId}`,
+  adminCacheL1InvalidateDialog: (dialogId: string) =>
+    `${webAPI}/cache/l1/dialog/${dialogId}`,
+  adminCacheL1Entries: `${webAPI}/cache/l1/entries`,
+  adminCacheL1Dialogs: `${webAPI}/cache/l1/dialogs`,
+
   // Sandbox settings
   adminListSandboxProviders: `${restAPIv1}/admin/sandbox/providers`,
   adminGetSandboxProviderSchema: (providerId: string) =>

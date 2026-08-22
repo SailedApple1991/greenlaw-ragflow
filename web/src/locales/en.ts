@@ -123,6 +123,7 @@ export default {
       setting: 'User settings',
       logout: 'Log out',
       fileManager: 'File',
+      cacheManagement: 'Cache',
       skills: 'Skills',
       flow: 'Agent',
       search: 'Search',
