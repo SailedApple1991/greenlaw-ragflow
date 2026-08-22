@@ -17,7 +17,6 @@ const {
   deleteMessage,
   thumbup,
   chatsTts,
-  ask,
   chatsMindmap,
   chatsRelatedQuestions,
   uploadAndParse,
@@ -83,10 +82,6 @@ const methods = {
   },
   chatsTts: {
     url: chatsTts,
-    method: 'post',
-  },
-  ask: {
-    url: ask,
     method: 'post',
   },
   chatsMindmap: {
