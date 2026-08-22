@@ -92,6 +92,14 @@ class TreeStructuredQueryDecompositionRetrieval:
                 chunk_info["total"] = chunk_info.get("total", 0) + kbinfos.get("total", 0)
 
     async def research(self, chunk_info, question, query, depth=3, callback=None):
+        # Speed lever: deep research fans out as a tree of retrievals, each costing a
+        # query embedding + KNN (~5-7s on a remote gateway). depth=3 with ~3 sub-
+        # questions/level is ~13 retrievals (>90s). Default to 2 (~4 retrievals) and
+        # let each assistant override via prompt_config.deep_research_depth.
+        try:
+            depth = int(self.prompt_config.get("deep_research_depth", 2) or 2)
+        except (TypeError, ValueError):
+            depth = 2
         if callback:
             await callback("<START_DEEP_RESEARCH>")
         try:
@@ -119,6 +127,8 @@ class TreeStructuredQueryDecompositionRetrieval:
         if callback:
             await callback("Checking the sufficiency for retrieved information.")
         suff = await sufficiency_check(self.chat_mdl, question, ret)
+        if not isinstance(suff, dict):
+            suff = {}
         if suff.get("is_sufficient"):
             if callback:
                 await callback(f"Yes, the retrieved information is sufficient for '{question}'.")
@@ -127,10 +137,22 @@ class TreeStructuredQueryDecompositionRetrieval:
         # if callback:
         #    await callback("The retrieved information is not sufficient. Planing next steps...")
         succ_question_info = await multi_queries_gen(self.chat_mdl, question, query, suff.get("missing_information", []), ret)
+        sub_questions = succ_question_info.get("questions", []) if isinstance(succ_question_info, dict) else []
+        # Speed lever: cap how many sub-questions we fan out per level (each spawns its
+        # own recursive retrieval subtree). Configurable via prompt_config.
+        try:
+            max_breadth = int(self.prompt_config.get("deep_research_breadth", 3) or 3)
+        except (TypeError, ValueError):
+            max_breadth = 3
+        sub_questions = sub_questions[:max_breadth]
+        if not sub_questions:
+            # No further decomposition available; return what we have so deep
+            # research degrades gracefully instead of erroring out.
+            return ret
         if callback:
-            await callback("Next step is to search for the following questions:</br> - " + "</br> - ".join(step["question"] for step in succ_question_info["questions"]))
+            await callback("Next step is to search for the following questions:</br> - " + "</br> - ".join(step["question"] for step in sub_questions))
         steps = []
-        for step in succ_question_info["questions"]:
+        for step in sub_questions:
             steps.append(asyncio.create_task(self._research(chunk_info, step["question"], step["query"], depth - 1, callback)))
         results = await asyncio.gather(*steps, return_exceptions=True)
         return "\n".join([str(r) for r in results])

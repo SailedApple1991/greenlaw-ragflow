@@ -265,9 +265,16 @@ class OpenAIEmbed(Base):
         self.base_url = ensure_v1(base_url)
         self.client = OpenAI(api_key=key, base_url=self.base_url)
         self.model_name = model_name
+        # Optional fixed output dimension. Some OpenAI-compatible gateways return
+        # different vector sizes depending on batch size unless `dimensions` is
+        # pinned, which corrupts an index (mixed dims) and breaks KNN queries.
+        self.dimensions = None
 
     def _call(self, batch):
-        res = self.client.embeddings.create(input=batch, model=self.model_name, encoding_format="float", extra_body={"drop_params": True})
+        kwargs = {"encoding_format": "float", "extra_body": {"drop_params": True}}
+        if getattr(self, "dimensions", None):
+            kwargs["dimensions"] = self.dimensions
+        res = self.client.embeddings.create(input=batch, model=self.model_name, **kwargs)
         return [d.embedding for d in _sorted_by_index(res.data)], total_token_count_from_response(res)
 
     def encode(self, texts: list):
@@ -879,6 +886,11 @@ class OpenAI_APIEmbed(OpenAIEmbed):
         base_url = ensure_v1(base_url)
         self.client = OpenAI(api_key=key, base_url=base_url)
         self.model_name = model_name.split("___")[0]
+        # Pin output dimension when the gateway varies vector size by batch size
+        # (e.g. silra.cn Qwen3-Embedding-8B: <=8 inputs -> 1024, >=16 -> 4096).
+        # Without pinning, indexing mixes dims and queries (single input) never
+        # match the batch-indexed vectors. Configure via OPENAI_API_EMBED_DIMENSIONS.
+        self.dimensions = int(os.environ.get("OPENAI_API_EMBED_DIMENSIONS") or 0) or None
 
 
 class MWSEmbed(OpenAIEmbed):
