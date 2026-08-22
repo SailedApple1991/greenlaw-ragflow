@@ -147,12 +147,12 @@ export default {
     `${restAPIv1}/chats/${chatId}/sessions/${sessionId}/messages/${msgId}`,
   thumbup: (chatId: string, sessionId: string, msgId: string) =>
     `${restAPIv1}/chats/${chatId}/sessions/${sessionId}/messages/${msgId}/feedback`,
-  completionUrl: (chatId: string, sessionId: string) =>
-    `${restAPIv1}/chats/${chatId}/sessions/${sessionId}/completions`,
-  chatsTts: `${restAPIv1}/chats/tts`,
-  ask: `${restAPIv1}/chats/ask`,
-  chatsMindmap: `${restAPIv1}/chats/mindmap`,
-  chatsRelatedQuestions: `${restAPIv1}/chats/related_questions`,
+  completionUrl: `${restAPIv1}/chat/completions`,
+  chatsTts: `${restAPIv1}/chat/audio/speech`,
+  searchCompletion: (searchId: string) =>
+    `${restAPIv1}/searches/${searchId}/completions`,
+  chatsMindmap: `${restAPIv1}/chat/mindmap`,
+  chatsRelatedQuestions: `${restAPIv1}/chat/recommendation`,
 
   // next chat
   fetchExternalChatInfo: (id: string) => `${restAPIv1}/chatbots/${id}/info`,
