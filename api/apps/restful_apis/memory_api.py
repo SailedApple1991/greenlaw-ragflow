@@ -126,8 +126,11 @@ async def list_memory():
         k: request.args.get(k) for k in ["memory_type", "tenant_id", "owner_ids", "storage_type"] if k in request.args
     }
     keywords = request.args.get("keywords")
-    page = int(request.args.get("page", 1))
-    page_size = validate_rest_api_page_size(int(request.args.get("page_size", 50)))
+    try:
+        page = int(request.args.get("page", 1))
+        page_size = validate_rest_api_page_size(int(request.args.get("page_size", 50)))
+    except ValueError as argument_exception:
+        return get_error_argument_result(message=str(argument_exception))
     try:
         res = await memory_api_service.list_memory(filter_params, keywords, page, page_size)
         return get_json_result(message=True, data=res)
@@ -159,8 +162,11 @@ async def get_memory_messages(memory_id):
         agent_ids = agent_ids[0].split(',')
     keywords = args.get("keywords", "")
     keywords = keywords.strip()
-    page = int(args.get("page", 1))
-    page_size = validate_rest_api_page_size(int(args.get("page_size", 50)))
+    try:
+        page = int(args.get("page", 1))
+        page_size = validate_rest_api_page_size(int(args.get("page_size", 50)))
+    except ValueError as argument_exception:
+        return get_error_argument_result(message=str(argument_exception))
     try:
         res = await memory_api_service.get_memory_messages(
             memory_id, agent_ids, keywords, page, page_size
