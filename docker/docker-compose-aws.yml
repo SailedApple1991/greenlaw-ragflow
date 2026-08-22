@@ -47,11 +47,49 @@ services:
       # returns 1024 for small batches and 4096 for large ones unless dimensions is
       # set; existing indices are 4096, so pin 4096 to keep index+query consistent.
       - OPENAI_API_EMBED_DIMENSIONS=${OPENAI_API_EMBED_DIMENSIONS:-4096}
+      # Enables the CodeExec operator. settings.py only resolves SANDBOX_HOST when
+      # this is truthy, and then defaults it to the compose service name below.
+      # Without it CodeExec posts to http://None:9385/run and the node errors out.
+      - SANDBOX_ENABLED=${SANDBOX_ENABLED:-1}
     networks:
       - ragflow
     restart: on-failure
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+  # Code sandbox for the agent CodeExec operator. Long-running service, not
+  # something the canvas spins up on demand: dragging a code node only writes it
+  # into the DSL, and the HTTP call to :9385 happens when the agent runs.
+  #
+  # privileged + the docker socket are how upstream's executor works -- it starts
+  # a throwaway container per execution from the base images below. That is host
+  # root access, so the port is deliberately NOT published: only containers on the
+  # ragflow network can reach it, and nothing is exposed to the EC2 host or beyond.
+  sandbox-executor-manager:
+    image: ${SANDBOX_EXECUTOR_MANAGER_IMAGE:-infiniflow/sandbox-executor-manager:latest}
+    container_name: ragflow-sandbox
+    privileged: true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 2g
+    environment:
+      - TZ=${TZ:-Asia/Singapore}
+      - SANDBOX_EXECUTOR_MANAGER_POOL_SIZE=${SANDBOX_EXECUTOR_MANAGER_POOL_SIZE:-3}
+      - SANDBOX_BASE_PYTHON_IMAGE=${SANDBOX_BASE_PYTHON_IMAGE:-infiniflow/sandbox-base-python:latest}
+      - SANDBOX_BASE_NODEJS_IMAGE=${SANDBOX_BASE_NODEJS_IMAGE:-infiniflow/sandbox-base-nodejs:latest}
+      - SANDBOX_ENABLE_SECCOMP=${SANDBOX_ENABLE_SECCOMP:-true}
+      - SANDBOX_MAX_MEMORY=${SANDBOX_MAX_MEMORY:-256m}
+      - SANDBOX_TIMEOUT=${SANDBOX_TIMEOUT:-10s}
+    networks:
+      - ragflow
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9385/healthz"]
+      interval: 10s
+      timeout: 10s
+      retries: 120
 
   redis:
     image: valkey/valkey:8
