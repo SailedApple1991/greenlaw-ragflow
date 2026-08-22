@@ -209,7 +209,7 @@ export default {
   cancelDataflow: (id: string) => `${webAPI}/canvas/cancel/${id}`,
   downloadFile: `${webAPI}/canvas/download`,
   testWebhook: (id: string) => `${restAPIv1}/webhook_test/${id}`,
-  fetchWebhookTrace: (id: string) => `${restAPIv1}/webhook_trace/${id}`,
+  fetchWebhookTrace: (id: string) => `${restAPIv1}/agents/${id}/webhook/logs`,
 
   // explore
 
@@ -333,9 +333,9 @@ export default {
     `${webAPI}/cache/tenants/${tenantId}/dialogs`,
   adminCacheL2Entries: `${webAPI}/cache/l2/entries`,
   adminCacheL2Entry: (tenantId: string, entryId: string) =>
-    `${webAPI}/cache/l2/tenants/${tenantId}/entries/${entryId}`,
+    `${webAPI}/cache/l2/entries/${tenantId}/${entryId}`,
   adminCacheL1InvalidateDialog: (dialogId: string) =>
-    `${webAPI}/cache/l1/dialogs/${dialogId}`,
+    `${webAPI}/cache/l1/dialog/${dialogId}`,
   adminCacheL1Entries: `${webAPI}/cache/l1/entries`,
   adminCacheL1Dialogs: `${webAPI}/cache/l1/dialogs`,
 };
