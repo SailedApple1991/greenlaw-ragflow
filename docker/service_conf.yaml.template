@@ -68,6 +68,7 @@ redis:
   username: '${REDIS_USERNAME:-}'
   password: '${REDIS_PASSWORD:-infini_rag_flow}'
   host: '${REDIS_HOST:-redis}:6379'
+  ssl: ${REDIS_SSL:-false}
 nats:
   host: ${NATS_HOST:-0.0.0.0}
   port: ${NATS_PORT:-4222}
@@ -103,13 +104,11 @@ user_default_llm:
 #   port: 5432
 #   max_connections: 100
 #   stale_timeout: 30
-# s3:
-#   access_key: 'access_key'
-#   secret_key: 'secret_key'
-#   region: 'region'
-#   endpoint_url: 'endpoint_url'
-#   bucket: 'bucket'
-#   prefix_path: 'prefix_path'
+# fork: AWS S3 storage (IAM-role based; only read when STORAGE_IMPL_TYPE=AWS_S3)
+s3:
+  region: '${REGION}'
+  endpoint_url: '${ENDPOINT}'
+  bucket: '${BUCKET}'
 #   signature_version: 'v4'
 #   addressing_style: 'path'
 # oss:

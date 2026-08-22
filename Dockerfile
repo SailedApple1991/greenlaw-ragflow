@@ -71,6 +71,21 @@ COPY docker/service_conf.yaml.template ./conf/service_conf.yaml.template
 COPY docker/entrypoint*.sh ./
 RUN chmod +x ./entrypoint*.sh
 
+# fork: optionally install PaddleOCR into the venv (OCR_PROVIDER=paddleocr).
+# Default ON; set --build-arg ENABLE_PADDLEOCR=0 to skip (deepdoc OCR needs none).
+ARG ENABLE_PADDLEOCR="1"
+RUN if [ "$ENABLE_PADDLEOCR" = "1" ]; then \
+        uv pip install --no-cache \
+            "paddlepaddle==3.2.2" \
+            -i https://www.paddlepaddle.org.cn/packages/stable/cpu/ && \
+        uv pip install --no-cache \
+            "paddleocr>=2.7.0" && \
+        paddleocr install_hpi_deps cpu && \
+        SITE_PKG=$(python -c "import site; print(site.getsitepackages()[0])") && \
+        sed -i 's/from langchain.docstore.document/from langchain_community.docstore.document/g' $SITE_PKG/paddlex/inference/pipelines/components/retriever/base.py && \
+        sed -i 's/from langchain.text_splitter/from langchain_text_splitters/g' $SITE_PKG/paddlex/inference/pipelines/components/retriever/base.py; \
+    fi
+
 
 ARG NGINX_VERSION=1.31.3-1~noble
 RUN --mount=type=cache,id=ragflow_apt,target=/var/cache/apt,sharing=locked \
