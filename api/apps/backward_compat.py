@@ -650,6 +650,71 @@ async def deprecated_agent_completions(agent_id, tenant_id=None):
     return await agent_api.agent_chat_completion(tenant_id=tenant_id, agent_id=agent_id)
 
 
+@manager.route("/agents/chat/completion", methods=["POST"])
+@login_required
+@add_tenant_id_to_kwargs
+async def deprecated_agents_chat_completion_singular(tenant_id=None):
+    """
+    Deprecated: Use POST /api/v1/agents/chat/completions instead.
+
+    Old path: POST /api/v1/agents/chat/completion
+    New path: POST /api/v1/agents/chat/completions
+
+    Upstream dropped the singular spelling as a historical typo, but this
+    deployment has been serving it and an external integration may be on it.
+    """
+    logging.warning("API endpoint /api/v1/agents/chat/completion is deprecated. Please use /api/v1/agents/chat/completions instead.")
+    return await agent_api.agent_chat_completion(tenant_id=tenant_id)
+
+
+@manager.route("/datasets/<dataset_id>/embedding", methods=["POST"])
+@login_required
+@add_tenant_id_to_kwargs
+async def deprecated_run_embedding(dataset_id, tenant_id=None):
+    """
+    Deprecated: re-run parsing per document instead.
+
+    Old path: POST /api/v1/datasets/{dataset_id}/embedding
+
+    Re-queues every document in the dataset. Upstream removed both the route
+    and dataset_api_service.run_embedding; /datasets/{id}/index only accepts
+    graph, raptor and mindmap, so it is not a replacement. Reimplemented here
+    on the services that remain, to keep an external caller working.
+    """
+    from api.db.services.document_service import DocumentService
+    from api.db.services.knowledgebase_service import KnowledgebaseService
+
+    logging.warning("API endpoint /api/v1/datasets/%s/embedding is deprecated.", dataset_id)
+
+    if not dataset_id:
+        return get_data_error_result(message='Lack of "Dataset ID"')
+    if not KnowledgebaseService.accessible(dataset_id, tenant_id):
+        return get_data_error_result(message="No authorization.")
+    if not KnowledgebaseService.get_by_id(dataset_id)[0]:
+        return get_data_error_result(message="Invalid Dataset ID")
+
+    documents, _ = DocumentService.get_by_kb_id(
+        kb_id=dataset_id,
+        page_number=0,
+        items_per_page=0,
+        orderby="create_time",
+        desc=False,
+        keywords="",
+        run_status=[],
+        types=[],
+        suffix=[],
+    )
+    if not documents:
+        return get_data_error_result(message=f"No documents in Dataset {dataset_id}")
+
+    kb_table_num_map = {}
+    for doc in documents:
+        doc["tenant_id"] = tenant_id
+        DocumentService.run(tenant_id, doc, kb_table_num_map)
+
+    return get_json_result(data={"scheduled_count": len(documents)})
+
+
 def register_backward_compat_routes(app_instance):
     """
     Register all backward compatibility routes with the app.
