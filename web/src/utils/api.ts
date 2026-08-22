@@ -366,7 +366,8 @@ export default {
   uploadAgentFile: (id?: string) => `${restAPIv1}/agents/${id}/upload`,
   createAgentSession: (agentId: string) =>
     `${restAPIv1}/agents/${agentId}/sessions`,
-  fetchAgentLogs: (canvasId: string) => `${webAPI}/canvas/${canvasId}/sessions`,
+  fetchAgentLogs: (canvasId: string) =>
+    `${restAPIv1}/agents/${canvasId}/sessions`,
   fetchAgentSessions: (agentId: string) =>
     `${restAPIv1}/agents/${agentId}/sessions`,
   fetchAgentSessionById: (agentId: string, sessionId: string) =>
