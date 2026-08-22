@@ -288,12 +288,49 @@ async def async_completion(tenant_id, chat_id, question, name="New session", ses
     conv.message.append({"role": "assistant", "content": "", "id": message_id})
     conv.reference.append({"chunks": [], "doc_aggs": []})
 
+    # L1 cache check — exact-match lookup keyed on (chat_id, question).
+    prompt_config = dia.prompt_config if hasattr(dia, "prompt_config") else {}
+    enable_cache = prompt_config.get("enable_cache", False)
+    cache_ttl = prompt_config.get("cache_ttl", 86400)
+    question_text = question["content"]
+
+    if enable_cache:
+        from api.db.services.cache_service import get_l1_cache
+
+        cached = get_l1_cache(chat_id, question_text)
+        if cached:
+            cached["id"] = message_id
+            cached["session_id"] = session_id
+            cached["audio_binary"] = None
+            cached["final"] = True
+            answer = structure_answer(conv, cached, message_id, session_id)
+            ConversationService.update_by_id(conv.id, conv.to_dict())
+            if stream:
+                yield "data:" + json.dumps({"code": 0, "data": answer}, ensure_ascii=False) + "\n\n"
+                yield "data:" + json.dumps({"code": 0, "data": True}, ensure_ascii=False) + "\n\n"
+            else:
+                yield answer
+            return
+
+    def _set_l1_cache_from_conv():
+        final_content = conv.message[-1].get("content", "") if conv.message else ""
+        if not (enable_cache and final_content):
+            return
+        from api.db.services.cache_service import set_l1_cache
+
+        final_response = {
+            "answer": final_content,
+            "reference": conv.reference[-1] if conv.reference else {},
+        }
+        set_l1_cache(chat_id, question_text, final_response, cache_ttl)
+
     if stream:
         try:
             async for ans in async_chat(dia, msg, True, session_id=session_id, **kwargs):
                 ans = structure_answer(conv, ans, message_id, session_id)
                 yield "data:" + json.dumps({"code": 0, "data": ans}, ensure_ascii=False) + "\n\n"
             ConversationService.update_by_id(conv.id, conv.to_dict())
+            _set_l1_cache_from_conv()
         except Exception as e:
             yield "data:" + json.dumps({"code": 500, "message": str(e), "data": {"answer": "**ERROR**: " + str(e), "reference": []}}, ensure_ascii=False) + "\n\n"
         yield "data:" + json.dumps({"code": 0, "data": True}, ensure_ascii=False) + "\n\n"
@@ -304,6 +341,7 @@ async def async_completion(tenant_id, chat_id, question, name="New session", ses
             answer = structure_answer(conv, ans, message_id, session_id)
             ConversationService.update_by_id(conv.id, conv.to_dict())
             break
+        _set_l1_cache_from_conv()
         yield answer
 
 

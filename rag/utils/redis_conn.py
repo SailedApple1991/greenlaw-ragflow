@@ -137,6 +137,14 @@ class RedisDB:
             if password:
                 conn_params["password"] = password
 
+            # fork: SSL/TLS for AWS ElastiCache and other managed Redis services
+            ssl_enabled = self.config.get("ssl", False)
+            if isinstance(ssl_enabled, str):
+                ssl_enabled = ssl_enabled.lower() in ("true", "1", "yes")
+            if ssl_enabled:
+                conn_params["ssl"] = True
+                conn_params["ssl_cert_reqs"] = None  # managed services: skip cert verify
+
             self.REDIS = redis.StrictRedis(**conn_params)
 
             self.register_scripts()
