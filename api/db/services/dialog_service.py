@@ -585,6 +585,26 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
         chat_mdl.bind_tools(toolcall_session, tools)
     bind_models_ts = timer()
 
+    # L2 semantic cache check — do this EARLY, before the expensive preprocessing
+    # (SQL retrieval, question refinement, cross-language, keyword extraction).
+    # Embeds the raw user question, which is what L2 matches on.
+    prompt_config = dialog.prompt_config
+    if prompt_config.get("enable_cache", False) and embd_mdl:
+        from api.db.services.cache_service import get_l2_cache
+
+        try:
+            raw_question = messages[-1]["content"]
+            cache_emb, _ = await asyncio.to_thread(embd_mdl.encode_queries, raw_question)
+            cache_threshold = prompt_config.get("cache_similarity_threshold", 0.95)
+            l2_cached = get_l2_cache(dialog.id, cache_emb, dialog.tenant_id, cache_threshold)
+            if l2_cached:
+                l2_cached["audio_binary"] = tts(tts_mdl, l2_cached.get("answer", ""))
+                l2_cached["final"] = True
+                yield l2_cached
+                return
+        except Exception as e:
+            logging.warning("L2 cache check failed, continuing with normal flow: %s", e)
+
     retriever = settings.retriever
     questions = [m["content"] for m in messages if m["role"] == "user"][-3:]
     attachments = None
@@ -928,6 +948,7 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             langfuse_tracer = None
             langfuse_generation = None
 
+    cache_result = None
     if stream:
         if llm_model_config["model_type"] == "chat":
             stream_iter = chat_mdl.async_chat_streamly_delta(prompt + prompt4citation, msg[1:], gen_conf)
@@ -946,6 +967,7 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             final = await decorate_answer(_extract_visible_answer(thought + full_answer))
             final["final"] = True
             final["audio_binary"] = None
+            cache_result = final
             yield final
     else:
         if llm_model_config["model_type"] == "chat":
@@ -956,7 +978,29 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
         logging.debug("User: {}|Assistant: {}".format(user_content, answer))
         res = await decorate_answer(answer)
         res["audio_binary"] = tts(tts_mdl, answer)
+        cache_result = res
         yield res
+
+    # L2 semantic cache set — use the raw user question, consistent with the
+    # early L2 lookup above. set_l2_cache only persists answer/reference/prompt,
+    # so passing the full result dict does not store audio bytes.
+    if prompt_config.get("enable_cache", False) and embd_mdl and cache_result:
+        from api.db.services.cache_service import set_l2_cache
+
+        try:
+            raw_question_for_cache = messages[-1]["content"]
+            cache_emb, _ = await asyncio.to_thread(embd_mdl.encode_queries, raw_question_for_cache)
+            cache_ttl = prompt_config.get("cache_ttl", 86400)
+            set_l2_cache(
+                dialog.id,
+                dialog.tenant_id,
+                raw_question_for_cache,
+                cache_emb,
+                cache_result,
+                cache_ttl,
+            )
+        except Exception:
+            logging.warning("L2 cache set failed", exc_info=True)
 
     return
 
